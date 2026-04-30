@@ -365,6 +365,8 @@ export default function BuyerEdge() {
     setExpiries([])
     setSelectedExpiry('')
     setData(null)
+    setStraddleChartData(null)
+    straddleChartDataRef.current = null
 
     let cancelled = false
     const fetch = async () => {
@@ -394,6 +396,8 @@ export default function BuyerEdge() {
     setExpiries([])
     setSelectedExpiry('')
     setData(null)
+    setStraddleChartData(null)
+    straddleChartDataRef.current = null
 
     let cancelled = false
     const fetch = async () => {
@@ -516,31 +520,29 @@ export default function BuyerEdge() {
     container.innerHTML = ''
     if (tooltip) container.appendChild(tooltip)
 
-    const c = chartColorsRef.current
-
     const chart = createChart(container, {
       width: container.offsetWidth,
       height: STRADDLE_CHART_HEIGHT,
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: c.text,
+        textColor: chartColors.text,
       },
       grid: {
-        vertLines: { color: c.grid, style: 1 as const, visible: true },
-        horzLines: { color: c.grid, style: 1 as const, visible: true },
+        vertLines: { color: chartColors.grid, style: 1 as const, visible: true },
+        horzLines: { color: chartColors.grid, style: 1 as const, visible: true },
       },
       leftPriceScale: {
         visible: true,
-        borderColor: c.border,
+        borderColor: chartColors.border,
         scaleMargins: { top: 0.05, bottom: 0.05 },
       },
       rightPriceScale: {
         visible: true,
-        borderColor: c.border,
+        borderColor: chartColors.border,
         scaleMargins: { top: 0.05, bottom: 0.05 },
       },
       timeScale: {
-        borderColor: c.border,
+        borderColor: chartColors.border,
         timeVisible: true,
         secondsVisible: false,
         tickMarkFormatter: (time: number) => {
@@ -558,14 +560,14 @@ export default function BuyerEdge() {
       },
       crosshair: {
         mode: CrosshairMode.Normal,
-        vertLine: { width: 1 as const, color: c.crosshair, style: 2 as const, labelVisible: false },
-        horzLine: { width: 1 as const, color: c.crosshair, style: 2 as const, labelBackgroundColor: c.crosshairLabel },
+        vertLine: { width: 1 as const, color: chartColors.crosshair, style: 2 as const, labelVisible: false },
+        horzLine: { width: 1 as const, color: chartColors.crosshair, style: 2 as const, labelBackgroundColor: chartColors.crosshairLabel },
       },
     })
 
     // Watermark
     const watermark = document.createElement('div')
-    watermark.style.cssText = `position:absolute;z-index:2;font-family:Arial,sans-serif;font-size:48px;font-weight:bold;user-select:none;pointer-events:none;color:${c.watermark}`
+    watermark.style.cssText = `position:absolute;z-index:2;font-family:Arial,sans-serif;font-size:48px;font-weight:bold;user-select:none;pointer-events:none;color:${chartColors.watermark}`
     watermark.textContent = 'OpenAlgo'
     container.appendChild(watermark)
     watermarkRef.current = watermark
@@ -587,7 +589,7 @@ export default function BuyerEdge() {
 
     // Series
     const spotSeries = chart.addSeries(LineSeries, {
-      color: c.spot,
+      color: chartColors.spot,
       lineWidth: 2,
       priceScaleId: 'left',
       title: 'Spot',
@@ -596,7 +598,7 @@ export default function BuyerEdge() {
       visible: showSpot,
     })
     const straddleSeries = chart.addSeries(LineSeries, {
-      color: c.straddle,
+      color: chartColors.straddle,
       lineWidth: 2,
       priceScaleId: 'right',
       title: 'Straddle',
@@ -605,7 +607,7 @@ export default function BuyerEdge() {
       visible: showStraddle,
     })
     const syntheticSeries = chart.addSeries(LineSeries, {
-      color: c.synthetic,
+      color: chartColors.synthetic,
       lineWidth: 1,
       lineStyle: 2,
       priceScaleId: 'left',
@@ -615,7 +617,7 @@ export default function BuyerEdge() {
       visible: showSynthetic,
     })
     const vwapSeries = chart.addSeries(LineSeries, {
-      color: c.vwap,
+      color: chartColors.vwap,
       lineWidth: 1,
       lineStyle: 3,
       priceScaleId: 'right',
@@ -717,7 +719,7 @@ export default function BuyerEdge() {
     }
     window.addEventListener('resize', handleResize)
     return () => { window.removeEventListener('resize', handleResize) }
-  }, [chartColors, straddleDays, showStraddle, showSpot, showSynthetic, showVwap, applyDataToChart])
+  }, [chartColors, straddleDays, showStraddle, showSpot, showSynthetic, showVwap])
 
   // Chart lifecycle — the chart card is always rendered so chartContainerRef is
   // always valid.  Simple [initChart] dep mirrors the standalone StraddleChart page.
@@ -762,9 +764,25 @@ export default function BuyerEdge() {
         setStraddleChartData(res.data)
         applyDataToChart(res.data)
       } else {
+        straddleChartDataRef.current = null
+        setStraddleChartData(null)
+        seriesDataMapRef.current = new Map()
+        vwapDataMapRef.current = new Map()
+        spotSeriesRef.current?.setData([])
+        straddleSeriesRef.current?.setData([])
+        syntheticSeriesRef.current?.setData([])
+        vwapSeriesRef.current?.setData([])
         showToast.error(res.message || 'Failed to load straddle data')
       }
     } catch {
+      straddleChartDataRef.current = null
+      setStraddleChartData(null)
+      seriesDataMapRef.current = new Map()
+      vwapDataMapRef.current = new Map()
+      spotSeriesRef.current?.setData([])
+      straddleSeriesRef.current?.setData([])
+      syntheticSeriesRef.current?.setData([])
+      vwapSeriesRef.current?.setData([])
       showToast.error('Failed to fetch straddle chart data')
     } finally {
       setIsChartLoading(false)
