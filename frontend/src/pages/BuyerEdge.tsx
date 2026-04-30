@@ -277,6 +277,10 @@ export default function BuyerEdge() {
   const [showSynthetic, setShowSynthetic] = useState(false)
   const [showVwap, setShowVwap] = useState(true)
 
+  // ── Engine lookback settings ───────────────────────────────────
+  const [lbBars, setLbBars] = useState('20')
+  const [lbTf, setLbTf] = useState('5m')
+
   // Chart DOM refs
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -432,6 +436,8 @@ export default function BuyerEdge() {
         underlying: selectedUnderlying,
         exchange: selectedExchange,
         expiry_date: expiryForAPI,
+        lb_bars: parseInt(lbBars),
+        lb_tf: lbTf,
       })
       if (requestIdRef.current !== requestId) return
       if (response.status === 'success') {
@@ -445,7 +451,7 @@ export default function BuyerEdge() {
     } finally {
       if (requestIdRef.current === requestId) setIsLoading(false)
     }
-  }, [selectedUnderlying, selectedExpiry, selectedExchange])
+  }, [selectedUnderlying, selectedExpiry, selectedExchange, lbBars, lbTf])
 
   useEffect(() => {
     if (selectedExpiry) fetchData()
@@ -901,6 +907,36 @@ export default function BuyerEdge() {
                     <SelectItem key={e} value={e}>
                       {e}
                     </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Engine: Timeframe */}
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Timeframe</label>
+              <Select value={lbTf} onValueChange={setLbTf}>
+                <SelectTrigger className="w-24 h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {['1m', '3m', '5m', '10m', '15m', '30m', '1h'].map((tf) => (
+                    <SelectItem key={tf} value={tf}>{tf}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Engine: Lookback bars */}
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Bars</label>
+              <Select value={lbBars} onValueChange={setLbBars}>
+                <SelectTrigger className="w-24 h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {['10', '20', '30', '50', '75', '100'].map((b) => (
+                    <SelectItem key={b} value={b}>{b} bars</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
