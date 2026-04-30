@@ -650,7 +650,10 @@ export default function BuyerEdge() {
       }
       const time = param.time as number
       const point = seriesDataMapRef.current.get(time)
-      if (!point) { tt.style.display = 'none'; return }
+      if (!point) {
+        tt.style.display = 'none'
+        return
+      }
 
       const vwapVal = vwapDataMapRef.current.get(time)
       const cl = chartColorsRef.current
@@ -719,6 +722,9 @@ export default function BuyerEdge() {
     }
     window.addEventListener('resize', handleResize)
     return () => { window.removeEventListener('resize', handleResize) }
+  // `applyDataToChart` is intentionally omitted from deps: it is defined with
+  // useCallback([], []) so it never changes — omitting it matches the standalone
+  // StraddleChart.tsx pattern and avoids a spurious chart re-init.
   }, [chartColors, straddleDays, showStraddle, showSpot, showSynthetic, showVwap])
 
   // Chart lifecycle — the chart card is always rendered so chartContainerRef is
