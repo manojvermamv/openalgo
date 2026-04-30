@@ -65,6 +65,32 @@ function formatIST(unixSeconds: number): { date: string; time: string } {
   return { date: `${dd} ${mo}`, time: `${hh}:${mm} ${ampm}` }
 }
 
+/**
+ * Compute 1-Day Anchored VWAP on straddle price.
+ * Since straddle data carries no exchange volume, each bar is treated with equal
+ * weight (weight = 1), making this a cumulative arithmetic mean of the straddle
+ * price that resets at the start of each trading day (9:15 AM IST).
+ */
+function computeDayAnchoredVWAP(points: StraddleDataPoint[]): { time: number; value: number }[] {
+  if (!points.length) return []
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000
+  let dayKey = ''
+  let cumSum = 0
+  let cumCount = 0
+  return points.map((p) => {
+    const istDate = new Date(p.time * 1000 + IST_OFFSET_MS)
+    const key = `${istDate.getUTCFullYear()}-${istDate.getUTCMonth()}-${istDate.getUTCDate()}`
+    if (key !== dayKey) {
+      dayKey = key
+      cumSum = 0
+      cumCount = 0
+    }
+    cumSum += p.straddle
+    cumCount += 1
+    return { time: p.time, value: cumSum / cumCount }
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Signal colours
 // ---------------------------------------------------------------------------
@@ -249,6 +275,7 @@ export default function BuyerEdge() {
   const [showStraddle, setShowStraddle] = useState(true)
   const [showSpot, setShowSpot] = useState(false)
   const [showSynthetic, setShowSynthetic] = useState(false)
+  const [showVwap, setShowVwap] = useState(true)
 
   // Chart DOM refs
   const chartContainerRef = useRef<HTMLDivElement>(null)
@@ -256,10 +283,12 @@ export default function BuyerEdge() {
   const spotSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
   const straddleSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
   const syntheticSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
+  const vwapSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
   const tooltipRef = useRef<HTMLDivElement | null>(null)
   const watermarkRef = useRef<HTMLDivElement | null>(null)
   const straddleChartDataRef = useRef<StraddleChartData | null>(null)
   const seriesDataMapRef = useRef<Map<number, StraddleDataPoint>>(new Map())
+  const vwapDataMapRef = useRef<Map<number, number>>(new Map())
 
   // Theme colors for the embedded straddle chart
   const chartColors = useMemo(() => {
@@ -273,6 +302,7 @@ export default function BuyerEdge() {
         spot: '#e2e8f0',
         straddle: '#a78bfa',
         synthetic: '#60a5fa',
+        vwap: '#fbbf24',
         watermark: 'rgba(139, 92, 246, 0.12)',
         tooltipBg: 'rgba(30, 15, 60, 0.92)',
         tooltipBorder: 'rgba(139, 92, 246, 0.3)',
@@ -290,6 +320,7 @@ export default function BuyerEdge() {
         spot: '#e2e8f0',
         straddle: '#4ade80',
         synthetic: '#60a5fa',
+        vwap: '#f59e0b',
         watermark: 'rgba(166, 173, 187, 0.12)',
         tooltipBg: 'rgba(17, 24, 39, 0.92)',
         tooltipBorder: 'rgba(166, 173, 187, 0.2)',
@@ -306,6 +337,7 @@ export default function BuyerEdge() {
       spot: '#1e293b',
       straddle: '#16a34a',
       synthetic: '#2563eb',
+      vwap: '#d97706',
       watermark: 'rgba(0, 0, 0, 0.06)',
       tooltipBg: 'rgba(255, 255, 255, 0.95)',
       tooltipBorder: 'rgba(0, 0, 0, 0.15)',
@@ -438,6 +470,12 @@ export default function BuyerEdge() {
     for (const p of sorted) map.set(p.time, p)
     seriesDataMapRef.current = map
 
+    // Compute anchored VWAP and store for tooltip
+    const vwapPoints = computeDayAnchoredVWAP(sorted)
+    const vwapMap = new Map<number, number>()
+    for (const v of vwapPoints) vwapMap.set(v.time, v.value)
+    vwapDataMapRef.current = vwapMap
+
     spotSeriesRef.current?.setData(
       sorted.map((p) => ({
         time: p.time as import('lightweight-charts').UTCTimestamp,
@@ -454,6 +492,12 @@ export default function BuyerEdge() {
       sorted.map((p) => ({
         time: p.time as import('lightweight-charts').UTCTimestamp,
         value: p.synthetic_future,
+      }))
+    )
+    vwapSeriesRef.current?.setData(
+      vwapPoints.map((v) => ({
+        time: v.time as import('lightweight-charts').UTCTimestamp,
+        value: v.value,
       }))
     )
     chartRef.current?.timeScale().fitContent()
@@ -570,11 +614,22 @@ export default function BuyerEdge() {
       priceLineVisible: false,
       visible: showSynthetic,
     })
+    const vwapSeries = chart.addSeries(LineSeries, {
+      color: c.vwap,
+      lineWidth: 1,
+      lineStyle: 3,
+      priceScaleId: 'right',
+      title: 'VWAP(D)',
+      lastValueVisible: true,
+      priceLineVisible: false,
+      visible: showVwap,
+    })
 
     chartRef.current = chart
     spotSeriesRef.current = spotSeries
     straddleSeriesRef.current = straddleSeries
     syntheticSeriesRef.current = syntheticSeries
+    vwapSeriesRef.current = vwapSeries
 
     // Crosshair tooltip
     chart.subscribeCrosshairMove((param) => {
@@ -595,6 +650,7 @@ export default function BuyerEdge() {
       const point = seriesDataMapRef.current.get(time)
       if (!point) { tt.style.display = 'none'; return }
 
+      const vwapVal = vwapDataMapRef.current.get(time)
       const cl = chartColorsRef.current
       const { date, time: timeStr } = formatIST(time)
       tt.style.display = 'block'
@@ -606,6 +662,10 @@ export default function BuyerEdge() {
           <span style="color:${cl.straddle};font-weight:600">Straddle Price</span>
           <span style="color:${cl.straddle};font-weight:600">${point.straddle.toFixed(2)}</span>
         </div>
+        ${vwapVal != null ? `<div style="display:flex;justify-content:space-between;gap:16px">
+          <span style="color:${cl.vwap}">VWAP (Day)</span>
+          <span style="color:${cl.vwap}">${vwapVal.toFixed(2)}</span>
+        </div>` : ''}
         <div style="display:flex;justify-content:space-between;gap:16px">
           <span style="color:${cl.tooltipMuted}">&bull; ${point.atm_strike} Call:</span>
           <span>${point.ce_price.toFixed(2)}</span>
@@ -657,7 +717,7 @@ export default function BuyerEdge() {
     }
     window.addEventListener('resize', handleResize)
     return () => { window.removeEventListener('resize', handleResize) }
-  }, [chartColors, straddleDays, showStraddle, showSpot, showSynthetic, applyDataToChart])
+  }, [chartColors, straddleDays, showStraddle, showSpot, showSynthetic, showVwap, applyDataToChart])
 
   // Chart lifecycle
   useEffect(() => {
@@ -672,6 +732,7 @@ export default function BuyerEdge() {
   useEffect(() => { spotSeriesRef.current?.applyOptions({ visible: showSpot }) }, [showSpot])
   useEffect(() => { straddleSeriesRef.current?.applyOptions({ visible: showStraddle }) }, [showStraddle])
   useEffect(() => { syntheticSeriesRef.current?.applyOptions({ visible: showSynthetic }) }, [showSynthetic])
+  useEffect(() => { vwapSeriesRef.current?.applyOptions({ visible: showVwap }) }, [showVwap])
 
   // Fetch available intervals once
   useEffect(() => {
@@ -715,11 +776,16 @@ export default function BuyerEdge() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadStraddleData])
 
-  // Latest straddle data point for info bar
+  // Latest straddle data point and its VWAP for info bar
   const latestStraddlePoint = useMemo(() => {
     if (!straddleChartData?.series?.length) return null
     return straddleChartData.series[straddleChartData.series.length - 1]
   }, [straddleChartData])
+
+  const latestVwap = useMemo(() => {
+    if (!latestStraddlePoint) return null
+    return vwapDataMapRef.current.get(latestStraddlePoint.time) ?? null
+  }, [latestStraddlePoint])
 
   const signal = data?.signal_engine?.signal ?? null
   const signalCfg = signal ? SIGNAL_CONFIG[signal] : null
@@ -1117,6 +1183,14 @@ export default function BuyerEdge() {
                     {latestStraddlePoint.straddle.toFixed(2)}
                   </span>
                 </div>
+                {latestVwap != null && (
+                  <div>
+                    <span className="text-muted-foreground">VWAP(D) </span>
+                    <span className="font-semibold" style={{ color: chartColors.vwap }}>
+                      {latestVwap.toFixed(2)}
+                    </span>
+                  </div>
+                )}
                 <div>
                   <span className="text-muted-foreground">Spot </span>
                   <span className="font-medium">{latestStraddlePoint.spot.toFixed(2)}</span>
@@ -1162,6 +1236,14 @@ export default function BuyerEdge() {
               >
                 <span className="inline-block h-0.5 w-5 rounded" style={{ backgroundColor: chartColors.straddle }} />
                 Straddle
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowVwap((v) => !v)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showVwap ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
+              >
+                <span className="inline-block h-0.5 w-5 rounded border-dashed border-t-2" style={{ borderColor: chartColors.vwap, backgroundColor: 'transparent' }} />
+                VWAP(D)
               </button>
               <button
                 type="button"
