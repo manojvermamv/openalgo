@@ -81,7 +81,7 @@ def buyer_edge_data():
             ), 400
 
         # Clamp strike_count to a reasonable range
-        strike_count = max(5, min(strike_count, 30))
+        strike_count = max(2, min(strike_count, 30))
         # Clamp lb_bars to a reasonable range
         lb_bars = max(5, min(lb_bars, 100))
 

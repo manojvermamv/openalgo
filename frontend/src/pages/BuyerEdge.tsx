@@ -952,7 +952,7 @@ export default function BuyerEdge() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {['5', '10', '15', '20', '25', '30'].map((s) => (
+                  {['2', '3', '5', '10', '15', '20', '25', '30'].map((s) => (
                     <SelectItem key={s} value={s}>±{s}</SelectItem>
                   ))}
                 </SelectContent>
