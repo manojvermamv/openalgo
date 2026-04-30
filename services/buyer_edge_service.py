@@ -482,7 +482,7 @@ def get_buyer_edge_data(
     strike_count: int,
     api_key: str,
     lb_bars: int = 20,
-    lb_tf: str = "5m",
+    lb_tf: str = "3m",
 ) -> tuple[bool, dict[str, Any], int]:
     """
     Compute all 5 modules and return a buyer-edge signal.

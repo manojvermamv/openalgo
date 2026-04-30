@@ -279,7 +279,7 @@ export default function BuyerEdge() {
 
   // ── Engine lookback settings ───────────────────────────────────
   const [lbBars, setLbBars] = useState('20')
-  const [lbTf, setLbTf] = useState('5m')
+  const [lbTf, setLbTf] = useState('3m')
 
   // Chart DOM refs
   const chartContainerRef = useRef<HTMLDivElement>(null)

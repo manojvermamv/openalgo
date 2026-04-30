@@ -58,7 +58,7 @@ def buyer_edge_data():
             return jsonify({"status": "error", "message": "lb_bars must be a valid integer"}), 400
 
         _VALID_LB_TF = {"1m", "3m", "5m", "10m", "15m", "30m", "1h"}
-        lb_tf = str(data.get("lb_tf", "5m")).strip()
+        lb_tf = str(data.get("lb_tf", "3m")).strip()
         if lb_tf not in _VALID_LB_TF:
             return jsonify({"status": "error", "message": f"lb_tf must be one of {sorted(_VALID_LB_TF)}"}), 400
 
