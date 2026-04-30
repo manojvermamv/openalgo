@@ -719,14 +719,19 @@ export default function BuyerEdge() {
     return () => { window.removeEventListener('resize', handleResize) }
   }, [chartColors, straddleDays, showStraddle, showSpot, showSynthetic, showVwap, applyDataToChart])
 
-  // Chart lifecycle
+  // Chart lifecycle — also depends on selectedExpiry because the chart <div> is
+  // inside a {selectedExpiry && (...)} guard.  On first mount selectedExpiry is ''
+  // so chartContainerRef.current is null and initChart returns early.  Once the
+  // expiry is resolved the div enters the DOM and we need to re-run initChart.
   useEffect(() => {
+    if (!selectedExpiry) return
     const cleanup = initChart()
     return () => {
       cleanup?.()
       if (chartRef.current) { chartRef.current.remove(); chartRef.current = null }
     }
-  }, [initChart])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initChart, selectedExpiry])
 
   // Series visibility toggles
   useEffect(() => { spotSeriesRef.current?.applyOptions({ visible: showSpot }) }, [showSpot])
