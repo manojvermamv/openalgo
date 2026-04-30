@@ -719,19 +719,15 @@ export default function BuyerEdge() {
     return () => { window.removeEventListener('resize', handleResize) }
   }, [chartColors, straddleDays, showStraddle, showSpot, showSynthetic, showVwap, applyDataToChart])
 
-  // Chart lifecycle — also depends on selectedExpiry because the chart <div> is
-  // inside a {selectedExpiry && (...)} guard.  On first mount selectedExpiry is ''
-  // so chartContainerRef.current is null and initChart returns early.  Once the
-  // expiry is resolved the div enters the DOM and we need to re-run initChart.
+  // Chart lifecycle — the chart card is always rendered so chartContainerRef is
+  // always valid.  Simple [initChart] dep mirrors the standalone StraddleChart page.
   useEffect(() => {
-    if (!selectedExpiry) return
     const cleanup = initChart()
     return () => {
       cleanup?.()
       if (chartRef.current) { chartRef.current.remove(); chartRef.current = null }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initChart, selectedExpiry])
+  }, [initChart])
 
   // Series visibility toggles
   useEffect(() => { spotSeriesRef.current?.applyOptions({ visible: showSpot }) }, [showSpot])
@@ -1125,10 +1121,10 @@ export default function BuyerEdge() {
         </Card>
       )}
 
-      {/* Straddle Chart */}
-      {selectedExpiry && (
-        <Card>
-          <CardHeader className="pb-3">
+
+      {/* Straddle Chart — always rendered so chartContainerRef is always mounted */}
+      <Card>
+        <CardHeader className="pb-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <CardTitle className="text-base">Straddle Chart</CardTitle>
               <div className="flex flex-wrap items-center gap-2">
@@ -1230,6 +1226,11 @@ export default function BuyerEdge() {
                   </div>
                 </div>
               )}
+              {!selectedExpiry && !isChartLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-background/70 rounded-lg">
+                  <p className="text-sm text-muted-foreground">Select an underlying and expiry to load the straddle chart</p>
+                </div>
+              )}
             </div>
 
             {/* Legend toggles */}
@@ -1269,7 +1270,6 @@ export default function BuyerEdge() {
             </div>
           </CardContent>
         </Card>
-      )}
 
       {/* Loading state */}
       {isLoading && !data && (
