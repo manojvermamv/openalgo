@@ -280,6 +280,7 @@ export default function BuyerEdge() {
   // ── Engine lookback settings ───────────────────────────────────
   const [lbBars, setLbBars] = useState('20')
   const [lbTf, setLbTf] = useState('3m')
+  const [strikeCount, setStrikeCount] = useState('10')
 
   // Chart DOM refs
   const chartContainerRef = useRef<HTMLDivElement>(null)
@@ -436,6 +437,7 @@ export default function BuyerEdge() {
         underlying: selectedUnderlying,
         exchange: selectedExchange,
         expiry_date: expiryForAPI,
+        strike_count: parseInt(strikeCount),
         lb_bars: parseInt(lbBars),
         lb_tf: lbTf,
       })
@@ -451,7 +453,7 @@ export default function BuyerEdge() {
     } finally {
       if (requestIdRef.current === requestId) setIsLoading(false)
     }
-  }, [selectedUnderlying, selectedExpiry, selectedExchange, lbBars, lbTf])
+  }, [selectedUnderlying, selectedExpiry, selectedExchange, strikeCount, lbBars, lbTf])
 
   useEffect(() => {
     if (selectedExpiry) fetchData()
@@ -937,6 +939,21 @@ export default function BuyerEdge() {
                 <SelectContent>
                   {['10', '20', '30', '50', '75', '100'].map((b) => (
                     <SelectItem key={b} value={b}>{b} bars</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Engine: Strike range (CE/PE offset for Call & Put Wall) */}
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Strikes</label>
+              <Select value={strikeCount} onValueChange={setStrikeCount}>
+                <SelectTrigger className="w-24 h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {['5', '10', '15', '20', '25', '30'].map((s) => (
+                    <SelectItem key={s} value={s}>±{s}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

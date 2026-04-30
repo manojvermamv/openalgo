@@ -91,10 +91,11 @@ def _compute_market_state(closes: list[float]) -> dict[str, str]:
     """
     Compute Trend, Regime, and Location from a list of close prices.
 
-    Trend (HH/HL vs LL/LH swing logic):
-      - Bullish:  last_close > prev_close AND last_close > max(closes[:-1])   (simple HH proxy)
-      - Bearish:  last_close < prev_close AND last_close < min(closes[:-1])
-      - Neutral:  otherwise
+    Trend (HH/HL vs LH/LL swing logic):
+      Split the close series into a prior half and a recent half, then:
+      - Bullish:  Higher High (recent_max > prior_max) AND Higher Low  (recent_min > prior_min)
+      - Bearish:  Lower High  (recent_max < prior_max) AND Lower Low   (recent_min < prior_min)
+      - Neutral:  Neither condition fully met (sideways)
 
     Regime (range vs expansion):
       - Compare recent volatility window to longer-term window.
@@ -112,17 +113,20 @@ def _compute_market_state(closes: list[float]) -> dict[str, str]:
         return {"trend": "Neutral", "regime": "Compression", "location": "Mid"}
 
     last = closes[-1]
-    prev = closes[-2]
 
-    # --- Trend ---
-    highs = closes[:-1]
-    lows = closes[:-1]
-    max_prev = max(highs)
-    min_prev = min(lows)
+    # --- Trend: HH+HL = Bullish, LH+LL = Bearish, neither = Neutral ---
+    mid = len(closes) // 2
+    prior = closes[:mid]
+    recent = closes[mid:]
 
-    if last > prev and last > max_prev:
+    prior_high = max(prior)
+    prior_low = min(prior)
+    recent_high = max(recent)
+    recent_low = min(recent)
+
+    if recent_high > prior_high and recent_low > prior_low:
         trend = "Bullish"
-    elif last < prev and last < min_prev:
+    elif recent_high < prior_high and recent_low < prior_low:
         trend = "Bearish"
     else:
         trend = "Neutral"
@@ -494,7 +498,7 @@ def get_buyer_edge_data(
         strike_count: Strikes around ATM (default 10 is enough for greeks)
         api_key:      OpenAlgo API key
         lb_bars:      Number of historical bars to use for Market State (default 20)
-        lb_tf:        Timeframe for historical bars (default "5m")
+        lb_tf:        Timeframe for historical bars (default "3m")
 
     Returns:
         Tuple of (success, response_dict, status_code)
