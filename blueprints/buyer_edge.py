@@ -52,6 +52,16 @@ def buyer_edge_data():
         except (TypeError, ValueError):
             return jsonify({"status": "error", "message": "strike_count must be a valid integer"}), 400
 
+        try:
+            lb_bars = int(data.get("lb_bars", 20))
+        except (TypeError, ValueError):
+            return jsonify({"status": "error", "message": "lb_bars must be a valid integer"}), 400
+
+        _VALID_LB_TF = {"1m", "3m", "5m", "10m", "15m", "30m", "1h"}
+        lb_tf = str(data.get("lb_tf", "3m")).strip()
+        if lb_tf not in _VALID_LB_TF:
+            return jsonify({"status": "error", "message": f"lb_tf must be one of {sorted(_VALID_LB_TF)}"}), 400
+
         if not underlying or not exchange or not expiry_date:
             return jsonify(
                 {
@@ -71,7 +81,9 @@ def buyer_edge_data():
             ), 400
 
         # Clamp strike_count to a reasonable range
-        strike_count = max(5, min(strike_count, 30))
+        strike_count = max(2, min(strike_count, 30))
+        # Clamp lb_bars to a reasonable range
+        lb_bars = max(5, min(lb_bars, 100))
 
         success, response, status_code = get_buyer_edge_data(
             underlying=underlying.upper(),
@@ -79,6 +91,8 @@ def buyer_edge_data():
             expiry_date=expiry_date.upper(),
             strike_count=strike_count,
             api_key=api_key,
+            lb_bars=lb_bars,
+            lb_tf=lb_tf,
         )
 
         return jsonify(response), status_code

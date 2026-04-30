@@ -73,6 +73,8 @@ export const buyerEdgeApi = {
     exchange: string
     expiry_date: string
     strike_count?: number
+    lb_bars?: number
+    lb_tf?: string
   }): Promise<BuyerEdgeResponse> => {
     const response = await webClient.post<BuyerEdgeResponse>('/buyeredge/api/data', params)
     return response.data

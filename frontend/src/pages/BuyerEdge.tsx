@@ -1,11 +1,25 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronsUpDown, RefreshCw } from 'lucide-react'
+import {
+  ColorType,
+  CrosshairMode,
+  LineSeries,
+  createChart,
+  type IChartApi,
+  type ISeriesApi,
+} from 'lightweight-charts'
 import { useSupportedExchanges } from '@/hooks/useSupportedExchanges'
+import { useThemeStore } from '@/stores/themeStore'
 import {
   buyerEdgeApi,
   type BuyerEdgeResponse,
   type SignalType,
 } from '@/api/buyerEdge'
+import {
+  straddleChartApi,
+  type StraddleChartData,
+  type StraddleDataPoint,
+} from '@/api/straddle-chart'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -28,6 +42,7 @@ import {
 import { showToast } from '@/utils/toast'
 
 const AUTO_REFRESH_INTERVAL = 30000
+const STRADDLE_CHART_HEIGHT = 400
 
 function convertExpiryForAPI(expiry: string): string {
   if (!expiry) return ''
@@ -36,6 +51,44 @@ function convertExpiryForAPI(expiry: string): string {
     return `${parts[0]}${parts[1].toUpperCase()}${parts[2].slice(-2)}`
   }
   return expiry.replace(/-/g, '').toUpperCase()
+}
+
+function formatIST(unixSeconds: number): { date: string; time: string } {
+  const d = new Date(unixSeconds * 1000)
+  const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000)
+  const dd = ist.getUTCDate().toString().padStart(2, '0')
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const mo = months[ist.getUTCMonth()]
+  const hh = ist.getUTCHours().toString().padStart(2, '0')
+  const mm = ist.getUTCMinutes().toString().padStart(2, '0')
+  const ampm = ist.getUTCHours() >= 12 ? 'PM' : 'AM'
+  return { date: `${dd} ${mo}`, time: `${hh}:${mm} ${ampm}` }
+}
+
+/**
+ * Compute 1-Day Anchored VWAP on straddle price.
+ * Since straddle data carries no exchange volume, each bar is treated with equal
+ * weight (weight = 1), making this a cumulative arithmetic mean of the straddle
+ * price that resets at the start of each trading day (9:15 AM IST).
+ */
+function computeDayAnchoredVWAP(points: StraddleDataPoint[]): { time: number; value: number }[] {
+  if (!points.length) return []
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000
+  let dayKey = ''
+  let cumSum = 0
+  let cumCount = 0
+  return points.map((p) => {
+    const istDate = new Date(p.time * 1000 + IST_OFFSET_MS)
+    const key = `${istDate.getUTCFullYear()}-${istDate.getUTCMonth()}-${istDate.getUTCDate()}`
+    if (key !== dayKey) {
+      dayKey = key
+      cumSum = 0
+      cumCount = 0
+    }
+    cumSum += p.straddle
+    cumCount += 1
+    return { time: p.time, value: cumSum / cumCount }
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -193,6 +246,9 @@ function DeltaBar({
 // ---------------------------------------------------------------------------
 export default function BuyerEdge() {
   const { fnoExchanges, defaultFnoExchange, defaultUnderlyings } = useSupportedExchanges()
+  const { mode, appMode } = useThemeStore()
+  const isDarkMode = mode === 'dark'
+  const isAnalyzer = appMode === 'analyzer'
 
   const [selectedExchange, setSelectedExchange] = useState(defaultFnoExchange)
   const [underlyings, setUnderlyings] = useState<string[]>(
@@ -210,6 +266,95 @@ export default function BuyerEdge() {
   const requestIdRef = useRef(0)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // ── Straddle Chart state ───────────────────────────────────────
+  const [straddleInterval, setStraddleInterval] = useState('1m')
+  const [straddleDays, setStraddleDays] = useState('1')
+  const [straddleChartData, setStraddleChartData] = useState<StraddleChartData | null>(null)
+  const [straddleIntervals, setStraddleIntervals] = useState<string[]>(['1m', '3m', '5m', '10m', '15m', '30m', '1h'])
+  const [isChartLoading, setIsChartLoading] = useState(false)
+  const [showStraddle, setShowStraddle] = useState(true)
+  const [showSpot, setShowSpot] = useState(false)
+  const [showSynthetic, setShowSynthetic] = useState(false)
+  const [showVwap, setShowVwap] = useState(true)
+
+  // ── Engine lookback settings ───────────────────────────────────
+  const [lbBars, setLbBars] = useState('20')
+  const [lbTf, setLbTf] = useState('3m')
+  const [strikeCount, setStrikeCount] = useState('10')
+
+  // Chart DOM refs
+  const chartContainerRef = useRef<HTMLDivElement>(null)
+  const chartRef = useRef<IChartApi | null>(null)
+  const spotSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
+  const straddleSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
+  const syntheticSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
+  const vwapSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
+  const tooltipRef = useRef<HTMLDivElement | null>(null)
+  const watermarkRef = useRef<HTMLDivElement | null>(null)
+  const straddleChartDataRef = useRef<StraddleChartData | null>(null)
+  const seriesDataMapRef = useRef<Map<number, StraddleDataPoint>>(new Map())
+  const vwapDataMapRef = useRef<Map<number, number>>(new Map())
+
+  // Theme colors for the embedded straddle chart
+  const chartColors = useMemo(() => {
+    if (isAnalyzer) {
+      return {
+        text: '#d4bfff',
+        grid: 'rgba(139, 92, 246, 0.1)',
+        border: 'rgba(139, 92, 246, 0.2)',
+        crosshair: 'rgba(139, 92, 246, 0.5)',
+        crosshairLabel: '#4c1d95',
+        spot: '#e2e8f0',
+        straddle: '#a78bfa',
+        synthetic: '#60a5fa',
+        vwap: '#fbbf24',
+        watermark: 'rgba(139, 92, 246, 0.12)',
+        tooltipBg: 'rgba(30, 15, 60, 0.92)',
+        tooltipBorder: 'rgba(139, 92, 246, 0.3)',
+        tooltipText: '#d4bfff',
+        tooltipMuted: '#a78bfa',
+      }
+    }
+    if (isDarkMode) {
+      return {
+        text: '#a6adbb',
+        grid: 'rgba(166, 173, 187, 0.1)',
+        border: 'rgba(166, 173, 187, 0.2)',
+        crosshair: 'rgba(166, 173, 187, 0.5)',
+        crosshairLabel: '#1f2937',
+        spot: '#e2e8f0',
+        straddle: '#4ade80',
+        synthetic: '#60a5fa',
+        vwap: '#f59e0b',
+        watermark: 'rgba(166, 173, 187, 0.12)',
+        tooltipBg: 'rgba(17, 24, 39, 0.92)',
+        tooltipBorder: 'rgba(166, 173, 187, 0.2)',
+        tooltipText: '#e2e8f0',
+        tooltipMuted: '#9ca3af',
+      }
+    }
+    return {
+      text: '#333',
+      grid: 'rgba(0, 0, 0, 0.1)',
+      border: 'rgba(0, 0, 0, 0.2)',
+      crosshair: 'rgba(0, 0, 0, 0.3)',
+      crosshairLabel: '#2563eb',
+      spot: '#1e293b',
+      straddle: '#16a34a',
+      synthetic: '#2563eb',
+      vwap: '#d97706',
+      watermark: 'rgba(0, 0, 0, 0.06)',
+      tooltipBg: 'rgba(255, 255, 255, 0.95)',
+      tooltipBorder: 'rgba(0, 0, 0, 0.15)',
+      tooltipText: '#1e293b',
+      tooltipMuted: '#6b7280',
+    }
+  }, [isDarkMode, isAnalyzer])
+
+  // Keep a stable ref to colors for the crosshair callback
+  const chartColorsRef = useRef(chartColors)
+  chartColorsRef.current = chartColors
+
   // Sync exchange when broker caps load
   useEffect(() => {
     setSelectedExchange((prev) =>
@@ -225,6 +370,8 @@ export default function BuyerEdge() {
     setExpiries([])
     setSelectedExpiry('')
     setData(null)
+    setStraddleChartData(null)
+    straddleChartDataRef.current = null
 
     let cancelled = false
     const fetch = async () => {
@@ -254,6 +401,8 @@ export default function BuyerEdge() {
     setExpiries([])
     setSelectedExpiry('')
     setData(null)
+    setStraddleChartData(null)
+    straddleChartDataRef.current = null
 
     let cancelled = false
     const fetch = async () => {
@@ -288,6 +437,9 @@ export default function BuyerEdge() {
         underlying: selectedUnderlying,
         exchange: selectedExchange,
         expiry_date: expiryForAPI,
+        strike_count: parseInt(strikeCount),
+        lb_bars: parseInt(lbBars),
+        lb_tf: lbTf,
       })
       if (requestIdRef.current !== requestId) return
       if (response.status === 'success') {
@@ -301,7 +453,7 @@ export default function BuyerEdge() {
     } finally {
       if (requestIdRef.current === requestId) setIsLoading(false)
     }
-  }, [selectedUnderlying, selectedExpiry, selectedExchange])
+  }, [selectedUnderlying, selectedExpiry, selectedExchange, strikeCount, lbBars, lbTf])
 
   useEffect(() => {
     if (selectedExpiry) fetchData()
@@ -320,6 +472,353 @@ export default function BuyerEdge() {
       }
     }
   }, [autoRefresh, fetchData, selectedExpiry])
+
+  // ── Straddle Chart: init & destroy ───────────────────────────
+
+  const applyDataToChart = useCallback((chartData: StraddleChartData) => {
+    if (!chartData.series || chartData.series.length === 0) return
+    const sorted = [...chartData.series].sort((a, b) => a.time - b.time)
+    const map = new Map<number, StraddleDataPoint>()
+    for (const p of sorted) map.set(p.time, p)
+    seriesDataMapRef.current = map
+
+    // Compute anchored VWAP and store for tooltip
+    const vwapPoints = computeDayAnchoredVWAP(sorted)
+    const vwapMap = new Map<number, number>()
+    for (const v of vwapPoints) vwapMap.set(v.time, v.value)
+    vwapDataMapRef.current = vwapMap
+
+    spotSeriesRef.current?.setData(
+      sorted.map((p) => ({
+        time: p.time as import('lightweight-charts').UTCTimestamp,
+        value: p.spot,
+      }))
+    )
+    straddleSeriesRef.current?.setData(
+      sorted.map((p) => ({
+        time: p.time as import('lightweight-charts').UTCTimestamp,
+        value: p.straddle,
+      }))
+    )
+    syntheticSeriesRef.current?.setData(
+      sorted.map((p) => ({
+        time: p.time as import('lightweight-charts').UTCTimestamp,
+        value: p.synthetic_future,
+      }))
+    )
+    vwapSeriesRef.current?.setData(
+      vwapPoints.map((v) => ({
+        time: v.time as import('lightweight-charts').UTCTimestamp,
+        value: v.value,
+      }))
+    )
+    chartRef.current?.timeScale().fitContent()
+  }, [])
+
+  const initChart = useCallback(() => {
+    if (!chartContainerRef.current) return
+
+    if (chartRef.current) {
+      chartRef.current.remove()
+      chartRef.current = null
+    }
+
+    const container = chartContainerRef.current
+    const tooltip = tooltipRef.current
+    container.innerHTML = ''
+    if (tooltip) container.appendChild(tooltip)
+
+    const chart = createChart(container, {
+      width: container.offsetWidth,
+      height: STRADDLE_CHART_HEIGHT,
+      layout: {
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor: chartColors.text,
+      },
+      grid: {
+        vertLines: { color: chartColors.grid, style: 1 as const, visible: true },
+        horzLines: { color: chartColors.grid, style: 1 as const, visible: true },
+      },
+      leftPriceScale: {
+        visible: true,
+        borderColor: chartColors.border,
+        scaleMargins: { top: 0.05, bottom: 0.05 },
+      },
+      rightPriceScale: {
+        visible: true,
+        borderColor: chartColors.border,
+        scaleMargins: { top: 0.05, bottom: 0.05 },
+      },
+      timeScale: {
+        borderColor: chartColors.border,
+        timeVisible: true,
+        secondsVisible: false,
+        tickMarkFormatter: (time: number) => {
+          const d = new Date(time * 1000)
+          const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000)
+          const hh = ist.getUTCHours().toString().padStart(2, '0')
+          const mm = ist.getUTCMinutes().toString().padStart(2, '0')
+          if (parseInt(straddleDays) > 1) {
+            const dd = ist.getUTCDate().toString().padStart(2, '0')
+            const mo = (ist.getUTCMonth() + 1).toString().padStart(2, '0')
+            return `${dd}/${mo} ${hh}:${mm}`
+          }
+          return `${hh}:${mm}`
+        },
+      },
+      crosshair: {
+        mode: CrosshairMode.Normal,
+        vertLine: { width: 1 as const, color: chartColors.crosshair, style: 2 as const, labelVisible: false },
+        horzLine: { width: 1 as const, color: chartColors.crosshair, style: 2 as const, labelBackgroundColor: chartColors.crosshairLabel },
+      },
+    })
+
+    // Watermark
+    const watermark = document.createElement('div')
+    watermark.style.cssText = `position:absolute;z-index:2;font-family:Arial,sans-serif;font-size:48px;font-weight:bold;user-select:none;pointer-events:none;color:${chartColors.watermark}`
+    watermark.textContent = 'OpenAlgo'
+    container.appendChild(watermark)
+    watermarkRef.current = watermark
+    setTimeout(() => {
+      watermark.style.left = `${container.offsetWidth / 2 - watermark.offsetWidth / 2}px`
+      watermark.style.top = `${container.offsetHeight / 2 - watermark.offsetHeight / 2}px`
+    }, 0)
+
+    // Tooltip element
+    if (!tooltipRef.current) {
+      const tt = document.createElement('div')
+      tt.style.cssText =
+        'position:absolute;z-index:10;pointer-events:none;display:none;border-radius:6px;padding:8px 12px;font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;line-height:1.6;white-space:nowrap;'
+      container.appendChild(tt)
+      tooltipRef.current = tt
+    } else {
+      container.appendChild(tooltipRef.current)
+    }
+
+    // Series
+    const spotSeries = chart.addSeries(LineSeries, {
+      color: chartColors.spot,
+      lineWidth: 2,
+      priceScaleId: 'left',
+      title: 'Spot',
+      lastValueVisible: true,
+      priceLineVisible: true,
+      visible: showSpot,
+    })
+    const straddleSeries = chart.addSeries(LineSeries, {
+      color: chartColors.straddle,
+      lineWidth: 2,
+      priceScaleId: 'right',
+      title: 'Straddle',
+      lastValueVisible: true,
+      priceLineVisible: true,
+      visible: showStraddle,
+    })
+    const syntheticSeries = chart.addSeries(LineSeries, {
+      color: chartColors.synthetic,
+      lineWidth: 1,
+      lineStyle: 2,
+      priceScaleId: 'left',
+      title: 'Synthetic Fut',
+      lastValueVisible: true,
+      priceLineVisible: false,
+      visible: showSynthetic,
+    })
+    const vwapSeries = chart.addSeries(LineSeries, {
+      color: chartColors.vwap,
+      lineWidth: 1,
+      lineStyle: 3,
+      priceScaleId: 'right',
+      title: 'VWAP(D)',
+      lastValueVisible: true,
+      priceLineVisible: false,
+      visible: showVwap,
+    })
+
+    chartRef.current = chart
+    spotSeriesRef.current = spotSeries
+    straddleSeriesRef.current = straddleSeries
+    syntheticSeriesRef.current = syntheticSeries
+    vwapSeriesRef.current = vwapSeries
+
+    // Crosshair tooltip
+    chart.subscribeCrosshairMove((param) => {
+      const tt = tooltipRef.current
+      if (!tt || !container) return
+      if (
+        !param.time ||
+        !param.point ||
+        param.point.x < 0 ||
+        param.point.y < 0 ||
+        param.point.x > container.offsetWidth ||
+        param.point.y > container.offsetHeight
+      ) {
+        tt.style.display = 'none'
+        return
+      }
+      const time = param.time as number
+      const point = seriesDataMapRef.current.get(time)
+      if (!point) {
+        tt.style.display = 'none'
+        return
+      }
+
+      const vwapVal = vwapDataMapRef.current.get(time)
+      const cl = chartColorsRef.current
+      const { date, time: timeStr } = formatIST(time)
+      tt.style.display = 'block'
+      tt.style.background = cl.tooltipBg
+      tt.style.border = `1px solid ${cl.tooltipBorder}`
+      tt.style.color = cl.tooltipText
+      tt.innerHTML = `
+        <div style="display:flex;justify-content:space-between;gap:16px">
+          <span style="color:${cl.straddle};font-weight:600">Straddle Price</span>
+          <span style="color:${cl.straddle};font-weight:600">${point.straddle.toFixed(2)}</span>
+        </div>
+        ${vwapVal != null ? `<div style="display:flex;justify-content:space-between;gap:16px">
+          <span style="color:${cl.vwap}">VWAP (Day)</span>
+          <span style="color:${cl.vwap}">${vwapVal.toFixed(2)}</span>
+        </div>` : ''}
+        <div style="display:flex;justify-content:space-between;gap:16px">
+          <span style="color:${cl.tooltipMuted}">&bull; ${point.atm_strike} Call:</span>
+          <span>${point.ce_price.toFixed(2)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;gap:16px">
+          <span style="color:${cl.tooltipMuted}">&bull; ${point.atm_strike} Put:</span>
+          <span>${point.pe_price.toFixed(2)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;gap:16px">
+          <span style="color:${cl.synthetic}">Synthetic Fut</span>
+          <span style="color:${cl.synthetic}">${point.synthetic_future.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;gap:16px">
+          <span style="color:${cl.tooltipMuted}">Spot Price</span>
+          <span>${point.spot.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;gap:16px;margin-top:4px;border-top:1px solid ${cl.tooltipBorder};padding-top:4px">
+          <span style="color:${cl.tooltipMuted}">${date}</span>
+          <span style="color:${cl.tooltipMuted}">${timeStr}</span>
+        </div>
+      `
+
+      const tooltipW = tt.offsetWidth
+      const tooltipH = tt.offsetHeight
+      const x = param.point.x
+      const y = param.point.y
+      const margin = 16
+      let left = x + margin
+      if (left + tooltipW > container.offsetWidth) left = x - tooltipW - margin
+      let top = y - tooltipH / 2
+      if (top < 0) top = 0
+      if (top + tooltipH > container.offsetHeight) top = container.offsetHeight - tooltipH
+      tt.style.left = `${left}px`
+      tt.style.top = `${top}px`
+    })
+
+    // Re-apply data if available
+    if (straddleChartDataRef.current) applyDataToChart(straddleChartDataRef.current)
+
+    // Resize handler
+    const handleResize = () => {
+      if (chartRef.current && container) {
+        chartRef.current.applyOptions({ width: container.offsetWidth })
+        if (watermarkRef.current) {
+          watermarkRef.current.style.left = `${container.offsetWidth / 2 - watermarkRef.current.offsetWidth / 2}px`
+          watermarkRef.current.style.top = `${container.offsetHeight / 2 - watermarkRef.current.offsetHeight / 2}px`
+        }
+      }
+    }
+    window.addEventListener('resize', handleResize)
+    return () => { window.removeEventListener('resize', handleResize) }
+  // `applyDataToChart` is intentionally omitted from deps: it is defined with
+  // useCallback([], []) so it never changes — omitting it matches the standalone
+  // StraddleChart.tsx pattern and avoids a spurious chart re-init.
+  }, [chartColors, straddleDays, showStraddle, showSpot, showSynthetic, showVwap])
+
+  // Chart lifecycle — the chart card is always rendered so chartContainerRef is
+  // always valid.  Simple [initChart] dep mirrors the standalone StraddleChart page.
+  useEffect(() => {
+    const cleanup = initChart()
+    return () => {
+      cleanup?.()
+      if (chartRef.current) { chartRef.current.remove(); chartRef.current = null }
+    }
+  }, [initChart])
+
+  // Series visibility toggles
+  useEffect(() => { spotSeriesRef.current?.applyOptions({ visible: showSpot }) }, [showSpot])
+  useEffect(() => { straddleSeriesRef.current?.applyOptions({ visible: showStraddle }) }, [showStraddle])
+  useEffect(() => { syntheticSeriesRef.current?.applyOptions({ visible: showSynthetic }) }, [showSynthetic])
+  useEffect(() => { vwapSeriesRef.current?.applyOptions({ visible: showVwap }) }, [showVwap])
+
+  // Fetch available intervals once
+  useEffect(() => {
+    straddleChartApi.getIntervals().then((res) => {
+      if (res.status === 'success' && res.data) {
+        const all = [...(res.data.seconds || []), ...(res.data.minutes || []), ...(res.data.hours || [])]
+        if (all.length > 0) setStraddleIntervals(all)
+      }
+    }).catch(() => {/* keep defaults */})
+  }, [])
+
+  // Load straddle chart data
+  const loadStraddleData = useCallback(async () => {
+    if (!selectedExpiry) return
+    setIsChartLoading(true)
+    try {
+      const res = await straddleChartApi.getStraddleData({
+        underlying: selectedUnderlying,
+        exchange: selectedExchange,
+        expiry_date: convertExpiryForAPI(selectedExpiry),
+        interval: straddleInterval,
+        days: parseInt(straddleDays),
+      })
+      if (res.status === 'success' && res.data) {
+        straddleChartDataRef.current = res.data
+        setStraddleChartData(res.data)
+        applyDataToChart(res.data)
+      } else {
+        straddleChartDataRef.current = null
+        setStraddleChartData(null)
+        seriesDataMapRef.current = new Map()
+        vwapDataMapRef.current = new Map()
+        spotSeriesRef.current?.setData([])
+        straddleSeriesRef.current?.setData([])
+        syntheticSeriesRef.current?.setData([])
+        vwapSeriesRef.current?.setData([])
+        showToast.error(res.message || 'Failed to load straddle data')
+      }
+    } catch {
+      straddleChartDataRef.current = null
+      setStraddleChartData(null)
+      seriesDataMapRef.current = new Map()
+      vwapDataMapRef.current = new Map()
+      spotSeriesRef.current?.setData([])
+      straddleSeriesRef.current?.setData([])
+      syntheticSeriesRef.current?.setData([])
+      vwapSeriesRef.current?.setData([])
+      showToast.error('Failed to fetch straddle chart data')
+    } finally {
+      setIsChartLoading(false)
+    }
+  }, [selectedExpiry, selectedUnderlying, selectedExchange, straddleInterval, straddleDays, applyDataToChart])
+
+  // Auto-load straddle chart when loadStraddleData deps change
+  useEffect(() => {
+    if (selectedExpiry) loadStraddleData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadStraddleData])
+
+  // Latest straddle data point and its VWAP for info bar
+  const latestStraddlePoint = useMemo(() => {
+    if (!straddleChartData?.series?.length) return null
+    return straddleChartData.series[straddleChartData.series.length - 1]
+  }, [straddleChartData])
+
+  const latestVwap = useMemo(() => {
+    if (!latestStraddlePoint) return null
+    return vwapDataMapRef.current.get(latestStraddlePoint.time) ?? null
+  }, [latestStraddlePoint])
 
   const signal = data?.signal_engine?.signal ?? null
   const signalCfg = signal ? SIGNAL_CONFIG[signal] : null
@@ -410,6 +909,51 @@ export default function BuyerEdge() {
                     <SelectItem key={e} value={e}>
                       {e}
                     </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Engine: Timeframe */}
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Timeframe</label>
+              <Select value={lbTf} onValueChange={setLbTf}>
+                <SelectTrigger className="w-24 h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {['1m', '3m', '5m', '10m', '15m', '30m', '1h'].map((tf) => (
+                    <SelectItem key={tf} value={tf}>{tf}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Engine: Lookback bars */}
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Bars</label>
+              <Select value={lbBars} onValueChange={setLbBars}>
+                <SelectTrigger className="w-24 h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {['10', '20', '30', '50', '75', '100'].map((b) => (
+                    <SelectItem key={b} value={b}>{b} bars</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Engine: Strike range (CE/PE offset for Call & Put Wall) */}
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Strikes</label>
+              <Select value={strikeCount} onValueChange={setStrikeCount}>
+                <SelectTrigger className="w-24 h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {['2', '3', '5', '10', '15', '20', '25', '30'].map((s) => (
+                    <SelectItem key={s} value={s}>±{s}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -653,6 +1197,156 @@ export default function BuyerEdge() {
           </CardContent>
         </Card>
       )}
+
+
+      {/* Straddle Chart — always rendered so chartContainerRef is always mounted */}
+      <Card>
+        <CardHeader className="pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <CardTitle className="text-base">Straddle Chart</CardTitle>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Interval selector */}
+                <Select value={straddleInterval} onValueChange={setStraddleInterval}>
+                  <SelectTrigger className="w-[90px] h-8 text-xs">
+                    <SelectValue placeholder="Interval" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {straddleIntervals.map((intv) => (
+                      <SelectItem key={intv} value={intv}>
+                        {intv}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* Days selector */}
+                <Select value={straddleDays} onValueChange={setStraddleDays}>
+                  <SelectTrigger className="w-[90px] h-8 text-xs">
+                    <SelectValue placeholder="Days" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {['1', '3', '5'].map((d) => (
+                      <SelectItem key={d} value={d}>
+                        {d} {d === '1' ? 'Day' : 'Days'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* Refresh chart */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={loadStraddleData}
+                  disabled={isChartLoading}
+                >
+                  {isChartLoading ? (
+                    <RefreshCw className="h-3 w-3 animate-spin mr-1" />
+                  ) : (
+                    <RefreshCw className="h-3 w-3 mr-1" />
+                  )}
+                  Refresh
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {/* Latest info bar */}
+            {latestStraddlePoint && (
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-1 mb-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Straddle </span>
+                  <span className="font-semibold" style={{ color: chartColors.straddle }}>
+                    {latestStraddlePoint.straddle.toFixed(2)}
+                  </span>
+                </div>
+                {latestVwap != null && (
+                  <div>
+                    <span className="text-muted-foreground">VWAP(D) </span>
+                    <span className="font-semibold" style={{ color: chartColors.vwap }}>
+                      {latestVwap.toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                <div>
+                  <span className="text-muted-foreground">Spot </span>
+                  <span className="font-medium">{latestStraddlePoint.spot.toFixed(2)}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Strike </span>
+                  <span className="font-medium">{latestStraddlePoint.atm_strike}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">{latestStraddlePoint.atm_strike} CE </span>
+                  <span className="font-medium">{latestStraddlePoint.ce_price.toFixed(2)}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">{latestStraddlePoint.atm_strike} PE </span>
+                  <span className="font-medium">{latestStraddlePoint.pe_price.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Chart container */}
+            <div className="relative">
+              <div
+                ref={chartContainerRef}
+                className="relative w-full rounded-lg border border-border/50"
+                style={{ height: STRADDLE_CHART_HEIGHT }}
+              />
+              {isChartLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-lg">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    Loading straddle data…
+                  </div>
+                </div>
+              )}
+              {!selectedExpiry && !isChartLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-background/70 rounded-lg">
+                  <p className="text-sm text-muted-foreground">Select an underlying and expiry to load the straddle chart</p>
+                </div>
+              )}
+            </div>
+
+            {/* Legend toggles */}
+            <div className="flex items-center justify-center gap-4 mt-3">
+              <button
+                type="button"
+                onClick={() => setShowStraddle((v) => !v)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showStraddle ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
+              >
+                <span className="inline-block h-0.5 w-5 rounded" style={{ backgroundColor: chartColors.straddle }} />
+                Straddle
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowVwap((v) => !v)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showVwap ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
+              >
+                <span className="inline-block h-0.5 w-5 rounded border-dashed border-t-2" style={{ borderColor: chartColors.vwap, backgroundColor: 'transparent' }} />
+                VWAP(D)
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowSpot((v) => !v)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showSpot ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
+              >
+                <span className="inline-block h-0.5 w-5 rounded" style={{ backgroundColor: chartColors.spot }} />
+                Spot
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowSynthetic((v) => !v)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showSynthetic ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
+              >
+                <span className="inline-block h-0.5 w-5 rounded border-dashed border-t-2" style={{ borderColor: chartColors.synthetic, backgroundColor: 'transparent' }} />
+                Synthetic Fut
+              </button>
+            </div>
+          </CardContent>
+        </Card>
 
       {/* Loading state */}
       {isLoading && !data && (

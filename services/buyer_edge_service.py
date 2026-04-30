@@ -50,12 +50,37 @@ def _set_snapshot(key: tuple, data: dict) -> None:
 # ---------------------------------------------------------------------------
 # Helper: resolve trading window for history calls
 # ---------------------------------------------------------------------------
+# Approximate trading minutes per bar for each supported interval
+_MINUTES_PER_BAR: dict[str, int] = {
+    "1m": 1,
+    "3m": 3,
+    "5m": 5,
+    "10m": 10,
+    "15m": 15,
+    "30m": 30,
+    "1h": 60,
+}
+_TRADING_MINUTES_PER_DAY = 375  # 9:15 – 15:30 IST
+
+
 def _trading_window(bars: int = 20, interval: str = "5m") -> tuple[str, str]:
-    """Return (start_date, end_date) strings that cover at least `bars` candles."""
+    """Return (start_date, end_date) strings that cover at least `bars` candles.
+
+    Calculates the minimum calendar-day window needed based on the interval
+    and requested bar count, adding a 3× buffer to account for weekends and
+    market holidays.
+    """
     ist = pytz.timezone("Asia/Kolkata")
     today = datetime.now(ist).date()
-    # 2 calendar days is enough for ~50 5-min bars during a session
-    start = today - timedelta(days=2)
+
+    minutes_per_bar = _MINUTES_PER_BAR.get(interval, 5)
+    total_trading_minutes = bars * minutes_per_bar
+    # Trading days needed (ceil division)
+    trading_days = -(-total_trading_minutes // _TRADING_MINUTES_PER_DAY)  # ceil
+    # 3× buffer for weekends / holidays, minimum 2 calendar days
+    calendar_days = max(2, trading_days * 3)
+
+    start = today - timedelta(days=calendar_days)
     return start.strftime("%Y-%m-%d"), today.strftime("%Y-%m-%d")
 
 
@@ -66,10 +91,11 @@ def _compute_market_state(closes: list[float]) -> dict[str, str]:
     """
     Compute Trend, Regime, and Location from a list of close prices.
 
-    Trend (HH/HL vs LL/LH swing logic):
-      - Bullish:  last_close > prev_close AND last_close > max(closes[:-1])   (simple HH proxy)
-      - Bearish:  last_close < prev_close AND last_close < min(closes[:-1])
-      - Neutral:  otherwise
+    Trend (HH/HL vs LH/LL swing logic):
+      Split the close series into a prior half and a recent half, then:
+      - Bullish:  Higher High (recent_max > prior_max) AND Higher Low  (recent_min > prior_min)
+      - Bearish:  Lower High  (recent_max < prior_max) AND Lower Low   (recent_min < prior_min)
+      - Neutral:  Neither condition fully met (sideways)
 
     Regime (range vs expansion):
       - Compare recent volatility window to longer-term window.
@@ -87,17 +113,20 @@ def _compute_market_state(closes: list[float]) -> dict[str, str]:
         return {"trend": "Neutral", "regime": "Compression", "location": "Mid"}
 
     last = closes[-1]
-    prev = closes[-2]
 
-    # --- Trend ---
-    highs = closes[:-1]
-    lows = closes[:-1]
-    max_prev = max(highs)
-    min_prev = min(lows)
+    # --- Trend: HH+HL = Bullish, LH+LL = Bearish, neither = Neutral ---
+    mid = len(closes) // 2
+    prior = closes[:mid]
+    recent = closes[mid:]
 
-    if last > prev and last > max_prev:
+    prior_high = max(prior)
+    prior_low = min(prior)
+    recent_high = max(recent)
+    recent_low = min(recent)
+
+    if recent_high > prior_high and recent_low > prior_low:
         trend = "Bullish"
-    elif last < prev and last < min_prev:
+    elif recent_high < prior_high and recent_low < prior_low:
         trend = "Bearish"
     else:
         trend = "Neutral"
@@ -456,6 +485,8 @@ def get_buyer_edge_data(
     expiry_date: str,
     strike_count: int,
     api_key: str,
+    lb_bars: int = 20,
+    lb_tf: str = "3m",
 ) -> tuple[bool, dict[str, Any], int]:
     """
     Compute all 5 modules and return a buyer-edge signal.
@@ -466,6 +497,8 @@ def get_buyer_edge_data(
         expiry_date:  Expiry in DDMMMYY format (e.g., 06FEB26)
         strike_count: Strikes around ATM (default 10 is enough for greeks)
         api_key:      OpenAlgo API key
+        lb_bars:      Number of historical bars to use for Market State (default 20)
+        lb_tf:        Timeframe for historical bars (default "3m")
 
     Returns:
         Tuple of (success, response_dict, status_code)
@@ -500,7 +533,7 @@ def get_buyer_edge_data(
             return False, {"status": "error", "message": "Could not determine spot price"}, 500
 
         # --- Fetch candle history for Market State (single broker call) ---
-        start_date, end_date = _trading_window()
+        start_date, end_date = _trading_window(bars=lb_bars, interval=lb_tf)
         closes: list[float] = []
 
         # Determine correct symbol/exchange for history
@@ -514,7 +547,7 @@ def get_buyer_edge_data(
         success_h, resp_h, _ = get_history(
             symbol=base_symbol,
             exchange=hist_exchange,
-            interval="5m",
+            interval=lb_tf,
             start_date=start_date,
             end_date=end_date,
             api_key=api_key,
@@ -522,8 +555,8 @@ def get_buyer_edge_data(
         if success_h:
             rows = resp_h.get("data", [])
             closes = [float(r["close"]) for r in rows if r.get("close") is not None]
-            # Use last 20 bars
-            closes = closes[-20:] if len(closes) > 20 else closes
+            # Use last lb_bars bars
+            closes = closes[-lb_bars:] if len(closes) > lb_bars else closes
 
         if not closes:
             # Fallback: use spot from chain as a single point
