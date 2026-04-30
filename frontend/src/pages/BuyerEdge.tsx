@@ -268,7 +268,7 @@ export default function BuyerEdge() {
 
   // ── Straddle Chart state ───────────────────────────────────────
   const [straddleInterval, setStraddleInterval] = useState('1m')
-  const [straddleDays, setStraddleDays] = useState('3')
+  const [straddleDays, setStraddleDays] = useState('1')
   const [straddleChartData, setStraddleChartData] = useState<StraddleChartData | null>(null)
   const [straddleIntervals, setStraddleIntervals] = useState<string[]>(['1m', '3m', '5m', '10m', '15m', '30m', '1h'])
   const [isChartLoading, setIsChartLoading] = useState(false)

@@ -81,7 +81,7 @@ export default function StraddleChart() {
   const [selectedExpiry, setSelectedExpiry] = useState('')
   const [intervals, setIntervals] = useState<string[]>([])
   const [selectedInterval, setSelectedInterval] = useState('1m')
-  const [selectedDays, setSelectedDays] = useState('3')
+  const [selectedDays, setSelectedDays] = useState('1')
   const [chartData, setChartData] = useState<StraddleChartData | null>(null)
 
   // Series visibility toggles
