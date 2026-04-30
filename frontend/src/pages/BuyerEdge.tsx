@@ -171,8 +171,8 @@ function DeltaBar({
   return (
     <div className="mt-2 space-y-1">
       <div className="flex justify-between text-xs text-muted-foreground">
-        <span>CE Δ {callDelta.toFixed(2)}</span>
-        <span>PE Δ {putDelta.toFixed(2)}</span>
+        <span>CE Delta {callDelta.toFixed(2)}</span>
+        <span>PE Delta {putDelta.toFixed(2)}</span>
       </div>
       <div className="flex h-3 rounded-full overflow-hidden">
         <div
@@ -522,15 +522,15 @@ export default function BuyerEdge() {
             <CardContent>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="space-y-0.5">
-                  <p className="text-xs text-muted-foreground">Call Wall (Supply)</p>
-                  <p className="font-bold text-red-500">
-                    {data.oi_intelligence.call_wall || '—'}
+                  <p className="text-xs text-muted-foreground">Call Wall (Supply Zone)</p>
+                  <p className="font-bold text-red-500" aria-label={`Call wall strike ${data.oi_intelligence.call_wall}`}>
+                    ↑ {data.oi_intelligence.call_wall || '—'}
                   </p>
                 </div>
                 <div className="space-y-0.5">
-                  <p className="text-xs text-muted-foreground">Put Wall (Demand)</p>
-                  <p className="font-bold text-green-500">
-                    {data.oi_intelligence.put_wall || '—'}
+                  <p className="text-xs text-muted-foreground">Put Wall (Demand Zone)</p>
+                  <p className="font-bold text-green-500" aria-label={`Put wall strike ${data.oi_intelligence.put_wall}`}>
+                    ↓ {data.oi_intelligence.put_wall || '—'}
                   </p>
                 </div>
                 <div className="space-y-0.5">
@@ -573,7 +573,7 @@ export default function BuyerEdge() {
                   variant={pillVariant(data.greeks_engine.gamma_regime)}
                 />
                 <Pill
-                  label="Δ Imbalance"
+                  label="Delta Imbalance"
                   value={data.greeks_engine.delta_imbalance.toFixed(3)}
                   variant={
                     data.greeks_engine.delta_imbalance > 0.1

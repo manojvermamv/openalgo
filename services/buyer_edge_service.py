@@ -117,7 +117,10 @@ def _compute_market_state(closes: list[float]) -> dict[str, str]:
         elif ratio > 0.70:
             regime = "Expansion"
         else:
-            regime = "Compression"  # lean conservative — better to wait
+            # Ratio between 0.40 and 0.70: ambiguous — treat as Compression
+            # to avoid false signals. EXECUTE requires Expansion + Breakout,
+            # so a conservative default reduces noise.
+            regime = "Compression"
 
     # --- Location ---
     range_low = min(full_window)
@@ -265,7 +268,10 @@ def _compute_greeks_engine(
             except Exception as exc:
                 logger.debug(f"Greeks PE {pe.get('symbol')}: {exc}")
 
-    delta_imbalance = round(total_call_delta - abs(total_put_delta), 4)
+    # Put deltas from Black-76 are negative by convention; summing CE and PE
+    # deltas directly gives the net directional imbalance.
+    # Positive → more call (bullish) pressure; negative → more put pressure.
+    delta_imbalance = round(total_call_delta + total_put_delta, 4)
     gamma_regime = "Expansion" if net_gamma < 0 else "Mean-Reversion"
 
     # Delta velocity
@@ -502,11 +508,7 @@ def get_buyer_edge_data(
         hist_exchange = exchange.upper()
         if hist_exchange in ("NFO", "BFO"):
             # For index options, fetch the index itself
-            from services.straddle_chart_service import (
-                NSE_INDEX_SYMBOLS,
-                BSE_INDEX_SYMBOLS,
-                _get_quote_exchange,
-            )
+            from services.straddle_chart_service import _get_quote_exchange
             hist_exchange = _get_quote_exchange(base_symbol, exchange)
 
         success_h, resp_h, _ = get_history(

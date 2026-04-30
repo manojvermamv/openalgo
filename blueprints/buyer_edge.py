@@ -47,7 +47,10 @@ def buyer_edge_data():
         underlying = data.get("underlying", "").strip()[:20]
         exchange = data.get("exchange", "").strip()[:20]
         expiry_date = data.get("expiry_date", "").strip()[:10]
-        strike_count = int(data.get("strike_count", 10))
+        try:
+            strike_count = int(data.get("strike_count", 10))
+        except (TypeError, ValueError):
+            return jsonify({"status": "error", "message": "strike_count must be a valid integer"}), 400
 
         if not underlying or not exchange or not expiry_date:
             return jsonify(
