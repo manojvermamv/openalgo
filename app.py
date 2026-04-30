@@ -40,6 +40,7 @@ from blueprints.core import core_bp
 from blueprints.dashboard import dashboard_bp
 from blueprints.flow import flow_bp  # Import the flow blueprint
 from blueprints.gc_json import gc_json_bp
+from blueprints.buyer_edge import buyer_edge_bp  # Import the Buyer Edge blueprint
 from blueprints.gex import gex_bp  # Import the GEX blueprint
 from blueprints.ivsmile import ivsmile_bp  # Import the IV Smile blueprint
 from blueprints.oiprofile import oiprofile_bp  # Import the OI Profile blueprint
@@ -268,6 +269,7 @@ def create_app():
     app.register_blueprint(custom_straddle_bp)  # Register custom straddle blueprint
     app.register_blueprint(vol_surface_bp)  # Register vol surface blueprint
     app.register_blueprint(gex_bp)  # Register GEX blueprint
+    app.register_blueprint(buyer_edge_bp)  # Register Buyer Edge blueprint
     app.register_blueprint(ivsmile_bp)  # Register IV Smile blueprint
     app.register_blueprint(oiprofile_bp)  # Register OI Profile blueprint
     app.register_blueprint(flow_bp)  # Register Flow blueprint
