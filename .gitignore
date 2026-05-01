@@ -76,6 +76,7 @@ out/
 # Frontend specific
 # frontend/dist is pre-built for community use and tracked in git
 # (CI/CD rebuilds on each push; local devs run: cd frontend && npm run build)
+!frontend/dist/
 frontend/.cache/
 *.local
 
