@@ -68,6 +68,9 @@ logger = get_logger(__name__)
 _PCR_STRIKE_WINDOW = 5
 # Decimal precision for PCR values
 _PCR_DECIMAL_PRECISION = 4
+# Max strikes per side for the combined live-snapshot PCR (covers the full
+# "selected expiry combined Options Strike Range" the user expects).
+_MAX_SNAPSHOT_STRIKES = 50
 
 NSE_INDEX_SYMBOLS = {
     "NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY",
@@ -200,7 +203,7 @@ def get_pcr_chart_data(
 
         # Step 4: For each unique ATM, fetch CE+PE history (close, oi, volume)
         # The PCR window is: ATM ± _PCR_STRIKE_WINDOW strikes from available_strikes
-        strike_history: dict[float, dict] = {}  # strike -> {ts: {ce_oi, ce_vol, pe_oi, pe_vol}}
+        strike_history: dict[float, dict] = {}  # strike -> {ce: {ts: {oi, volume, close}}, pe: {...}}
 
         for atm in unique_strikes:
             atm_idx = available_strikes.index(atm) if atm in available_strikes else None
@@ -334,7 +337,7 @@ def get_pcr_chart_data(
         # strike_count=50 → up to 101 strikes (50 above + ATM + 50 below).
         live_pcr_oi = None
         live_pcr_volume = None
-        snapshot_strike_count = min(len(available_strikes) // 2 + 1, 50)
+        snapshot_strike_count = min(len(available_strikes) // 2 + 1, _MAX_SNAPSHOT_STRIKES)
         success_oc, oc_resp, _ = get_option_chain(
             underlying=base_symbol,
             exchange=exchange,
