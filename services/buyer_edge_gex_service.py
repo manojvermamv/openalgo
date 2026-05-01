@@ -28,7 +28,7 @@ from utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-_MAX_EXPIRIES = 4  # cap broker calls in cumulative mode
+_MAX_EXPIRIES = 4  # cap broker calls in cumulative mode; balances analysis depth vs API rate limits
 
 
 # ---------------------------------------------------------------------------

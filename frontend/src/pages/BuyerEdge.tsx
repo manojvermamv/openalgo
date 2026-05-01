@@ -47,6 +47,17 @@ import { showToast } from '@/utils/toast'
 
 const AUTO_REFRESH_INTERVAL = 30000
 const STRADDLE_CHART_HEIGHT = 400
+const PCR_CHART_HEIGHT = 300
+// Threshold (in price points) for proximity annotations in GEX/IVx charts
+const STRIKE_PROXIMITY_THRESHOLD = 50
+// GEX bar chart layout
+const GEX_CHART_MAX_WIDTH = 300
+const GEX_BAR_HEIGHT = 20
+const GEX_BAR_GAP = 4
+// IVx expiry bar chart layout
+const IVX_BAR_WIDTH = 40
+const IVX_BAR_GAP = 16
+const IVX_CHART_HEIGHT = 120
 
 function convertExpiryForAPI(expiry: string): string {
   if (!expiry) return ''
@@ -921,7 +932,7 @@ export default function BuyerEdge() {
     if (!pcrChartRef.current) {
       const c = createChart(container, {
         width: container.clientWidth,
-        height: 300,
+        height: PCR_CHART_HEIGHT,
         layout: {
           background: { type: ColorType.Solid, color: 'transparent' },
           textColor: chartColors.text,
@@ -1643,10 +1654,10 @@ export default function BuyerEdge() {
                 {gexData.chain.length > 0 && (() => {
                   const sorted = [...gexData.chain].sort((a, b) => a.strike - b.strike)
                   const maxAbs = Math.max(...sorted.map((d) => Math.abs(d.net_gex)), 1)
-                  const barHeight = 20
-                  const barGap = 4
+                  const barHeight = GEX_BAR_HEIGHT
+                  const barGap = GEX_BAR_GAP
                   const chartH = sorted.length * (barHeight + barGap)
-                  const maxW = 300
+                  const maxW = GEX_CHART_MAX_WIDTH
                   const spot = gexData.spot_price
 
                   return (
@@ -1657,7 +1668,7 @@ export default function BuyerEdge() {
                       <svg
                         viewBox={`0 0 ${maxW * 2 + 120} ${chartH + 20}`}
                         className="w-full max-w-2xl mx-auto"
-                        style={{ minHeight: Math.min(chartH + 20, 400) }}
+                        style={{ minHeight: Math.min(chartH + 20, STRADDLE_CHART_HEIGHT) }}
                       >
                         {/* Center line */}
                         <line
@@ -1670,9 +1681,9 @@ export default function BuyerEdge() {
                           const barW = (Math.abs(d.net_gex) / maxAbs) * maxW
                           const isPos = d.net_gex >= 0
                           const barX = isPos ? maxW + 60 : maxW + 60 - barW
-                          const isAtm = spot && Math.abs(d.strike - spot) < 50
+                          const isAtm = spot && Math.abs(d.strike - spot) < STRIKE_PROXIMITY_THRESHOLD
                           const isFlip = gexData.levels.gamma_flip != null &&
-                            Math.abs(d.strike - gexData.levels.gamma_flip) < 50
+                            Math.abs(d.strike - gexData.levels.gamma_flip) < STRIKE_PROXIMITY_THRESHOLD
                           return (
                             <g key={d.strike}>
                               <rect
@@ -1809,7 +1820,7 @@ export default function BuyerEdge() {
               <div
                 ref={pcrChartContainerRef}
                 className="relative w-full rounded-lg border border-border/50"
-                style={{ height: 300 }}
+                style={{ height: PCR_CHART_HEIGHT }}
               />
               {isPcrLoading && (
                 <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-lg">
@@ -2006,10 +2017,10 @@ export default function BuyerEdge() {
                 {ivData.expiries && ivData.expiries.length > 1 && (() => {
                   const sorted = [...ivData.expiries].sort((a, b) => a.dte - b.dte)
                   const maxIvx = Math.max(...sorted.map((e) => e.ivx ?? 0), 1)
-                  const barW = 40
-                  const gap = 16
+                  const barW = IVX_BAR_WIDTH
+                  const gap = IVX_BAR_GAP
                   const chartW = sorted.length * (barW + gap) + 40
-                  const chartH = 120
+                  const chartH = IVX_CHART_HEIGHT
 
                   return (
                     <div className="mt-4 overflow-x-auto">

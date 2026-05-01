@@ -61,6 +61,18 @@ logger = get_logger(__name__)
 _IV_HISTORY_CACHE: dict[tuple, dict] = {}
 _IV_HISTORY_TTL = 3600  # seconds
 
+# Days of history to fetch for 52-week IV series
+# 380 > 365 to account for weekends, holidays, and non-trading days
+_IV_HISTORY_DAYS = 380
+
+# Approximation parameters for historical IV estimation from underlying closes
+# These are used when actual option history is unavailable
+_MIN_OPTION_PRICE = 1.0         # floor price to avoid zero-price IV errors
+_SPOT_PRICE_MULTIPLIER = 0.005  # 0.5% of spot as ATM option price approximation
+
+# OTM distance for 25-delta proxy (vertical skew calculation)
+_VERTICAL_SKEW_OTM_PCT = 0.05  # 5% OTM from ATM ≈ 25-delta for typical index options
+
 NSE_INDEX_SYMBOLS = {
     "NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY",
     "NIFTYNXT50", "NIFTYIT", "NIFTYPHARMA", "NIFTYBANK",
@@ -120,7 +132,7 @@ def _build_52w_iv_series(
         quote_exchange = _get_quote_exchange(underlying, exchange)
         ist = pytz.timezone("Asia/Kolkata")
         today = datetime.now(ist).date()
-        start_date = (today - timedelta(days=380)).strftime("%Y-%m-%d")
+        start_date = (today - timedelta(days=_IV_HISTORY_DAYS)).strftime("%Y-%m-%d")
         end_date = today.strftime("%Y-%m-%d")
 
         # Determine underlying symbol for history
@@ -199,7 +211,7 @@ def _build_52w_iv_series(
                 # (we are building a historical IV proxy from underlying closes)
                 # This is a conservative estimate; actual IV series would need
                 # historical option OHLCV but that's often unavailable.
-                approx_ltp = max(1.0, close_price * 0.005)
+                approx_ltp = max(_MIN_OPTION_PRICE, close_price * _SPOT_PRICE_MULTIPLIER)
 
                 ok, greeks_resp, _ = calculate_greeks(
                     option_symbol=ce_sym,
@@ -309,7 +321,7 @@ def _compute_expiry_iv_metrics(
     ivx = round(sum(all_otm) / len(all_otm), 2) if all_otm else atm_iv
 
     # Vertical Skew (25-delta proxy at ~5% OTM)
-    otm_dist = atm_strike * 0.05
+    otm_dist = atm_strike * _VERTICAL_SKEW_OTM_PCT
     call_iv_otm: float | None = None
     put_iv_otm: float | None = None
 

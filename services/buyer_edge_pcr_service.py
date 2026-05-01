@@ -50,6 +50,8 @@ logger = get_logger(__name__)
 
 # How many strikes on each side of ATM to sum OI/volume for PCR
 _PCR_STRIKE_WINDOW = 5
+# Decimal precision for PCR values
+_PCR_DECIMAL_PRECISION = 4
 
 NSE_INDEX_SYMBOLS = {
     "NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY",
@@ -295,8 +297,8 @@ def get_pcr_chart_data(
                     atm_ce_close = ce_data.get("close", 0)
                     atm_pe_close = pe_data.get("close", 0)
 
-            pcr_oi = round(total_pe_oi / total_ce_oi, 4) if total_ce_oi > 0 else None
-            pcr_volume = round(total_pe_vol / total_ce_vol, 4) if total_ce_vol > 0 else None
+            pcr_oi = round(total_pe_oi / total_ce_oi, _PCR_DECIMAL_PRECISION) if total_ce_oi > 0 else None
+            pcr_volume = round(total_pe_vol / total_ce_vol, _PCR_DECIMAL_PRECISION) if total_ce_vol > 0 else None
             synthetic_future = (
                 round(atm + atm_ce_close - atm_pe_close, 2)
                 if atm_ce_close and atm_pe_close
@@ -347,8 +349,8 @@ def get_pcr_chart_data(
                 (item.get("pe") or {}).get("volume", 0) or 0
                 for item in oc_resp.get("chain", [])
             )
-            live_pcr_oi = round(pe_oi_t / ce_oi_t, 4) if ce_oi_t > 0 else None
-            live_pcr_volume = round(pe_vol_t / ce_vol_t, 4) if ce_vol_t > 0 else None
+            live_pcr_oi = round(pe_oi_t / ce_oi_t, _PCR_DECIMAL_PRECISION) if ce_oi_t > 0 else None
+            live_pcr_volume = round(pe_vol_t / ce_vol_t, _PCR_DECIMAL_PRECISION) if ce_vol_t > 0 else None
 
         # If no OI in history, build a flat series from live snapshot
         live_only = not has_oi_data

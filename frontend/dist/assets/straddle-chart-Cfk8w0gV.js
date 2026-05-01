@@ -1,1 +1,0 @@
-import{w as t}from"./index-BRjP9s3G.js";const r={getStraddleData:async a=>(await t.post("/straddle/api/straddle-data",a)).data,getIntervals:async()=>(await t.get("/straddle/api/intervals")).data};export{r as s};
