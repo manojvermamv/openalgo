@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Check, ChevronsUpDown, RefreshCw } from 'lucide-react'
+import { Check, ChevronsUpDown, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react'
 import {
   ColorType,
   CrosshairMode,
@@ -13,6 +13,10 @@ import { useThemeStore } from '@/stores/themeStore'
 import {
   buyerEdgeApi,
   type BuyerEdgeResponse,
+  type GexLevelsResponse,
+  type PcrChartResponse,
+  type PcrDataPoint,
+  type IvDashboardResponse,
   type SignalType,
 } from '@/api/buyerEdge'
 import {
@@ -282,6 +286,36 @@ export default function BuyerEdge() {
   const [lbTf, setLbTf] = useState('3m')
   const [strikeCount, setStrikeCount] = useState('10')
 
+  // ── Advanced GEX Levels state ──────────────────────────────────
+  const [gexData, setGexData] = useState<GexLevelsResponse | null>(null)
+  const [isGexLoading, setIsGexLoading] = useState(false)
+  const [gexMode, setGexMode] = useState<'selected' | 'cumulative'>('selected')
+  const [gexExpiries, setGexExpiries] = useState<string[]>([])
+  const [gexSectionOpen, setGexSectionOpen] = useState(true)
+
+  // ── PCR Chart state ────────────────────────────────────────────
+  const [pcrData, setPcrData] = useState<PcrChartResponse | null>(null)
+  const [isPcrLoading, setIsPcrLoading] = useState(false)
+  const [pcrInterval, setPcrInterval] = useState('1d')
+  const [pcrDays, setPcrDays] = useState('1')
+  const [showPcrOi, setShowPcrOi] = useState(true)
+  const [showPcrVolume, setShowPcrVolume] = useState(true)
+  const [showPcrSpot, setShowPcrSpot] = useState(false)
+  const [showPcrSynthetic, setShowPcrSynthetic] = useState(false)
+  const [pcrSectionOpen, setPcrSectionOpen] = useState(true)
+  const pcrChartContainerRef = useRef<HTMLDivElement>(null)
+  const pcrChartRef = useRef<IChartApi | null>(null)
+  const pcrOiSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
+  const pcrVolSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
+  const pcrSpotSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
+  const pcrSyntheticSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
+
+  // ── IVR Dashboard state ────────────────────────────────────────
+  const [ivData, setIvData] = useState<IvDashboardResponse | null>(null)
+  const [isIvLoading, setIsIvLoading] = useState(false)
+  const [ivExpiries, setIvExpiries] = useState<string[]>([])
+  const [ivSectionOpen, setIvSectionOpen] = useState(true)
+
   // Chart DOM refs
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -433,27 +467,67 @@ export default function BuyerEdge() {
     setIsLoading(true)
     try {
       const expiryForAPI = convertExpiryForAPI(selectedExpiry)
-      const response = await buyerEdgeApi.getData({
-        underlying: selectedUnderlying,
-        exchange: selectedExchange,
-        expiry_date: expiryForAPI,
-        strike_count: parseInt(strikeCount),
-        lb_bars: parseInt(lbBars),
-        lb_tf: lbTf,
-      })
+
+      // Run all three: state engine + GEX + IVR in parallel
+      const [response, gexResp, ivResp] = await Promise.allSettled([
+        buyerEdgeApi.getData({
+          underlying: selectedUnderlying,
+          exchange: selectedExchange,
+          expiry_date: expiryForAPI,
+          strike_count: parseInt(strikeCount),
+          lb_bars: parseInt(lbBars),
+          lb_tf: lbTf,
+        }),
+        buyerEdgeApi.getGexLevels({
+          underlying: selectedUnderlying,
+          exchange: selectedExchange,
+          mode: gexMode,
+          expiry_date: gexMode === 'selected' ? expiryForAPI : undefined,
+          expiry_dates: gexMode === 'cumulative'
+            ? (gexExpiries.length > 0 ? gexExpiries.map(convertExpiryForAPI) : [expiryForAPI])
+            : undefined,
+          strike_count: 25,
+        }),
+        buyerEdgeApi.getIvDashboard({
+          underlying: selectedUnderlying,
+          exchange: selectedExchange,
+          expiry_dates: ivExpiries.length > 0
+            ? ivExpiries.map(convertExpiryForAPI)
+            : [expiryForAPI],
+          strike_count: 15,
+        }),
+      ])
+
       if (requestIdRef.current !== requestId) return
-      if (response.status === 'success') {
-        setData(response)
+
+      // State engine
+      if (response.status === 'fulfilled') {
+        if (response.value.status === 'success') {
+          setData(response.value)
+        } else {
+          showToast.error(response.value.message || 'Failed to fetch data')
+        }
       } else {
-        showToast.error(response.message || 'Failed to fetch data')
+        showToast.error('Failed to fetch buyer edge data')
       }
+
+      // GEX
+      if (gexResp.status === 'fulfilled' && gexResp.value.status === 'success') {
+        setGexData(gexResp.value)
+      }
+
+      // IV Dashboard
+      if (ivResp.status === 'fulfilled' && ivResp.value.status === 'success') {
+        setIvData(ivResp.value)
+      }
+
     } catch {
       if (requestIdRef.current !== requestId) return
       showToast.error('Failed to fetch buyer edge data')
     } finally {
       if (requestIdRef.current === requestId) setIsLoading(false)
     }
-  }, [selectedUnderlying, selectedExpiry, selectedExchange, strikeCount, lbBars, lbTf])
+  }, [selectedUnderlying, selectedExpiry, selectedExchange, strikeCount, lbBars, lbTf, gexMode, gexExpiries, ivExpiries])
 
   useEffect(() => {
     if (selectedExpiry) fetchData()
@@ -808,6 +882,115 @@ export default function BuyerEdge() {
     if (selectedExpiry) loadStraddleData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadStraddleData])
+
+  // ── PCR Chart: load data + chart init ───────────────────────────
+
+  const loadPcrData = useCallback(async () => {
+    if (!selectedExpiry) return
+    setIsPcrLoading(true)
+    try {
+      const res = await buyerEdgeApi.getPcrChart({
+        underlying: selectedUnderlying,
+        exchange: selectedExchange,
+        expiry_date: convertExpiryForAPI(selectedExpiry),
+        interval: pcrInterval,
+        days: parseInt(pcrDays),
+      })
+      if (res.status === 'success') {
+        setPcrData(res)
+      } else {
+        showToast.error(res.message || 'Failed to load PCR data')
+      }
+    } catch {
+      showToast.error('Failed to fetch PCR chart data')
+    } finally {
+      setIsPcrLoading(false)
+    }
+  }, [selectedExpiry, selectedUnderlying, selectedExchange, pcrInterval, pcrDays])
+
+  // Auto-load PCR chart when its deps change
+  useEffect(() => {
+    if (selectedExpiry) loadPcrData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadPcrData])
+
+  // Build / update PCR lightweight-charts
+  useEffect(() => {
+    if (!pcrChartContainerRef.current) return
+    const container = pcrChartContainerRef.current
+    if (!pcrChartRef.current) {
+      const c = createChart(container, {
+        width: container.clientWidth,
+        height: 300,
+        layout: {
+          background: { type: ColorType.Solid, color: 'transparent' },
+          textColor: chartColors.text,
+        },
+        grid: { vertLines: { color: chartColors.grid }, horzLines: { color: chartColors.grid } },
+        crosshair: { mode: CrosshairMode.Normal },
+        rightPriceScale: { borderColor: chartColors.border },
+        timeScale: { borderColor: chartColors.border, timeVisible: true, secondsVisible: false },
+      })
+      pcrChartRef.current = c
+      pcrOiSeriesRef.current = c.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 2, title: 'PCR(OI)' })
+      pcrVolSeriesRef.current = c.addSeries(LineSeries, { color: '#60a5fa', lineWidth: 2, title: 'PCR(Vol)' })
+      pcrSpotSeriesRef.current = c.addSeries(LineSeries, { color: chartColors.spot, lineWidth: 1, title: 'Spot' })
+      pcrSyntheticSeriesRef.current = c.addSeries(LineSeries, { color: '#a78bfa', lineWidth: 1, lineStyle: 2, title: 'Syn Fut' })
+    }
+    // Apply series data
+    const series = pcrData?.data?.series ?? []
+    const sorted = [...series].sort((a, b) => a.time - b.time)
+
+    pcrOiSeriesRef.current?.setData(
+      sorted.filter((p) => p.pcr_oi != null).map((p) => ({
+        time: p.time as import('lightweight-charts').UTCTimestamp,
+        value: p.pcr_oi as number,
+      }))
+    )
+    pcrVolSeriesRef.current?.setData(
+      sorted.filter((p) => p.pcr_volume != null).map((p) => ({
+        time: p.time as import('lightweight-charts').UTCTimestamp,
+        value: p.pcr_volume as number,
+      }))
+    )
+    pcrSpotSeriesRef.current?.setData(
+      showPcrSpot
+        ? sorted.map((p) => ({ time: p.time as import('lightweight-charts').UTCTimestamp, value: p.spot }))
+        : []
+    )
+    pcrSyntheticSeriesRef.current?.setData(
+      showPcrSynthetic
+        ? sorted.filter((p) => p.synthetic_future != null).map((p) => ({
+            time: p.time as import('lightweight-charts').UTCTimestamp,
+            value: p.synthetic_future as number,
+          }))
+        : []
+    )
+    pcrOiSeriesRef.current?.applyOptions({ visible: showPcrOi })
+    pcrVolSeriesRef.current?.applyOptions({ visible: showPcrVolume })
+
+    if (sorted.length) pcrChartRef.current?.timeScale().fitContent()
+  }, [pcrData, showPcrOi, showPcrVolume, showPcrSpot, showPcrSynthetic, chartColors])
+
+  // PCR chart resize
+  useEffect(() => {
+    if (!pcrChartContainerRef.current || !pcrChartRef.current) return
+    const ro = new ResizeObserver(() => {
+      if (pcrChartContainerRef.current && pcrChartRef.current) {
+        pcrChartRef.current.applyOptions({ width: pcrChartContainerRef.current.clientWidth })
+      }
+    })
+    ro.observe(pcrChartContainerRef.current)
+    return () => ro.disconnect()
+  }, [])
+
+  // Destroy PCR chart on unmount
+  useEffect(() => {
+    return () => {
+      pcrChartRef.current?.remove()
+      pcrChartRef.current = null
+    }
+  }, [])
 
   // Latest straddle data point and its VWAP for info bar
   const latestStraddlePoint = useMemo(() => {
@@ -1357,6 +1540,530 @@ export default function BuyerEdge() {
           </CardContent>
         </Card>
       )}
+
+      {/* ================================================================
+          Section A — Advanced GEX Levels
+          ================================================================ */}
+      <Card>
+        <CardHeader className="pb-3 cursor-pointer" onClick={() => setGexSectionOpen((v) => !v)}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-base">Advanced GEX Levels</CardTitle>
+              {gexData?.levels && (
+                <Badge variant="outline" className="text-xs">
+                  {gexData.mode === 'cumulative' ? '∑ Cumulative' : '⊙ Selected'}
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {/* Mode toggle */}
+              <div className="flex rounded-md overflow-hidden border border-border text-xs">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setGexMode('selected') }}
+                  className={`px-2 py-1 ${gexMode === 'selected' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                >
+                  ⊙ Selected
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setGexMode('cumulative') }}
+                  className={`px-2 py-1 ${gexMode === 'cumulative' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                >
+                  ∑ Cumulative
+                </button>
+              </div>
+              {gexSectionOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </div>
+          </div>
+          {/* Multi-expiry selector for cumulative mode */}
+          {gexMode === 'cumulative' && gexSectionOpen && expiries.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+              <span className="text-xs text-muted-foreground self-center">Select expiries:</span>
+              {expiries.slice(0, 4).map((exp) => {
+                const isSelected = gexExpiries.includes(exp)
+                return (
+                  <button
+                    key={exp}
+                    type="button"
+                    onClick={() =>
+                      setGexExpiries((prev) =>
+                        isSelected ? prev.filter((e) => e !== exp) : [...prev, exp].slice(0, 4)
+                      )
+                    }
+                    className={`text-xs px-2 py-0.5 rounded-full border ${isSelected ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted'}`}
+                  >
+                    {exp}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </CardHeader>
+        {gexSectionOpen && (
+          <CardContent className="pt-0">
+            {isGexLoading && (
+              <div className="py-8 text-center text-muted-foreground">
+                <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2" />
+                <p className="text-sm">Loading GEX data…</p>
+              </div>
+            )}
+            {!isGexLoading && gexData?.levels && (
+              <>
+                {/* Key levels pills */}
+                <div className="flex flex-wrap gap-4 justify-around py-2 mb-4">
+                  <Pill
+                    label="Gamma Flip / HVL"
+                    value={gexData.levels.gamma_flip != null ? gexData.levels.gamma_flip.toFixed(0) : 'N/A'}
+                    variant="warning"
+                  />
+                  <Pill
+                    label="Call Gamma Wall"
+                    value={gexData.levels.call_gamma_wall != null ? gexData.levels.call_gamma_wall.toFixed(0) : 'N/A'}
+                    variant="bearish"
+                  />
+                  <Pill
+                    label="Put Gamma Wall"
+                    value={gexData.levels.put_gamma_wall != null ? gexData.levels.put_gamma_wall.toFixed(0) : 'N/A'}
+                    variant="bullish"
+                  />
+                  <Pill
+                    label="Abs GEX Wall"
+                    value={gexData.levels.absolute_wall != null ? gexData.levels.absolute_wall.toFixed(0) : 'N/A'}
+                    variant="expansion"
+                  />
+                  <Pill
+                    label="Total Net GEX"
+                    value={gexData.levels.total_net_gex.toFixed(0)}
+                    variant={gexData.levels.total_net_gex >= 0 ? 'bullish' : 'bearish'}
+                  />
+                </div>
+
+                {/* GEX bar chart (inline SVG-based for zero-dependency approach) */}
+                {gexData.chain.length > 0 && (() => {
+                  const sorted = [...gexData.chain].sort((a, b) => a.strike - b.strike)
+                  const maxAbs = Math.max(...sorted.map((d) => Math.abs(d.net_gex)), 1)
+                  const barHeight = 20
+                  const barGap = 4
+                  const chartH = sorted.length * (barHeight + barGap)
+                  const maxW = 300
+                  const spot = gexData.spot_price
+
+                  return (
+                    <div className="overflow-x-auto">
+                      <div className="text-xs text-muted-foreground mb-1 text-center">
+                        Net GEX per Strike (green=long gamma dealer, red=short gamma)
+                      </div>
+                      <svg
+                        viewBox={`0 0 ${maxW * 2 + 120} ${chartH + 20}`}
+                        className="w-full max-w-2xl mx-auto"
+                        style={{ minHeight: Math.min(chartH + 20, 400) }}
+                      >
+                        {/* Center line */}
+                        <line
+                          x1={maxW + 60} y1={0}
+                          x2={maxW + 60} y2={chartH + 20}
+                          stroke="currentColor" strokeOpacity={0.2} strokeWidth={1}
+                        />
+                        {sorted.map((d, i) => {
+                          const y = i * (barHeight + barGap) + 10
+                          const barW = (Math.abs(d.net_gex) / maxAbs) * maxW
+                          const isPos = d.net_gex >= 0
+                          const barX = isPos ? maxW + 60 : maxW + 60 - barW
+                          const isAtm = spot && Math.abs(d.strike - spot) < 50
+                          const isFlip = gexData.levels.gamma_flip != null &&
+                            Math.abs(d.strike - gexData.levels.gamma_flip) < 50
+                          return (
+                            <g key={d.strike}>
+                              <rect
+                                x={barX} y={y}
+                                width={barW} height={barHeight}
+                                fill={isPos ? '#22c55e' : '#ef4444'}
+                                fillOpacity={0.7}
+                              />
+                              <text
+                                x={55} y={y + barHeight / 2 + 4}
+                                textAnchor="end"
+                                fontSize={10}
+                                fill={isAtm ? '#f59e0b' : isFlip ? '#a78bfa' : 'currentColor'}
+                                fontWeight={isAtm || isFlip ? 'bold' : 'normal'}
+                              >
+                                {d.strike}
+                              </text>
+                            </g>
+                          )
+                        })}
+                        {/* Spot line */}
+                        {spot && (() => {
+                          const spotIdx = sorted.findIndex((d) => d.strike >= spot)
+                          const approxY = spotIdx >= 0
+                            ? spotIdx * (barHeight + barGap) + 10
+                            : chartH
+                          return (
+                            <line
+                              x1={0} y1={approxY}
+                              x2={maxW * 2 + 120} y2={approxY}
+                              stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4,3"
+                            />
+                          )
+                        })()}
+                        {/* Legend */}
+                        <text x={maxW + 62} y={chartH + 18} fontSize={9} fill="#f59e0b">
+                          Spot: {spot?.toFixed(0)}
+                        </text>
+                        {gexData.levels.gamma_flip != null && (
+                          <text x={maxW + 62} y={chartH + 10} fontSize={9} fill="#a78bfa">
+                            Γ Flip: {gexData.levels.gamma_flip.toFixed(0)}
+                          </text>
+                        )}
+                      </svg>
+                    </div>
+                  )
+                })()}
+
+                {/* Expiries used */}
+                <div className="mt-2 text-xs text-muted-foreground text-center">
+                  Expiries: {gexData.expiries_used.join(', ')}
+                </div>
+              </>
+            )}
+            {!isGexLoading && !gexData && selectedExpiry && (
+              <p className="text-center text-sm text-muted-foreground py-6">
+                Click Analyse to load GEX data
+              </p>
+            )}
+            {!selectedExpiry && (
+              <p className="text-center text-sm text-muted-foreground py-6">
+                Select an underlying and expiry first
+              </p>
+            )}
+          </CardContent>
+        )}
+      </Card>
+
+      {/* ================================================================
+          Section B — PCR Chart
+          ================================================================ */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <CardTitle
+                className="text-base cursor-pointer"
+                onClick={() => setPcrSectionOpen((v) => !v)}
+              >
+                PCR Chart
+              </CardTitle>
+              {pcrData?.data?.live_only && (
+                <Badge variant="secondary" className="text-xs">Live PCR only</Badge>
+              )}
+              {pcrData?.data && (
+                <div className="flex gap-3 text-xs text-muted-foreground">
+                  <span>PCR(OI): <strong className="text-foreground">{pcrData.data.current_pcr_oi?.toFixed(2) ?? 'N/A'}</strong></span>
+                  <span>PCR(Vol): <strong className="text-foreground">{pcrData.data.current_pcr_volume?.toFixed(2) ?? 'N/A'}</strong></span>
+                </div>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={pcrInterval} onValueChange={setPcrInterval}>
+                <SelectTrigger className="w-[80px] h-8 text-xs">
+                  <SelectValue placeholder="Interval" />
+                </SelectTrigger>
+                <SelectContent>
+                  {['1m', '3m', '5m', '15m', '30m', '1h', '1d'].map((i) => (
+                    <SelectItem key={i} value={i}>{i}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={pcrDays} onValueChange={setPcrDays}>
+                <SelectTrigger className="w-[80px] h-8 text-xs">
+                  <SelectValue placeholder="Days" />
+                </SelectTrigger>
+                <SelectContent>
+                  {['1', '2', '3', '5'].map((d) => (
+                    <SelectItem key={d} value={d}>{d} {d === '1' ? 'Day' : 'Days'}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline" size="sm" className="h-8 text-xs"
+                onClick={loadPcrData}
+                disabled={isPcrLoading || !selectedExpiry}
+              >
+                {isPcrLoading ? <RefreshCw className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+                Refresh
+              </Button>
+              <button
+                type="button"
+                onClick={() => setPcrSectionOpen((v) => !v)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                {pcrSectionOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+        </CardHeader>
+        {pcrSectionOpen && (
+          <CardContent className="pt-0">
+            <div className="relative">
+              <div
+                ref={pcrChartContainerRef}
+                className="relative w-full rounded-lg border border-border/50"
+                style={{ height: 300 }}
+              />
+              {isPcrLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-lg">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    Loading PCR data…
+                  </div>
+                </div>
+              )}
+              {!selectedExpiry && !isPcrLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-background/70 rounded-lg">
+                  <p className="text-sm text-muted-foreground">Select an underlying and expiry to load PCR chart</p>
+                </div>
+              )}
+            </div>
+            {/* Legend toggles */}
+            <div className="flex items-center justify-center gap-4 mt-3 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setShowPcrOi((v) => !v)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showPcrOi ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
+              >
+                <span className="inline-block h-0.5 w-5 rounded bg-amber-400" />
+                PCR(OI)
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowPcrVolume((v) => !v)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showPcrVolume ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
+              >
+                <span className="inline-block h-0.5 w-5 rounded bg-blue-400" />
+                PCR(Vol)
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowPcrSpot((v) => !v)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showPcrSpot ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
+              >
+                <span className="inline-block h-0.5 w-5 rounded" style={{ backgroundColor: chartColors.spot }} />
+                Spot
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowPcrSynthetic((v) => !v)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showPcrSynthetic ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
+              >
+                <span className="inline-block h-0.5 w-5 rounded border-dashed border-t-2 border-purple-400" style={{ backgroundColor: 'transparent' }} />
+                Syn Fut
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground text-center mt-1">
+              PCR &gt; 1.2 = Bearish / PCR &lt; 0.8 = Bullish / PCR ≈ 1.0 = Neutral
+            </p>
+          </CardContent>
+        )}
+      </Card>
+
+      {/* ================================================================
+          Section C — IVR & Skew Dashboard
+          ================================================================ */}
+      <Card>
+        <CardHeader className="pb-3 cursor-pointer" onClick={() => setIvSectionOpen((v) => !v)}>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">IVR &amp; Skew Dashboard</CardTitle>
+            <div className="flex items-center gap-2">
+              {/* Expiry multi-selector */}
+              {expiries.length > 0 && ivSectionOpen && (
+                <div className="flex gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                  {expiries.slice(0, 4).map((exp) => {
+                    const isSelected = ivExpiries.includes(exp)
+                    return (
+                      <button
+                        key={exp}
+                        type="button"
+                        onClick={() =>
+                          setIvExpiries((prev) =>
+                            isSelected ? prev.filter((e) => e !== exp) : [...prev, exp].slice(0, 4)
+                          )
+                        }
+                        className={`text-xs px-2 py-0.5 rounded-full border ${isSelected ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted'}`}
+                      >
+                        {exp}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              {ivSectionOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </div>
+          </div>
+        </CardHeader>
+        {ivSectionOpen && (
+          <CardContent className="pt-0">
+            {isIvLoading && (
+              <div className="py-8 text-center text-muted-foreground">
+                <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2" />
+                <p className="text-sm">Loading IV data…</p>
+              </div>
+            )}
+            {!isIvLoading && ivData && (
+              <>
+                {/* Summary pills */}
+                <div className="flex flex-wrap gap-4 justify-around py-2 mb-4">
+                  <Pill
+                    label="IV Rank"
+                    value={
+                      ivData.ivr_available && ivData.iv_rank != null
+                        ? `${ivData.iv_rank.toFixed(1)}%`
+                        : 'N/A'
+                    }
+                    variant={
+                      ivData.iv_rank != null && ivData.iv_rank > 50
+                        ? 'bearish'
+                        : ivData.iv_rank != null && ivData.iv_rank < 30
+                          ? 'bullish'
+                          : 'neutral'
+                    }
+                  />
+                  <Pill
+                    label="Current IV"
+                    value={ivData.current_iv != null ? `${ivData.current_iv.toFixed(1)}%` : 'N/A'}
+                    variant="neutral"
+                  />
+                  <Pill
+                    label="Avg IVx"
+                    value={ivData.avg_ivx != null ? `${ivData.avg_ivx.toFixed(1)}%` : 'N/A'}
+                    variant="neutral"
+                  />
+                  <Pill
+                    label="IV Change"
+                    value={ivData.iv_change_pct != null ? `${ivData.iv_change_pct.toFixed(1)}%` : 'N/A'}
+                    variant={
+                      ivData.iv_change_pct != null && ivData.iv_change_pct > 0 ? 'bearish' : 'bullish'
+                    }
+                  />
+                </div>
+                {!ivData.ivr_available && (
+                  <p className="text-xs text-muted-foreground text-center mb-3 italic">
+                    IVRank unavailable — broker does not provide 1-year option history
+                  </p>
+                )}
+
+                {/* Per-expiry table */}
+                {ivData.expiries && ivData.expiries.length > 0 && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead>
+                        <tr className="text-muted-foreground border-b border-border">
+                          <th className="py-1.5 pr-3">Expiry</th>
+                          <th className="py-1.5 pr-3">DTE</th>
+                          <th className="py-1.5 pr-3">IVx</th>
+                          <th className="py-1.5 pr-3">V.Skew%</th>
+                          <th className="py-1.5 pr-3">H.IVx Skew%</th>
+                          <th className="py-1.5 pr-3">Exp.Move</th>
+                          <th className="py-1.5">Calendar?</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ivData.expiries.map((exp) => {
+                          const hSkew = exp.horizontal_ivx_skew_pct
+                          const isCalendarOpportunity = hSkew != null && hSkew < 0
+                          return (
+                            <tr key={exp.expiry_date} className="border-b border-border/40 hover:bg-muted/30">
+                              <td className="py-1.5 pr-3 font-medium">{exp.expiry_date}</td>
+                              <td className="py-1.5 pr-3">{exp.dte.toFixed(0)}d</td>
+                              <td className="py-1.5 pr-3">
+                                {exp.ivx != null ? `${exp.ivx.toFixed(1)}%` : '—'}
+                              </td>
+                              <td className={`py-1.5 pr-3 ${exp.vertical_skew_pct != null && exp.vertical_skew_pct > 0 ? 'text-red-500' : exp.vertical_skew_pct != null ? 'text-green-500' : ''}`}>
+                                {exp.vertical_skew_pct != null ? `${exp.vertical_skew_pct > 0 ? '+' : ''}${exp.vertical_skew_pct.toFixed(1)}%` : '—'}
+                              </td>
+                              <td className={`py-1.5 pr-3 ${isCalendarOpportunity ? 'text-amber-500 font-semibold' : ''}`}>
+                                {hSkew != null ? `${hSkew > 0 ? '+' : ''}${hSkew.toFixed(1)}%` : '—'}
+                              </td>
+                              <td className="py-1.5 pr-3">
+                                {exp.expected_move != null ? `±${exp.expected_move.toFixed(0)}` : '—'}
+                              </td>
+                              <td className="py-1.5">
+                                {isCalendarOpportunity ? (
+                                  <Badge className="text-xs bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30">
+                                    📅 Cal/Diag
+                                  </Badge>
+                                ) : '—'}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* IVx per-expiry bar chart */}
+                {ivData.expiries && ivData.expiries.length > 1 && (() => {
+                  const sorted = [...ivData.expiries].sort((a, b) => a.dte - b.dte)
+                  const maxIvx = Math.max(...sorted.map((e) => e.ivx ?? 0), 1)
+                  const barW = 40
+                  const gap = 16
+                  const chartW = sorted.length * (barW + gap) + 40
+                  const chartH = 120
+
+                  return (
+                    <div className="mt-4 overflow-x-auto">
+                      <div className="text-xs text-muted-foreground mb-1 text-center">IVx by Expiry</div>
+                      <svg viewBox={`0 0 ${chartW} ${chartH + 40}`} className="w-full max-w-md mx-auto">
+                        {sorted.map((exp, i) => {
+                          const ivx = exp.ivx ?? 0
+                          const h = (ivx / maxIvx) * chartH
+                          const x = i * (barW + gap) + 20
+                          const isInverted = exp.horizontal_ivx_skew != null && exp.horizontal_ivx_skew < 0
+                          return (
+                            <g key={exp.expiry_date}>
+                              <rect
+                                x={x} y={chartH - h}
+                                width={barW} height={h}
+                                fill={isInverted ? '#f59e0b' : '#60a5fa'}
+                                fillOpacity={0.8}
+                              />
+                              <text x={x + barW / 2} y={chartH - h - 4} textAnchor="middle" fontSize={9} fill="currentColor">
+                                {ivx.toFixed(1)}%
+                              </text>
+                              <text x={x + barW / 2} y={chartH + 12} textAnchor="middle" fontSize={8} fill="currentColor">
+                                {exp.expiry_date.slice(0, 5)}
+                              </text>
+                              <text x={x + barW / 2} y={chartH + 22} textAnchor="middle" fontSize={8} fill="currentColor" opacity={0.7}>
+                                {exp.dte.toFixed(0)}d
+                              </text>
+                            </g>
+                          )
+                        })}
+                        <line x1={20} y1={0} x2={20} y2={chartH} stroke="currentColor" strokeOpacity={0.15} />
+                        <line x1={20} y1={chartH} x2={chartW - 20} y2={chartH} stroke="currentColor" strokeOpacity={0.15} />
+                      </svg>
+                      <p className="text-xs text-center text-amber-500 mt-1">
+                        🟡 Amber = Inverted IVx Skew → Calendar/Diagonal opportunity
+                      </p>
+                    </div>
+                  )
+                })()}
+              </>
+            )}
+            {!isIvLoading && !ivData && selectedExpiry && (
+              <p className="text-center text-sm text-muted-foreground py-6">
+                Click Analyse to load IV dashboard
+              </p>
+            )}
+            {!selectedExpiry && (
+              <p className="text-center text-sm text-muted-foreground py-6">
+                Select an underlying and expiry first
+              </p>
+            )}
+          </CardContent>
+        )}
+      </Card>
     </div>
   )
 }

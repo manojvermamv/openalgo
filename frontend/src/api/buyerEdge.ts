@@ -67,6 +67,114 @@ export interface ExpiriesResponse {
   expiries: string[]
 }
 
+// ---------------------------------------------------------------------------
+// GEX Levels
+// ---------------------------------------------------------------------------
+
+export interface GexStrike {
+  strike: number
+  ce_oi: number
+  pe_oi: number
+  ce_gex: number
+  pe_gex: number
+  net_gex: number
+}
+
+export interface GexLevels {
+  gamma_flip: number | null
+  hvl: number | null
+  call_gamma_wall: number | null
+  put_gamma_wall: number | null
+  absolute_wall: number | null
+  total_net_gex: number
+  zero_gamma: number | null
+}
+
+export interface GexPerExpiry {
+  expiry_date: string
+  chain: GexStrike[]
+  levels: GexLevels
+}
+
+export interface GexLevelsResponse {
+  status: 'success' | 'error'
+  message?: string
+  mode: 'selected' | 'cumulative'
+  underlying: string
+  expiry_date?: string
+  spot_price: number
+  expiries_used: string[]
+  chain: GexStrike[]
+  levels: GexLevels
+  per_expiry?: GexPerExpiry[]
+}
+
+// ---------------------------------------------------------------------------
+// PCR Chart
+// ---------------------------------------------------------------------------
+
+export interface PcrDataPoint {
+  time: number
+  spot: number
+  atm_strike: number
+  pcr_oi: number | null
+  pcr_volume: number | null
+  synthetic_future: number | null
+}
+
+export interface PcrChartData {
+  underlying: string
+  underlying_ltp: number
+  expiry_date: string
+  interval: string
+  live_only: boolean
+  current_pcr_oi: number | null
+  current_pcr_volume: number | null
+  series: PcrDataPoint[]
+}
+
+export interface PcrChartResponse {
+  status: 'success' | 'error'
+  message?: string
+  data?: PcrChartData
+}
+
+// ---------------------------------------------------------------------------
+// IV Dashboard
+// ---------------------------------------------------------------------------
+
+export interface IvExpiryMetrics {
+  expiry_date: string
+  dte: number
+  atm_iv: number | null
+  ivx: number | null
+  call_iv_otm: number | null
+  put_iv_otm: number | null
+  vertical_skew: number | null
+  vertical_skew_pct: number | null
+  horizontal_ivx_skew: number | null
+  horizontal_ivx_skew_pct: number | null
+  expected_move: number | null
+  sigma_1: number | null
+}
+
+export interface IvDashboardResponse {
+  status: 'success' | 'error'
+  message?: string
+  underlying?: string
+  spot_price?: number
+  iv_rank?: number | null
+  ivr_available?: boolean
+  current_iv?: number | null
+  avg_ivx?: number | null
+  iv_change_pct?: number | null
+  expiries?: IvExpiryMetrics[]
+}
+
+// ---------------------------------------------------------------------------
+// API calls
+// ---------------------------------------------------------------------------
+
 export const buyerEdgeApi = {
   getData: async (params: {
     underlying: string
@@ -91,6 +199,39 @@ export const buyerEdgeApi = {
     const response = await webClient.get<ExpiriesResponse>(
       `/search/api/expiries?exchange=${exchange}&underlying=${underlying}`
     )
+    return response.data
+  },
+
+  getGexLevels: async (params: {
+    underlying: string
+    exchange: string
+    mode: 'selected' | 'cumulative'
+    expiry_date?: string
+    expiry_dates?: string[]
+    strike_count?: number
+  }): Promise<GexLevelsResponse> => {
+    const response = await webClient.post<GexLevelsResponse>('/buyeredge/api/gex_levels', params)
+    return response.data
+  },
+
+  getPcrChart: async (params: {
+    underlying: string
+    exchange: string
+    expiry_date: string
+    interval: string
+    days?: number
+  }): Promise<PcrChartResponse> => {
+    const response = await webClient.post<PcrChartResponse>('/buyeredge/api/pcr_chart', params)
+    return response.data
+  },
+
+  getIvDashboard: async (params: {
+    underlying: string
+    exchange: string
+    expiry_dates: string[]
+    strike_count?: number
+  }): Promise<IvDashboardResponse> => {
+    const response = await webClient.post<IvDashboardResponse>('/buyeredge/api/iv_dashboard', params)
     return response.data
   },
 }
