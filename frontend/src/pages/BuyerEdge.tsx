@@ -311,8 +311,8 @@ export default function BuyerEdge() {
   const [pcrDays, setPcrDays] = useState('1')
   const [showPcrOi, setShowPcrOi] = useState(true)
   const [showPcrVolume, setShowPcrVolume] = useState(true)
-  const [showPcrSpot, setShowPcrSpot] = useState(false)
-  const [showPcrSynthetic, setShowPcrSynthetic] = useState(false)
+  const [showPcrSpot, setShowPcrSpot] = useState(true)
+  const [showPcrSynthetic, setShowPcrSynthetic] = useState(true)
   const [pcrSectionOpen, setPcrSectionOpen] = useState(true)
   const pcrChartContainerRef = useRef<HTMLDivElement>(null)
   const pcrChartRef = useRef<IChartApi | null>(null)
@@ -939,14 +939,35 @@ export default function BuyerEdge() {
         },
         grid: { vertLines: { color: chartColors.grid }, horzLines: { color: chartColors.grid } },
         crosshair: { mode: CrosshairMode.Normal },
-        rightPriceScale: { borderColor: chartColors.border },
+        leftPriceScale: {
+          visible: true,
+          borderColor: chartColors.border,
+          scaleMargins: { top: 0.05, bottom: 0.05 },
+        },
+        rightPriceScale: {
+          visible: true,
+          borderColor: chartColors.border,
+          scaleMargins: { top: 0.05, bottom: 0.05 },
+        },
         timeScale: { borderColor: chartColors.border, timeVisible: true, secondsVisible: false },
       })
       pcrChartRef.current = c
-      pcrOiSeriesRef.current = c.addSeries(LineSeries, { color: '#f59e0b', lineWidth: 2, title: 'PCR(OI)' })
-      pcrVolSeriesRef.current = c.addSeries(LineSeries, { color: '#60a5fa', lineWidth: 2, title: 'PCR(Vol)' })
-      pcrSpotSeriesRef.current = c.addSeries(LineSeries, { color: chartColors.spot, lineWidth: 1, title: 'Spot' })
-      pcrSyntheticSeriesRef.current = c.addSeries(LineSeries, { color: '#a78bfa', lineWidth: 1, lineStyle: 2, title: 'Syn Fut' })
+      pcrOiSeriesRef.current = c.addSeries(LineSeries, {
+        color: '#f59e0b', lineWidth: 2, title: 'PCR(OI)',
+        priceScaleId: 'right', lastValueVisible: true, priceLineVisible: true,
+      })
+      pcrVolSeriesRef.current = c.addSeries(LineSeries, {
+        color: '#60a5fa', lineWidth: 2, title: 'PCR(Vol)',
+        priceScaleId: 'right', lastValueVisible: true, priceLineVisible: false,
+      })
+      pcrSpotSeriesRef.current = c.addSeries(LineSeries, {
+        color: chartColors.spot, lineWidth: 2, title: 'Spot',
+        priceScaleId: 'left', lastValueVisible: true, priceLineVisible: true,
+      })
+      pcrSyntheticSeriesRef.current = c.addSeries(LineSeries, {
+        color: '#a78bfa', lineWidth: 1, lineStyle: 2, title: 'Syn Fut',
+        priceScaleId: 'left', lastValueVisible: true, priceLineVisible: false,
+      })
     }
     // Apply series data
     const series = pcrData?.data?.series ?? []
@@ -965,20 +986,18 @@ export default function BuyerEdge() {
       }))
     )
     pcrSpotSeriesRef.current?.setData(
-      showPcrSpot
-        ? sorted.map((p) => ({ time: p.time as import('lightweight-charts').UTCTimestamp, value: p.spot }))
-        : []
+      sorted.map((p) => ({ time: p.time as import('lightweight-charts').UTCTimestamp, value: p.spot }))
     )
     pcrSyntheticSeriesRef.current?.setData(
-      showPcrSynthetic
-        ? sorted.filter((p) => p.synthetic_future != null).map((p) => ({
-            time: p.time as import('lightweight-charts').UTCTimestamp,
-            value: p.synthetic_future as number,
-          }))
-        : []
+      sorted.filter((p) => p.synthetic_future != null).map((p) => ({
+        time: p.time as import('lightweight-charts').UTCTimestamp,
+        value: p.synthetic_future as number,
+      }))
     )
     pcrOiSeriesRef.current?.applyOptions({ visible: showPcrOi })
     pcrVolSeriesRef.current?.applyOptions({ visible: showPcrVolume })
+    pcrSpotSeriesRef.current?.applyOptions({ visible: showPcrSpot })
+    pcrSyntheticSeriesRef.current?.applyOptions({ visible: showPcrSynthetic })
 
     if (sorted.length) pcrChartRef.current?.timeScale().fitContent()
   }, [pcrData, showPcrOi, showPcrVolume, showPcrSpot, showPcrSynthetic, chartColors])
