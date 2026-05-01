@@ -15,7 +15,7 @@ import {
   type BuyerEdgeResponse,
   type GexLevelsResponse,
   type PcrChartResponse,
-  type PcrDataPoint,
+
   type IvDashboardResponse,
   type SignalType,
 } from '@/api/buyerEdge'
@@ -299,7 +299,7 @@ export default function BuyerEdge() {
 
   // ── Advanced GEX Levels state ──────────────────────────────────
   const [gexData, setGexData] = useState<GexLevelsResponse | null>(null)
-  const [isGexLoading, setIsGexLoading] = useState(false)
+  const [isGexLoading, _setIsGexLoading] = useState(false)
   const [gexMode, setGexMode] = useState<'selected' | 'cumulative'>('selected')
   const [gexExpiries, setGexExpiries] = useState<string[]>([])
   const [gexSectionOpen, setGexSectionOpen] = useState(true)
@@ -323,7 +323,7 @@ export default function BuyerEdge() {
 
   // ── IVR Dashboard state ────────────────────────────────────────
   const [ivData, setIvData] = useState<IvDashboardResponse | null>(null)
-  const [isIvLoading, setIsIvLoading] = useState(false)
+  const [isIvLoading, _setIsIvLoading] = useState(false)
   const [ivExpiries, setIvExpiries] = useState<string[]>([])
   const [ivSectionOpen, setIvSectionOpen] = useState(true)
 
