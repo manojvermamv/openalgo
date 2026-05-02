@@ -51,10 +51,6 @@ const PCR_CHART_HEIGHT = 300
 const OI_CHANGE_CHART_HEIGHT = 300
 // Threshold (in price points) for proximity annotations in GEX/IVx charts
 const STRIKE_PROXIMITY_THRESHOLD = 50
-// GEX bar chart layout
-const GEX_CHART_MAX_WIDTH = 300
-const GEX_BAR_HEIGHT = 20
-const GEX_BAR_GAP = 4
 // IVx expiry bar chart layout
 const IVX_BAR_WIDTH = 40
 const IVX_BAR_GAP = 16
@@ -2007,48 +2003,72 @@ export default function BuyerEdge() {
                   const spot = gexData.spot_price
 
                   if (gexViewMode === 'bar') {
-                    // ── Horizontal bar chart (original view) ─────────────────────────
-                    const barHeight = GEX_BAR_HEIGHT
-                    const barGap = GEX_BAR_GAP
-                    const chartH = sorted.length * (barHeight + barGap)
-                    const maxW = GEX_CHART_MAX_WIDTH
+                    // ── Vertical bar chart (strikes on X-axis, net_gex up/down from zero) ──
+                    const barW = 22
+                    const barGap = 6
+                    const chartPadTop = 30
+                    const chartPadBot = 40
+                    const maxBarH = 140
+                    const chartW = sorted.length * (barW + barGap) + 60
+                    const chartH = chartPadTop + maxBarH + chartPadBot
+                    const zeroY = chartPadTop + maxBarH
 
                     return (
                       <div className="overflow-x-auto">
-                        <div className="text-xs text-muted-foreground mb-1 text-center">
-                          Net GEX per Strike (green=long gamma dealer, red=short gamma)
+                        {/* Hover status */}
+                        <div
+                          className="mb-2 text-xs text-center text-foreground min-h-[1.25rem]"
+                          aria-live="polite"
+                          aria-atomic="true"
+                          role="status"
+                        >
+                          {gexLineHover ? (
+                            <>
+                              <span className="font-bold">Strike: {gexLineHover.strike}</span>
+                              &nbsp;&nbsp;
+                              <span style={{ color: gexLineHover.net_gex >= 0 ? '#22c55e' : '#ef4444' }}>
+                                Net GEX: {formatOiLakh(gexLineHover.net_gex)}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground">Hover a bar to see strike details</span>
+                          )}
                         </div>
                         <svg
-                          viewBox={`0 0 ${maxW * 2 + 120} ${chartH + 20}`}
-                          className="w-full max-w-2xl mx-auto"
-                          style={{ minHeight: Math.min(chartH + 20, STRADDLE_CHART_HEIGHT) }}
+                          viewBox={`0 0 ${chartW} ${chartH}`}
+                          className="w-full mx-auto"
+                          style={{ maxHeight: chartH + 20, minHeight: 200 }}
+                          onMouseLeave={() => setGexLineHover(null)}
                         >
-                          {/* Center line */}
-                          <line
-                            x1={maxW + 60} y1={0}
-                            x2={maxW + 60} y2={chartH + 20}
-                            stroke="currentColor" strokeOpacity={0.2} strokeWidth={1}
-                          />
+                          {/* Zero line */}
+                          <line x1={30} y1={zeroY} x2={chartW - 10} y2={zeroY}
+                            stroke="currentColor" strokeOpacity={0.2} strokeWidth={1} />
+
                           {sorted.map((d, i) => {
-                            const y = i * (barHeight + barGap) + 10
-                            const barW = (Math.abs(d.net_gex) / maxAbs) * maxW
-                            const isPos = d.net_gex >= 0
-                            const barX = isPos ? maxW + 60 : maxW + 60 - barW
+                            const x = 30 + i * (barW + barGap)
+                            const bH = (Math.abs(d.net_gex) / maxAbs) * maxBarH
+                            const bY = d.net_gex >= 0 ? zeroY - bH : zeroY
                             const isAtm = spot && Math.abs(d.strike - spot) < STRIKE_PROXIMITY_THRESHOLD
                             const isFlip = gexData.levels.gamma_flip != null &&
                               Math.abs(d.strike - gexData.levels.gamma_flip) < STRIKE_PROXIMITY_THRESHOLD
                             return (
-                              <g key={d.strike}>
+                              <g
+                                key={d.strike}
+                                onMouseEnter={() => setGexLineHover({ strike: d.strike, net_gex: d.net_gex })}
+                                style={{ cursor: 'crosshair' }}
+                              >
                                 <rect
-                                  x={barX} y={y}
-                                  width={barW} height={barHeight}
-                                  fill={isPos ? '#22c55e' : '#ef4444'}
-                                  fillOpacity={0.7}
+                                  x={x} y={bY}
+                                  width={barW} height={Math.max(bH, 1)}
+                                  fill={d.net_gex >= 0 ? '#22c55e' : '#ef4444'}
+                                  fillOpacity={0.75}
                                 />
+                                {/* Strike label */}
                                 <text
-                                  x={55} y={y + barHeight / 2 + 4}
-                                  textAnchor="end"
-                                  fontSize={10}
+                                  x={x + barW / 2}
+                                  y={chartH - 5}
+                                  textAnchor="middle"
+                                  fontSize={8}
                                   fill={isAtm ? '#f59e0b' : isFlip ? '#a78bfa' : 'currentColor'}
                                   fontWeight={isAtm || isFlip ? 'bold' : 'normal'}
                                 >
@@ -2057,30 +2077,57 @@ export default function BuyerEdge() {
                               </g>
                             )
                           })}
-                          {/* Spot line */}
+
+                          {/* Y-axis labels */}
+                          <text x={28} y={chartPadTop + 4} textAnchor="end" fontSize={9} fill="currentColor" opacity={0.6}>
+                            {formatOiLakh(maxAbs)}
+                          </text>
+                          <text x={28} y={zeroY + 4} textAnchor="end" fontSize={9} fill="currentColor" opacity={0.6}>0</text>
+                          <text x={28} y={zeroY + maxBarH - 2} textAnchor="end" fontSize={9} fill="currentColor" opacity={0.6}>
+                            -{formatOiLakh(maxAbs)}
+                          </text>
+
+                          {/* Spot vertical marker */}
                           {spot && (() => {
                             const spotIdx = sorted.findIndex((d) => d.strike >= spot)
-                            const approxY = spotIdx >= 0
-                              ? spotIdx * (barHeight + barGap) + 10
-                              : chartH
+                            if (spotIdx < 0) return null
+                            const sx = 30 + spotIdx * (barW + barGap) - barGap / 2
                             return (
-                              <line
-                                x1={0} y1={approxY}
-                                x2={maxW * 2 + 120} y2={approxY}
-                                stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4,3"
-                              />
+                              <line x1={sx} y1={chartPadTop} x2={sx} y2={zeroY + 10}
+                                stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4,3" />
                             )
                           })()}
-                          {/* Legend */}
-                          <text x={maxW + 62} y={chartH + 18} fontSize={9} fill="#f59e0b">
-                            Spot: {spot?.toFixed(0)}
-                          </text>
-                          {gexData.levels.gamma_flip != null && (
-                            <text x={maxW + 62} y={chartH + 10} fontSize={9} fill="#a78bfa">
-                              Γ Flip: {gexData.levels.gamma_flip.toFixed(0)}
-                            </text>
-                          )}
+
+                          {/* Gamma flip vertical marker */}
+                          {gexData.levels.gamma_flip != null && (() => {
+                            const flipIdx = sorted.findIndex((d) =>
+                              Math.abs(d.strike - gexData.levels.gamma_flip!) < STRIKE_PROXIMITY_THRESHOLD
+                            )
+                            if (flipIdx < 0) return null
+                            const fx = 30 + flipIdx * (barW + barGap) + barW
+                            return (
+                              <line x1={fx} y1={chartPadTop} x2={fx} y2={zeroY + 10}
+                                stroke="#a78bfa" strokeWidth={1.5} strokeDasharray="4,3" />
+                            )
+                          })()}
                         </svg>
+                        {/* Legend */}
+                        <div className="flex flex-wrap justify-center gap-6 mt-1 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1.5">
+                            <span className="inline-block h-3 w-3 rounded-sm bg-green-400" />
+                            Long Gamma (Dealer)
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <span className="inline-block h-3 w-3 rounded-sm bg-red-400" />
+                            Short Gamma (Dealer)
+                          </span>
+                          {spot && (
+                            <span style={{ color: '#f59e0b' }}>── Spot: {spot.toFixed(0)}</span>
+                          )}
+                          {gexData.levels.gamma_flip != null && (
+                            <span style={{ color: '#a78bfa' }}>── Γ Flip: {gexData.levels.gamma_flip.toFixed(0)}</span>
+                          )}
+                        </div>
                       </div>
                     )
                   }
