@@ -2003,19 +2003,20 @@ export default function BuyerEdge() {
                   const spot = gexData.spot_price
 
                   if (gexViewMode === 'bar') {
-                    // ── Vertical bar chart (strikes on X-axis, net_gex up/down from zero) ──
-                    const barW = 22
-                    const barGap = 6
-                    const chartPadTop = 30
-                    const chartPadBot = 40
-                    const maxBarH = 140
-                    const chartW = sorted.length * (barW + barGap) + 60
-                    const chartH = chartPadTop + maxBarH + chartPadBot
-                    const zeroY = chartPadTop + maxBarH
+                    // ── Horizontal bar chart: strikes on Y-axis, bars extend left/right ──
+                    const rowH = 22
+                    const rowGap = 4
+                    const labelW = 60   // width reserved for strike labels on the left
+                    const maxBarW = 260  // max bar half-width (positive or negative)
+                    const padTop = 10
+                    const padBot = 10
+                    const chartW = labelW + maxBarW * 2 + 10
+                    const chartH = padTop + sorted.length * (rowH + rowGap) + padBot
+                    const centerX = labelW + maxBarW  // center zero line
 
                     return (
                       <div className="overflow-x-auto">
-                        {/* Hover status */}
+                        {/* Hover tooltip */}
                         <div
                           className="mb-2 text-xs text-center text-foreground min-h-[1.25rem]"
                           aria-live="polite"
@@ -2037,17 +2038,52 @@ export default function BuyerEdge() {
                         <svg
                           viewBox={`0 0 ${chartW} ${chartH}`}
                           className="w-full mx-auto"
-                          style={{ maxHeight: chartH + 20, minHeight: 200 }}
+                          style={{ maxHeight: chartH + 10, minHeight: 180 }}
                           onMouseLeave={() => setGexLineHover(null)}
                         >
-                          {/* Zero line */}
-                          <line x1={30} y1={zeroY} x2={chartW - 10} y2={zeroY}
-                            stroke="currentColor" strokeOpacity={0.2} strokeWidth={1} />
+                          {/* Center zero line */}
+                          <line
+                            x1={centerX} y1={0}
+                            x2={centerX} y2={chartH}
+                            stroke="currentColor" strokeOpacity={0.2} strokeWidth={1}
+                          />
+                          {/* X-axis scale labels */}
+                          <text x={centerX} y={chartH - 2} textAnchor="middle" fontSize={8} fill="currentColor" opacity={0.5}>0</text>
+                          <text x={labelW + 4} y={chartH - 2} textAnchor="start" fontSize={8} fill="#ef4444" opacity={0.7}>
+                            –{formatOiLakh(maxAbs)}
+                          </text>
+                          <text x={chartW - 4} y={chartH - 2} textAnchor="end" fontSize={8} fill="#22c55e" opacity={0.7}>
+                            +{formatOiLakh(maxAbs)}
+                          </text>
+
+                          {/* Spot horizontal marker */}
+                          {spot && (() => {
+                            const spotIdx = sorted.findIndex((d) => d.strike >= spot)
+                            if (spotIdx < 0) return null
+                            const sy = padTop + spotIdx * (rowH + rowGap) + rowH / 2
+                            return (
+                              <line x1={labelW} y1={sy} x2={chartW - 4} y2={sy}
+                                stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4,3" />
+                            )
+                          })()}
+
+                          {/* Gamma flip horizontal marker */}
+                          {gexData.levels.gamma_flip != null && (() => {
+                            const flipIdx = sorted.findIndex((d) =>
+                              Math.abs(d.strike - gexData.levels.gamma_flip!) < STRIKE_PROXIMITY_THRESHOLD
+                            )
+                            if (flipIdx < 0) return null
+                            const fy = padTop + flipIdx * (rowH + rowGap) + rowH / 2
+                            return (
+                              <line x1={labelW} y1={fy} x2={chartW - 4} y2={fy}
+                                stroke="#a78bfa" strokeWidth={1.5} strokeDasharray="4,3" />
+                            )
+                          })()}
 
                           {sorted.map((d, i) => {
-                            const x = 30 + i * (barW + barGap)
-                            const bH = (Math.abs(d.net_gex) / maxAbs) * maxBarH
-                            const bY = d.net_gex >= 0 ? zeroY - bH : zeroY
+                            const y = padTop + i * (rowH + rowGap)
+                            const bW = (Math.abs(d.net_gex) / maxAbs) * maxBarW
+                            const bX = d.net_gex >= 0 ? centerX : centerX - bW
                             const isAtm = spot && Math.abs(d.strike - spot) < STRIKE_PROXIMITY_THRESHOLD
                             const isFlip = gexData.levels.gamma_flip != null &&
                               Math.abs(d.strike - gexData.levels.gamma_flip) < STRIKE_PROXIMITY_THRESHOLD
@@ -2057,68 +2093,36 @@ export default function BuyerEdge() {
                                 onMouseEnter={() => setGexLineHover({ strike: d.strike, net_gex: d.net_gex })}
                                 style={{ cursor: 'crosshair' }}
                               >
-                                <rect
-                                  x={x} y={bY}
-                                  width={barW} height={Math.max(bH, 1)}
-                                  fill={d.net_gex >= 0 ? '#22c55e' : '#ef4444'}
-                                  fillOpacity={0.75}
-                                />
                                 {/* Strike label */}
                                 <text
-                                  x={x + barW / 2}
-                                  y={chartH - 5}
-                                  textAnchor="middle"
-                                  fontSize={8}
+                                  x={labelW - 6} y={y + rowH / 2 + 4}
+                                  textAnchor="end"
+                                  fontSize={9}
                                   fill={isAtm ? '#f59e0b' : isFlip ? '#a78bfa' : 'currentColor'}
                                   fontWeight={isAtm || isFlip ? 'bold' : 'normal'}
                                 >
                                   {d.strike}
                                 </text>
+                                {/* Bar */}
+                                <rect
+                                  x={bX} y={y + 2}
+                                  width={Math.max(bW, 1)} height={rowH - 4}
+                                  fill={d.net_gex >= 0 ? '#22c55e' : '#ef4444'}
+                                  fillOpacity={0.75}
+                                  rx={2}
+                                />
                               </g>
                             )
                           })}
-
-                          {/* Y-axis labels */}
-                          <text x={28} y={chartPadTop + 4} textAnchor="end" fontSize={9} fill="currentColor" opacity={0.6}>
-                            {formatOiLakh(maxAbs)}
-                          </text>
-                          <text x={28} y={zeroY + 4} textAnchor="end" fontSize={9} fill="currentColor" opacity={0.6}>0</text>
-                          <text x={28} y={zeroY + maxBarH - 2} textAnchor="end" fontSize={9} fill="currentColor" opacity={0.6}>
-                            -{formatOiLakh(maxAbs)}
-                          </text>
-
-                          {/* Spot vertical marker */}
-                          {spot && (() => {
-                            const spotIdx = sorted.findIndex((d) => d.strike >= spot)
-                            if (spotIdx < 0) return null
-                            const sx = 30 + spotIdx * (barW + barGap) - barGap / 2
-                            return (
-                              <line x1={sx} y1={chartPadTop} x2={sx} y2={zeroY + 10}
-                                stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4,3" />
-                            )
-                          })()}
-
-                          {/* Gamma flip vertical marker */}
-                          {gexData.levels.gamma_flip != null && (() => {
-                            const flipIdx = sorted.findIndex((d) =>
-                              Math.abs(d.strike - gexData.levels.gamma_flip!) < STRIKE_PROXIMITY_THRESHOLD
-                            )
-                            if (flipIdx < 0) return null
-                            const fx = 30 + flipIdx * (barW + barGap) + barW
-                            return (
-                              <line x1={fx} y1={chartPadTop} x2={fx} y2={zeroY + 10}
-                                stroke="#a78bfa" strokeWidth={1.5} strokeDasharray="4,3" />
-                            )
-                          })()}
                         </svg>
                         {/* Legend */}
                         <div className="flex flex-wrap justify-center gap-6 mt-1 text-xs text-muted-foreground">
                           <span className="flex items-center gap-1.5">
-                            <span className="inline-block h-3 w-3 rounded-sm bg-green-400" />
+                            <span className="inline-block h-3 w-8 rounded-sm bg-green-400 opacity-75" />
                             Long Gamma (Dealer)
                           </span>
                           <span className="flex items-center gap-1.5">
-                            <span className="inline-block h-3 w-3 rounded-sm bg-red-400" />
+                            <span className="inline-block h-3 w-8 rounded-sm bg-red-400 opacity-75" />
                             Short Gamma (Dealer)
                           </span>
                           {spot && (
@@ -2599,20 +2603,20 @@ export default function BuyerEdge() {
                 1,
               )
               const spot = pcrData.data.underlying_ltp
-              const barGroupW = 18
-              const barPairGap = 2
-              const groupGap = 4
-              const chartPadTop = 30
-              const chartPadBot = 40
-              const maxBarH = 140
-              const chartW = sorted.length * (barGroupW * 2 + barPairGap + groupGap) + 60
-              const chartH = chartPadTop + maxBarH + chartPadBot
-              const zeroY = chartPadTop + maxBarH
+              // ── Butterfly horizontal bar chart: CE bars ← left, PE bars → right ──
+              const rowH = 20
+              const rowGap = 4
+              const strikeColW = 60   // center column width for strike labels
+              const maxBarW = 220     // max bar width on each side
+              const padTop = 8
+              const padBot = 20       // room for axis labels
+              const totalW = maxBarW + strikeColW + maxBarW
+              const centerX = maxBarW + strikeColW / 2
+              const chartH = padTop + sorted.length * (rowH + rowGap) + padBot
 
               return (
                 <div className="overflow-x-auto">
-                  {/* Tooltip — always rendered (empty state when nothing is hovered)
-                      so screen readers can pick up value changes via aria-live */}
+                  {/* Tooltip */}
                   <div
                     className="mb-2 text-xs text-center text-foreground min-h-[1.25rem]"
                     aria-live="polite"
@@ -2628,25 +2632,51 @@ export default function BuyerEdge() {
                         <span className="text-green-400">Put OI Chg: {formatOiLakh(oiChgBarHover.pe_oi_chg)}</span>
                       </>
                     ) : (
-                      <span className="text-muted-foreground">Hover a bar to see strike details</span>
+                      <span className="text-muted-foreground">Hover a row to see strike details</span>
                     )}
                   </div>
                   <svg
-                    viewBox={`0 0 ${chartW} ${chartH}`}
+                    viewBox={`0 0 ${totalW} ${chartH}`}
                     className="w-full mx-auto"
-                    style={{ maxHeight: chartH + 20, minHeight: 200 }}
+                    style={{ maxHeight: chartH + 10, minHeight: 200 }}
                     onMouseLeave={() => setOiChgBarHover(null)}
                   >
-                    {/* Zero line */}
-                    <line x1={30} y1={zeroY} x2={chartW - 10} y2={zeroY}
-                      stroke="currentColor" strokeOpacity={0.2} strokeWidth={1} />
+                    {/* Center column dividers */}
+                    <line x1={maxBarW} y1={0} x2={maxBarW} y2={chartH - padBot}
+                      stroke="currentColor" strokeOpacity={0.15} strokeWidth={1} />
+                    <line x1={maxBarW + strikeColW} y1={0} x2={maxBarW + strikeColW} y2={chartH - padBot}
+                      stroke="currentColor" strokeOpacity={0.15} strokeWidth={1} />
+
+                    {/* X-axis scale labels at bottom */}
+                    <text x={4} y={chartH - 4} textAnchor="start" fontSize={8} fill="#ef4444" opacity={0.7}>
+                      CE ←{formatOiLakh(maxAbsOi)}
+                    </text>
+                    <text x={centerX} y={chartH - 4} textAnchor="middle" fontSize={8} fill="currentColor" opacity={0.5}>
+                      0
+                    </text>
+                    <text x={totalW - 4} y={chartH - 4} textAnchor="end" fontSize={8} fill="#22c55e" opacity={0.7}>
+                      PE {formatOiLakh(maxAbsOi)}→
+                    </text>
+
+                    {/* Spot horizontal marker */}
+                    {spot && (() => {
+                      const spotIdx = sorted.findIndex((s) => s.strike >= spot)
+                      if (spotIdx < 0) return null
+                      const sy = padTop + spotIdx * (rowH + rowGap) + rowH / 2
+                      return (
+                        <line x1={0} y1={sy} x2={totalW} y2={sy}
+                          stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4,3" />
+                      )
+                    })()}
 
                     {sorted.map((s, i) => {
-                      const x = 30 + i * (barGroupW * 2 + barPairGap + groupGap)
-                      const ceH = (Math.abs(s.ce_oi_chg) / maxAbsOi) * maxBarH
-                      const peH = (Math.abs(s.pe_oi_chg) / maxAbsOi) * maxBarH
-                      const ceY = s.ce_oi_chg >= 0 ? zeroY - ceH : zeroY
-                      const peY = s.pe_oi_chg >= 0 ? zeroY - peH : zeroY
+                      const y = padTop + i * (rowH + rowGap)
+                      const ceW = (Math.abs(s.ce_oi_chg) / maxAbsOi) * maxBarW
+                      const peW = (Math.abs(s.pe_oi_chg) / maxAbsOi) * maxBarW
+                      // CE bar: extends LEFT from left edge of strike col
+                      const ceX = maxBarW - ceW
+                      // PE bar: extends RIGHT from right edge of strike col
+                      const peX = maxBarW + strikeColW
                       const isAtm = spot && Math.abs(s.strike - spot) < STRIKE_PROXIMITY_THRESHOLD
                       return (
                         <g
@@ -2654,24 +2684,27 @@ export default function BuyerEdge() {
                           onMouseEnter={() => setOiChgBarHover(s)}
                           style={{ cursor: 'crosshair' }}
                         >
-                          {/* CE bar (red) */}
+                          {/* CE bar (red) — extends left */}
                           <rect
-                            x={x} y={ceY}
-                            width={barGroupW} height={Math.max(ceH, 1)}
-                            fill="#ef4444" fillOpacity={0.75}
+                            x={ceX} y={y + 2}
+                            width={Math.max(ceW, 1)} height={rowH - 4}
+                            fill="#ef4444"
+                            fillOpacity={s.ce_oi_chg >= 0 ? 0.75 : 0.35}
+                            rx={2}
                           />
-                          {/* PE bar (green) */}
+                          {/* PE bar (green) — extends right */}
                           <rect
-                            x={x + barGroupW + barPairGap} y={peY}
-                            width={barGroupW} height={Math.max(peH, 1)}
-                            fill="#22c55e" fillOpacity={0.75}
+                            x={peX} y={y + 2}
+                            width={Math.max(peW, 1)} height={rowH - 4}
+                            fill="#22c55e"
+                            fillOpacity={s.pe_oi_chg >= 0 ? 0.75 : 0.35}
+                            rx={2}
                           />
-                          {/* Strike label */}
+                          {/* Strike label (centered) */}
                           <text
-                            x={x + barGroupW + barPairGap / 2}
-                            y={chartH - 5}
+                            x={centerX} y={y + rowH / 2 + 4}
                             textAnchor="middle"
-                            fontSize={8}
+                            fontSize={9}
                             fill={isAtm ? '#f59e0b' : 'currentColor'}
                             fontWeight={isAtm ? 'bold' : 'normal'}
                           >
@@ -2680,33 +2713,15 @@ export default function BuyerEdge() {
                         </g>
                       )
                     })}
-                    {/* Y-axis labels */}
-                    <text x={28} y={chartPadTop + 4} textAnchor="end" fontSize={9} fill="currentColor" opacity={0.6}>
-                      {formatOiLakh(maxAbsOi)}
-                    </text>
-                    <text x={28} y={zeroY + 4} textAnchor="end" fontSize={9} fill="currentColor" opacity={0.6}>0</text>
-                    <text x={28} y={zeroY + maxBarH - 2} textAnchor="end" fontSize={9} fill="currentColor" opacity={0.6}>
-                      -{formatOiLakh(maxAbsOi)}
-                    </text>
-                    {/* Spot marker */}
-                    {spot && (() => {
-                      const spotIdx = sorted.findIndex((s) => s.strike >= spot)
-                      if (spotIdx < 0) return null
-                      const sx = 30 + spotIdx * (barGroupW * 2 + barPairGap + groupGap) - groupGap / 2
-                      return (
-                        <line x1={sx} y1={chartPadTop} x2={sx} y2={zeroY + 10}
-                          stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4,3" />
-                      )
-                    })()}
                   </svg>
                   {/* Legend */}
                   <div className="flex justify-center gap-6 mt-1 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1.5">
-                      <span className="inline-block h-0.5 w-5 rounded bg-red-400" />
-                      Call OI Change
+                      <span className="inline-block h-3 w-8 rounded-sm bg-red-400 opacity-75" />
+                      Call OI Change (→ right = adding, ← shorter = removing)
                     </span>
                     <span className="flex items-center gap-1.5">
-                      <span className="inline-block h-0.5 w-5 rounded bg-green-400" />
+                      <span className="inline-block h-3 w-8 rounded-sm bg-green-400 opacity-75" />
                       Put OI Change
                     </span>
                   </div>
