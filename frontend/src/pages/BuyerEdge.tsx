@@ -955,7 +955,23 @@ export default function BuyerEdge() {
           borderColor: chartColors.border,
           scaleMargins: { top: 0.05, bottom: 0.05 },
         },
-        timeScale: { borderColor: chartColors.border, timeVisible: true, secondsVisible: false },
+        timeScale: {
+          borderColor: chartColors.border,
+          timeVisible: true,
+          secondsVisible: false,
+          tickMarkFormatter: (time: number) => {
+            const d = new Date(time * 1000)
+            const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000)
+            const hh = ist.getUTCHours().toString().padStart(2, '0')
+            const mm = ist.getUTCMinutes().toString().padStart(2, '0')
+            if (parseInt(pcrDays) > 1) {
+              const dd = ist.getUTCDate().toString().padStart(2, '0')
+              const mo = (ist.getUTCMonth() + 1).toString().padStart(2, '0')
+              return `${dd}/${mo} ${hh}:${mm}`
+            }
+            return `${hh}:${mm}`
+          },
+        },
       })
       // Add series in same order as straddle chart: left-scale series first, right-scale after
       pcrSpotSeriesRef.current = c.addSeries(LineSeries, {
@@ -1006,9 +1022,27 @@ export default function BuyerEdge() {
     pcrSpotSeriesRef.current?.applyOptions({ visible: showPcrSpot })
     pcrSyntheticSeriesRef.current?.applyOptions({ visible: showPcrSynthetic })
 
+    // Update timeScale formatter whenever pcrDays changes (chart is persistent, not rebuilt)
+    pcrChartRef.current?.applyOptions({
+      timeScale: {
+        tickMarkFormatter: (time: number) => {
+          const d = new Date(time * 1000)
+          const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000)
+          const hh = ist.getUTCHours().toString().padStart(2, '0')
+          const mm = ist.getUTCMinutes().toString().padStart(2, '0')
+          if (parseInt(pcrDays) > 1) {
+            const dd = ist.getUTCDate().toString().padStart(2, '0')
+            const mo = (ist.getUTCMonth() + 1).toString().padStart(2, '0')
+            return `${dd}/${mo} ${hh}:${mm}`
+          }
+          return `${hh}:${mm}`
+        },
+      },
+    })
+
     // Only fit content when at least spot data is present (PCR may be null in live-only mode)
     if (sorted.length > 0) pcrChartRef.current?.timeScale().fitContent()
-  }, [pcrData, showPcrOi, showPcrVolume, showPcrSpot, showPcrSynthetic, chartColors])
+  }, [pcrData, pcrDays, showPcrOi, showPcrVolume, showPcrSpot, showPcrSynthetic, chartColors])
 
   // PCR chart resize — set up once on mount (container is always in DOM)
   useEffect(() => {
