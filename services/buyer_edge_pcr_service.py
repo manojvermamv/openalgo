@@ -201,73 +201,74 @@ def get_pcr_chart_data(
             df_underlying["atm_strike"] = atm_per_row
             unique_strikes = sorted(s for s in set(atm_per_row) if s is not None)
 
-        # Step 4: For each unique ATM, fetch CE+PE history (close, oi, volume)
-        # The PCR window is: ATM ± _PCR_STRIKE_WINDOW strikes from available_strikes
+        # Step 4: Collect ALL unique window strikes across every unique ATM first, then
+        # fetch CE+PE history for each strike exactly ONCE.  The previous approach re-fetched
+        # the same strikes for every unique ATM (heavily overlapping windows) — with 5 ATMs
+        # and a window of ±5 strikes that's up to 110 redundant API calls (~38 s of waiting).
+        # Fetching each unique strike once cuts this to at most 2×(2×_PCR_STRIKE_WINDOW+1)
+        # unique calls, which is ~22 calls for the default window.
         strike_history: dict[float, dict] = {}  # strike -> {ce: {ts: {oi, volume, close}}, pe: {...}}
 
+        all_window_strikes: set[float] = set()
         for atm in unique_strikes:
             atm_idx = available_strikes.index(atm) if atm in available_strikes else None
             if atm_idx is None:
                 continue
-
-            window_strikes = available_strikes[
+            window = available_strikes[
                 max(0, atm_idx - _PCR_STRIKE_WINDOW):
                 min(len(available_strikes), atm_idx + _PCR_STRIKE_WINDOW + 1)
             ]
+            all_window_strikes.update(window)
 
-            # We store OI/volume data keyed by (atm, ts)
-            for k_strike in window_strikes:
-                ce_sym = _build_sym(base_symbol, expiry_date.upper(), k_strike, "CE")
-                pe_sym = _build_sym(base_symbol, expiry_date.upper(), k_strike, "PE")
+        for k_strike in sorted(all_window_strikes):
+            ce_sym = _build_sym(base_symbol, expiry_date.upper(), k_strike, "CE")
+            pe_sym = _build_sym(base_symbol, expiry_date.upper(), k_strike, "PE")
 
-                ce_ok, resp_ce, _ = get_history(
-                    symbol=ce_sym,
-                    exchange=options_exchange,
-                    interval=interval,
-                    start_date=start_date_str,
-                    end_date=end_date_str,
-                    api_key=api_key,
-                )
-                pe_ok, resp_pe, _ = get_history(
-                    symbol=pe_sym,
-                    exchange=options_exchange,
-                    interval=interval,
-                    start_date=start_date_str,
-                    end_date=end_date_str,
-                    api_key=api_key,
-                )
+            ce_ok, resp_ce, _ = get_history(
+                symbol=ce_sym,
+                exchange=options_exchange,
+                interval=interval,
+                start_date=start_date_str,
+                end_date=end_date_str,
+                api_key=api_key,
+            )
+            pe_ok, resp_pe, _ = get_history(
+                symbol=pe_sym,
+                exchange=options_exchange,
+                interval=interval,
+                start_date=start_date_str,
+                end_date=end_date_str,
+                api_key=api_key,
+            )
 
-                ce_rows: dict = {}
-                pe_rows: dict = {}
+            ce_rows: dict = {}
+            pe_rows: dict = {}
 
-                if ce_ok:
-                    df_ce = pd.DataFrame(resp_ce.get("data", []))
-                    if not df_ce.empty:
-                        df_ce = _convert_timestamp_to_ist(df_ce)
-                        if df_ce is not None:
-                            for ts, row in df_ce.iterrows():
-                                ce_rows[ts] = {
-                                    "oi": float(row.get("oi", 0) or 0),
-                                    "volume": float(row.get("volume", 0) or 0),
-                                    "close": float(row.get("close", 0) or 0),
-                                }
+            if ce_ok:
+                df_ce = pd.DataFrame(resp_ce.get("data", []))
+                if not df_ce.empty:
+                    df_ce = _convert_timestamp_to_ist(df_ce)
+                    if df_ce is not None:
+                        for ts, row in df_ce.iterrows():
+                            ce_rows[ts] = {
+                                "oi": float(row.get("oi", 0) or 0),
+                                "volume": float(row.get("volume", 0) or 0),
+                                "close": float(row.get("close", 0) or 0),
+                            }
 
-                if pe_ok:
-                    df_pe = pd.DataFrame(resp_pe.get("data", []))
-                    if not df_pe.empty:
-                        df_pe = _convert_timestamp_to_ist(df_pe)
-                        if df_pe is not None:
-                            for ts, row in df_pe.iterrows():
-                                pe_rows[ts] = {
-                                    "oi": float(row.get("oi", 0) or 0),
-                                    "volume": float(row.get("volume", 0) or 0),
-                                    "close": float(row.get("close", 0) or 0),
-                                }
+            if pe_ok:
+                df_pe = pd.DataFrame(resp_pe.get("data", []))
+                if not df_pe.empty:
+                    df_pe = _convert_timestamp_to_ist(df_pe)
+                    if df_pe is not None:
+                        for ts, row in df_pe.iterrows():
+                            pe_rows[ts] = {
+                                "oi": float(row.get("oi", 0) or 0),
+                                "volume": float(row.get("volume", 0) or 0),
+                                "close": float(row.get("close", 0) or 0),
+                            }
 
-                if k_strike not in strike_history:
-                    strike_history[k_strike] = {"ce": {}, "pe": {}}
-                strike_history[k_strike]["ce"].update(ce_rows)
-                strike_history[k_strike]["pe"].update(pe_rows)
+            strike_history[k_strike] = {"ce": ce_rows, "pe": pe_rows}
 
         # Step 5: Build PCR series per candle (only when underlying history is available)
         series = []

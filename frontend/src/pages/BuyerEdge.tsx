@@ -307,7 +307,7 @@ export default function BuyerEdge() {
   // ── PCR Chart state ────────────────────────────────────────────
   const [pcrData, setPcrData] = useState<PcrChartResponse | null>(null)
   const [isPcrLoading, setIsPcrLoading] = useState(false)
-  const [pcrInterval, setPcrInterval] = useState('1d')
+  const [pcrInterval, setPcrInterval] = useState('1m')
   const [pcrDays, setPcrDays] = useState('1')
   const [showPcrOi, setShowPcrOi] = useState(true)
   const [showPcrVolume, setShowPcrVolume] = useState(true)
@@ -927,6 +927,17 @@ export default function BuyerEdge() {
 
   // Build / update PCR lightweight-charts
   useEffect(() => {
+    // Destroy chart whenever the PCR section collapses so it rebuilds cleanly on reopen
+    if (!pcrSectionOpen) {
+      pcrChartRef.current?.remove()
+      pcrChartRef.current = null
+      pcrOiSeriesRef.current = null
+      pcrVolSeriesRef.current = null
+      pcrSpotSeriesRef.current = null
+      pcrSyntheticSeriesRef.current = null
+      return
+    }
+
     if (!pcrChartContainerRef.current) return
     const container = pcrChartContainerRef.current
     if (!pcrChartRef.current) {
@@ -1000,11 +1011,11 @@ export default function BuyerEdge() {
     pcrSyntheticSeriesRef.current?.applyOptions({ visible: showPcrSynthetic })
 
     if (sorted.length) pcrChartRef.current?.timeScale().fitContent()
-  }, [pcrData, showPcrOi, showPcrVolume, showPcrSpot, showPcrSynthetic, chartColors])
+  }, [pcrSectionOpen, pcrData, showPcrOi, showPcrVolume, showPcrSpot, showPcrSynthetic, chartColors])
 
-  // PCR chart resize
+  // PCR chart resize — re-attach whenever section opens so the new container is observed
   useEffect(() => {
-    if (!pcrChartContainerRef.current || !pcrChartRef.current) return
+    if (!pcrSectionOpen || !pcrChartContainerRef.current || !pcrChartRef.current) return
     const ro = new ResizeObserver(() => {
       if (pcrChartContainerRef.current && pcrChartRef.current) {
         pcrChartRef.current.applyOptions({ width: pcrChartContainerRef.current.clientWidth })
@@ -1012,13 +1023,17 @@ export default function BuyerEdge() {
     })
     ro.observe(pcrChartContainerRef.current)
     return () => ro.disconnect()
-  }, [])
+  }, [pcrSectionOpen])
 
   // Destroy PCR chart on unmount
   useEffect(() => {
     return () => {
       pcrChartRef.current?.remove()
       pcrChartRef.current = null
+      pcrOiSeriesRef.current = null
+      pcrVolSeriesRef.current = null
+      pcrSpotSeriesRef.current = null
+      pcrSyntheticSeriesRef.current = null
     }
   }, [])
 
