@@ -2418,16 +2418,26 @@ export default function BuyerEdge() {
 
               return (
                 <div className="overflow-x-auto">
-                  {/* Tooltip */}
-                  {oiChgBarHover && (
-                    <div className="mb-2 text-xs text-center text-foreground">
-                      <span className="font-bold">Strike: {oiChgBarHover.strike}</span>
-                      &nbsp;&nbsp;
-                      <span className="text-red-400">Call OI Chg: {formatOiLakh(oiChgBarHover.ce_oi_chg)}</span>
-                      &nbsp;&nbsp;
-                      <span className="text-green-400">Put OI Chg: {formatOiLakh(oiChgBarHover.pe_oi_chg)}</span>
-                    </div>
-                  )}
+                  {/* Tooltip — always rendered (empty state when nothing is hovered)
+                      so screen readers can pick up value changes via aria-live */}
+                  <div
+                    className="mb-2 text-xs text-center text-foreground min-h-[1.25rem]"
+                    aria-live="polite"
+                    aria-atomic="true"
+                    role="status"
+                  >
+                    {oiChgBarHover ? (
+                      <>
+                        <span className="font-bold">Strike: {oiChgBarHover.strike}</span>
+                        &nbsp;&nbsp;
+                        <span className="text-red-400">Call OI Chg: {formatOiLakh(oiChgBarHover.ce_oi_chg)}</span>
+                        &nbsp;&nbsp;
+                        <span className="text-green-400">Put OI Chg: {formatOiLakh(oiChgBarHover.pe_oi_chg)}</span>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">Hover a bar to see strike details</span>
+                    )}
+                  </div>
                   <svg
                     viewBox={`0 0 ${chartW} ${chartH}`}
                     className="w-full mx-auto"
