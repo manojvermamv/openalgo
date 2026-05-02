@@ -124,6 +124,14 @@ export interface PcrDataPoint {
   declines: number
   neutral: number
   adr: number | null
+  ce_oi: number
+  pe_oi: number
+}
+
+export interface StrikeOiChange {
+  strike: number
+  ce_oi_chg: number
+  pe_oi_chg: number
 }
 
 export interface PcrChartData {
@@ -135,6 +143,8 @@ export interface PcrChartData {
   current_pcr_oi: number | null
   current_pcr_volume: number | null
   current_adr: number | null
+  current_pcr_oi_chg: number | null
+  strike_oi_changes?: StrikeOiChange[]
   series: PcrDataPoint[]
 }
 

@@ -372,6 +372,9 @@ def get_pcr_chart_data(
                     "declines": declines,
                     "neutral": neutral_count,
                     "adr": adr,
+                    # Raw window totals for OI-change chart (frontend computes delta vs first candle)
+                    "ce_oi": round(total_ce_oi),
+                    "pe_oi": round(total_pe_oi),
                 }
             )
 
@@ -470,6 +473,8 @@ def get_pcr_chart_data(
                     "declines": 0,
                     "neutral": 0,
                     "adr": None,
+                    "ce_oi": 0,
+                    "pe_oi": 0,
                 }
             ]
             live_only = True
@@ -489,6 +494,42 @@ def get_pcr_chart_data(
             None,
         )
 
+        # Per-strike OI change snapshot (first candle vs last candle in the window).
+        # Uses strike_history already fetched in Step 4 so no additional API calls.
+        strike_oi_changes: list[dict] = []
+        if strike_history and series:
+            all_hist_ts_set: set = set()
+            for _sh in strike_history.values():
+                all_hist_ts_set.update(_sh["ce"].keys())
+                all_hist_ts_set.update(_sh["pe"].keys())
+            if all_hist_ts_set:
+                sorted_ts = sorted(all_hist_ts_set)
+                first_ts = sorted_ts[0]
+                last_ts = sorted_ts[-1]
+                for k_strike in sorted(strike_history.keys()):
+                    _sh = strike_history[k_strike]
+                    first_ce = _sh["ce"].get(first_ts, {}).get("oi", 0) or 0
+                    first_pe = _sh["pe"].get(first_ts, {}).get("oi", 0) or 0
+                    last_ce = _sh["ce"].get(last_ts, {}).get("oi", 0) or 0
+                    last_pe = _sh["pe"].get(last_ts, {}).get("oi", 0) or 0
+                    strike_oi_changes.append({
+                        "strike": k_strike,
+                        "ce_oi_chg": round(last_ce - first_ce),
+                        "pe_oi_chg": round(last_pe - first_pe),
+                    })
+
+        # PCR based on OI change (delta-PCR): pe_oi_change_total / ce_oi_change_total
+        current_pcr_oi_chg = None
+        if series:
+            first_ce_oi = series[0].get("ce_oi", 0) or 0
+            first_pe_oi = series[0].get("pe_oi", 0) or 0
+            last_ce_oi = series[-1].get("ce_oi", 0) or 0
+            last_pe_oi = series[-1].get("pe_oi", 0) or 0
+            ce_chg = last_ce_oi - first_ce_oi
+            pe_chg = last_pe_oi - first_pe_oi
+            if ce_chg != 0:
+                current_pcr_oi_chg = round(pe_chg / ce_chg, _PCR_DECIMAL_PRECISION)
+
         return (
             True,
             {
@@ -502,6 +543,8 @@ def get_pcr_chart_data(
                     "current_pcr_oi": live_pcr_oi,
                     "current_pcr_volume": live_pcr_volume,
                     "current_adr": current_adr,
+                    "current_pcr_oi_chg": current_pcr_oi_chg,
+                    "strike_oi_changes": strike_oi_changes,
                     "series": series,
                 },
             },

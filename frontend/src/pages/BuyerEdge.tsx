@@ -15,7 +15,7 @@ import {
   type BuyerEdgeResponse,
   type GexLevelsResponse,
   type PcrChartResponse,
-
+  type StrikeOiChange,
   type IvDashboardResponse,
   type SignalType,
 } from '@/api/buyerEdge'
@@ -48,6 +48,7 @@ import { showToast } from '@/utils/toast'
 const AUTO_REFRESH_INTERVAL = 30000
 const STRADDLE_CHART_HEIGHT = 400
 const PCR_CHART_HEIGHT = 300
+const OI_CHANGE_CHART_HEIGHT = 300
 // Threshold (in price points) for proximity annotations in GEX/IVx charts
 const STRIKE_PROXIMITY_THRESHOLD = 50
 // GEX bar chart layout
@@ -87,6 +88,15 @@ function getAdrMeta(adr: number): { label: string; color: string } {
   if (adr >= 0.9) return { label: 'Sideways',    color: '#fbbf24' }
   if (adr >= 0.7) return { label: 'Bearish',     color: '#fb923c' }
   return                  { label: 'Strong Bear', color: '#ef4444' }
+}
+
+/** Format an OI value as Indian Lakh (1L = 100,000) or Crore. */
+function formatOiLakh(v: number): string {
+  const abs = Math.abs(v)
+  const sign = v < 0 ? '-' : ''
+  if (abs >= 1e7) return `${sign}${(abs / 1e7).toFixed(2)}Cr`
+  if (abs >= 1e5) return `${sign}${(abs / 1e5).toFixed(2)}L`
+  return `${sign}${abs.toLocaleString('en-IN')}`
 }
 
 /**
@@ -333,6 +343,17 @@ export default function BuyerEdge() {
   const pcrAdrSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
   const pcrTooltipRef = useRef<HTMLDivElement | null>(null)
   const pcrDataMapRef = useRef<Map<number, import('../api/buyerEdge').PcrDataPoint>>(new Map())
+
+  // ── OI Change Chart state ──────────────────────────────────────
+  const [oiChgSectionOpen, setOiChgSectionOpen] = useState(true)
+  const [oiChgViewMode, setOiChgViewMode] = useState<'line' | 'bar'>('line')
+  const [oiChgBarHover, setOiChgBarHover] = useState<StrikeOiChange | null>(null)
+  const oiChgChartContainerRef = useRef<HTMLDivElement>(null)
+  const oiChgChartRef = useRef<IChartApi | null>(null)
+  const oiChgCeSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
+  const oiChgPeSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
+  const oiChgTooltipRef = useRef<HTMLDivElement | null>(null)
+  const oiChgDataMapRef = useRef<Map<number, { ce_oi_chg: number; pe_oi_chg: number }>>(new Map())
 
   // ── IVR Dashboard state ────────────────────────────────────────
   const [ivData, setIvData] = useState<IvDashboardResponse | null>(null)
@@ -1178,6 +1199,159 @@ export default function BuyerEdge() {
       pcrVolSeriesRef.current = null
       pcrSpotSeriesRef.current = null
       pcrSyntheticSeriesRef.current = null
+    }
+  }, [])
+
+  // ── OI Change line chart ───────────────────────────────────────
+  useEffect(() => {
+    if (oiChgViewMode !== 'line') return
+    const series = pcrData?.data?.series ?? []
+    if (!series.length || !oiChgChartContainerRef.current) return
+
+    const container = oiChgChartContainerRef.current
+    const cl = chartColorsRef.current
+
+    if (!oiChgChartRef.current) {
+      const c = createChart(container, {
+        layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: cl.text },
+        grid: { vertLines: { color: cl.grid }, horzLines: { color: cl.grid } },
+        crosshair: { mode: CrosshairMode.Normal },
+        rightPriceScale: { borderColor: cl.border },
+        timeScale: { borderColor: cl.border, timeVisible: true, secondsVisible: false,
+          tickMarkFormatter: (t: number) => {
+            const d = new Date(t * 1000)
+            const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000)
+            const hh = ist.getUTCHours().toString().padStart(2, '0')
+            const mm = ist.getUTCMinutes().toString().padStart(2, '0')
+            if (parseInt(pcrDays) > 1) {
+              const dd = ist.getUTCDate().toString().padStart(2, '0')
+              const mo = (ist.getUTCMonth() + 1).toString().padStart(2, '0')
+              return `${dd}/${mo} ${hh}:${mm}`
+            }
+            return `${hh}:${mm}`
+          },
+        },
+        width: container.offsetWidth || container.clientWidth,
+        height: OI_CHANGE_CHART_HEIGHT,
+      })
+
+      oiChgCeSeriesRef.current = c.addSeries(LineSeries, {
+        color: '#ef4444', lineWidth: 2, title: 'Call OI Chg',
+        priceScaleId: 'right', lastValueVisible: true, priceLineVisible: false,
+      })
+      oiChgPeSeriesRef.current = c.addSeries(LineSeries, {
+        color: '#22c55e', lineWidth: 2, title: 'Put OI Chg',
+        priceScaleId: 'right', lastValueVisible: true, priceLineVisible: false,
+      })
+
+      // Crosshair tooltip
+      if (!oiChgTooltipRef.current) {
+        const tt = document.createElement('div')
+        tt.style.cssText = [
+          'position:absolute', 'display:none', 'z-index:100', 'pointer-events:none',
+          'padding:8px 10px', 'border-radius:6px', 'font-size:12px', 'line-height:1.6',
+          'min-width:180px', 'white-space:nowrap',
+        ].join(';')
+        oiChgTooltipRef.current = tt
+        container.appendChild(tt)
+      }
+
+      c.subscribeCrosshairMove((param) => {
+        const tt = oiChgTooltipRef.current
+        if (!tt || !container) return
+        if (!param.time || !param.point ||
+          param.point.x < 0 || param.point.y < 0 ||
+          param.point.x > container.offsetWidth || param.point.y > container.offsetHeight) {
+          tt.style.display = 'none'; return
+        }
+        const pt = oiChgDataMapRef.current.get(param.time as number)
+        if (!pt) { tt.style.display = 'none'; return }
+        const { date, time: timeStr } = formatIST(param.time as number)
+        tt.style.display = 'block'
+        tt.style.background = cl.tooltipBg
+        tt.style.border = `1px solid ${cl.tooltipBorder}`
+        tt.style.color = cl.tooltipText
+        tt.innerHTML = `
+          <div style="display:flex;justify-content:space-between;gap:16px">
+            <span style="color:#ef4444">Call OI Chg</span>
+            <span style="color:#ef4444">${formatOiLakh(pt.ce_oi_chg)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:16px">
+            <span style="color:#22c55e">Put OI Chg</span>
+            <span style="color:#22c55e">${formatOiLakh(pt.pe_oi_chg)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:16px;margin-top:4px;border-top:1px solid ${cl.tooltipBorder};padding-top:4px">
+            <span style="color:${cl.tooltipMuted}">${date}</span>
+            <span style="color:${cl.tooltipMuted}">${timeStr}</span>
+          </div>
+        `
+        const tw = tt.offsetWidth; const th = tt.offsetHeight
+        const margin = 16; let left = param.point.x + margin
+        if (left + tw > container.offsetWidth) left = param.point.x - tw - margin
+        let top = param.point.y - th / 2
+        if (top < 0) top = 0
+        if (top + th > container.offsetHeight) top = container.offsetHeight - th
+        tt.style.left = `${left}px`; tt.style.top = `${top}px`
+      })
+
+      oiChgChartRef.current = c
+    }
+
+    // Build OI change series anchored to first point
+    const sorted = [...series].sort((a, b) => a.time - b.time)
+    const baseCe = sorted[0]?.ce_oi ?? 0
+    const basePe = sorted[0]?.pe_oi ?? 0
+    const dataMap = new Map<number, { ce_oi_chg: number; pe_oi_chg: number }>()
+    const ceData: { time: import('lightweight-charts').UTCTimestamp; value: number }[] = []
+    const peData: { time: import('lightweight-charts').UTCTimestamp; value: number }[] = []
+    for (const p of sorted) {
+      const ceChg = (p.ce_oi ?? 0) - baseCe
+      const peChg = (p.pe_oi ?? 0) - basePe
+      dataMap.set(p.time, { ce_oi_chg: ceChg, pe_oi_chg: peChg })
+      ceData.push({ time: p.time as import('lightweight-charts').UTCTimestamp, value: ceChg })
+      peData.push({ time: p.time as import('lightweight-charts').UTCTimestamp, value: peChg })
+    }
+    oiChgDataMapRef.current = dataMap
+    oiChgCeSeriesRef.current?.setData(ceData)
+    oiChgPeSeriesRef.current?.setData(peData)
+    oiChgChartRef.current?.applyOptions({
+      timeScale: {
+        tickMarkFormatter: (t: number) => {
+          const d = new Date(t * 1000)
+          const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000)
+          const hh = ist.getUTCHours().toString().padStart(2, '0')
+          const mm = ist.getUTCMinutes().toString().padStart(2, '0')
+          if (parseInt(pcrDays) > 1) {
+            const dd = ist.getUTCDate().toString().padStart(2, '0')
+            const mo = (ist.getUTCMonth() + 1).toString().padStart(2, '0')
+            return `${dd}/${mo} ${hh}:${mm}`
+          }
+          return `${hh}:${mm}`
+        },
+      },
+    })
+    if (sorted.length > 0) oiChgChartRef.current?.timeScale().fitContent()
+  }, [pcrData, oiChgViewMode, pcrDays, chartColors])
+
+  // OI Change chart resize
+  useEffect(() => {
+    if (!oiChgChartContainerRef.current) return
+    const ro = new ResizeObserver(() => {
+      if (oiChgChartContainerRef.current && oiChgChartRef.current) {
+        oiChgChartRef.current.applyOptions({ width: oiChgChartContainerRef.current.offsetWidth || oiChgChartContainerRef.current.clientWidth })
+      }
+    })
+    ro.observe(oiChgChartContainerRef.current)
+    return () => ro.disconnect()
+  }, [])
+
+  // Destroy OI Change chart on unmount
+  useEffect(() => {
+    return () => {
+      oiChgChartRef.current?.remove()
+      oiChgChartRef.current = null
+      oiChgCeSeriesRef.current = null
+      oiChgPeSeriesRef.current = null
     }
   }, [])
 
@@ -2075,6 +2249,283 @@ export default function BuyerEdge() {
             </p>
           </CardContent>
       </Card>
+
+      {/* ================================================================
+          Section B.5 — Market Breadth
+          ================================================================ */}
+      {pcrData?.data && (() => {
+        const lastPt = [...(pcrData.data.series ?? [])].reverse().find(
+          (p) => p.advances !== undefined
+        )
+        const adv = lastPt?.advances ?? 0
+        const dec = lastPt?.declines ?? 0
+        const neu = lastPt?.neutral ?? 0
+        const total = adv + dec + neu || 1
+        const adr = pcrData.data.current_adr
+        const adrMeta = adr != null ? getAdrMeta(adr) : null
+        return (
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-4">
+              <div className="flex items-center gap-2">
+                <span className="inline-block w-1 h-5 rounded-full bg-pink-500 mr-1" />
+                <CardTitle className="text-sm tracking-widest uppercase text-muted-foreground font-semibold">Market Breadth</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0 px-4 pb-4 space-y-2">
+              {/* Advancing */}
+              <div className="flex items-center gap-3">
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shrink-0" />
+                <span className="text-sm text-muted-foreground w-20 shrink-0">Advancing</span>
+                <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                    style={{ width: `${(adv / total) * 100}%` }}
+                  />
+                </div>
+                <span className="text-sm font-semibold text-emerald-500 w-8 text-right">{adv}</span>
+              </div>
+              {/* Declining */}
+              <div className="flex items-center gap-3">
+                <span className="h-2.5 w-2.5 rounded-full bg-red-500 shrink-0" />
+                <span className="text-sm text-muted-foreground w-20 shrink-0">Declining</span>
+                <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-red-500 transition-all duration-500"
+                    style={{ width: `${(dec / total) * 100}%` }}
+                  />
+                </div>
+                <span className="text-sm font-semibold text-red-500 w-8 text-right">{dec}</span>
+              </div>
+              {/* Neutral */}
+              <div className="flex items-center gap-3">
+                <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground shrink-0" />
+                <span className="text-sm text-muted-foreground w-20 shrink-0">Neutral</span>
+                <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-muted-foreground transition-all duration-500"
+                    style={{ width: `${(neu / total) * 100}%` }}
+                  />
+                </div>
+                <span className="text-sm font-semibold text-muted-foreground w-8 text-right">{neu}</span>
+              </div>
+              {/* ADR label */}
+              <div className="pt-1 text-xs text-muted-foreground">
+                ADR:{' '}
+                <strong style={{ color: adrMeta?.color ?? 'currentColor' }}>
+                  {adr != null ? adr.toFixed(2) : '—'}
+                </strong>
+                {adrMeta && (
+                  <span className="ml-1.5" style={{ color: adrMeta.color }}>
+                    • {adrMeta.label}
+                  </span>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })()}
+
+      {/* ================================================================
+          Section B.6 — OI Change Chart (Line / Bar)
+          ================================================================ */}
+      {pcrData?.data && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="inline-block w-1 h-5 rounded-full bg-amber-400 mr-1" />
+                <CardTitle
+                  className="text-base cursor-pointer"
+                  onClick={() => setOiChgSectionOpen((v) => !v)}
+                >
+                  Total Change in OI — Intraday
+                </CardTitle>
+                {pcrData.data.current_pcr_oi_chg != null && (
+                  <Badge
+                    variant="outline"
+                    className="text-xs font-bold"
+                    style={{
+                      color: (pcrData.data.current_pcr_oi_chg ?? 0) >= 0 ? '#22c55e' : '#ef4444',
+                      borderColor: (pcrData.data.current_pcr_oi_chg ?? 0) >= 0 ? '#22c55e' : '#ef4444',
+                    }}
+                  >
+                    PCR (OI CHG):&nbsp;
+                    {pcrData.data.current_pcr_oi_chg >= 0 ? '+' : ''}
+                    {pcrData.data.current_pcr_oi_chg.toFixed(2)}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {/* Line / Bar toggle */}
+                <div className="flex rounded-md overflow-hidden border border-border text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setOiChgViewMode('line')}
+                    className={`px-3 py-1 transition-colors ${oiChgViewMode === 'line' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                  >
+                    Line
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOiChgViewMode('bar')}
+                    className={`px-3 py-1 transition-colors border-l border-border ${oiChgViewMode === 'bar' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                  >
+                    Bar
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOiChgSectionOpen((v) => !v)}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  {oiChgSectionOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0" style={{ display: oiChgSectionOpen ? undefined : 'none' }}>
+            {/* ── LINE MODE ─────────────────────────────────── */}
+            <div
+              ref={oiChgChartContainerRef}
+              className="relative w-full"
+              style={{ display: oiChgViewMode === 'line' ? 'block' : 'none', height: OI_CHANGE_CHART_HEIGHT }}
+            />
+            {/* ── BAR MODE ─────────────────────────────────── */}
+            {oiChgViewMode === 'bar' && (() => {
+              const strikes = pcrData.data.strike_oi_changes ?? []
+              if (!strikes.length) {
+                return (
+                  <p className="text-center text-sm text-muted-foreground py-8">
+                    No strike OI data available
+                  </p>
+                )
+              }
+              const sorted = [...strikes].sort((a, b) => a.strike - b.strike)
+              const maxAbsOi = Math.max(
+                ...sorted.map((s) => Math.max(Math.abs(s.ce_oi_chg), Math.abs(s.pe_oi_chg))),
+                1,
+              )
+              const spot = pcrData.data.underlying_ltp
+              const barGroupW = 18
+              const barPairGap = 2
+              const groupGap = 4
+              const chartPadTop = 30
+              const chartPadBot = 40
+              const maxBarH = 140
+              const chartW = sorted.length * (barGroupW * 2 + barPairGap + groupGap) + 60
+              const chartH = chartPadTop + maxBarH + chartPadBot
+              const zeroY = chartPadTop + maxBarH
+
+              return (
+                <div className="overflow-x-auto">
+                  {/* Tooltip */}
+                  {oiChgBarHover && (
+                    <div className="mb-2 text-xs text-center text-foreground">
+                      <span className="font-bold">Strike: {oiChgBarHover.strike}</span>
+                      &nbsp;&nbsp;
+                      <span className="text-red-400">Call OI Chg: {formatOiLakh(oiChgBarHover.ce_oi_chg)}</span>
+                      &nbsp;&nbsp;
+                      <span className="text-green-400">Put OI Chg: {formatOiLakh(oiChgBarHover.pe_oi_chg)}</span>
+                    </div>
+                  )}
+                  <svg
+                    viewBox={`0 0 ${chartW} ${chartH}`}
+                    className="w-full mx-auto"
+                    style={{ maxHeight: chartH + 20, minHeight: 200 }}
+                    onMouseLeave={() => setOiChgBarHover(null)}
+                  >
+                    {/* Zero line */}
+                    <line x1={30} y1={zeroY} x2={chartW - 10} y2={zeroY}
+                      stroke="currentColor" strokeOpacity={0.2} strokeWidth={1} />
+
+                    {sorted.map((s, i) => {
+                      const x = 30 + i * (barGroupW * 2 + barPairGap + groupGap)
+                      const ceH = (Math.abs(s.ce_oi_chg) / maxAbsOi) * maxBarH
+                      const peH = (Math.abs(s.pe_oi_chg) / maxAbsOi) * maxBarH
+                      const ceY = s.ce_oi_chg >= 0 ? zeroY - ceH : zeroY
+                      const peY = s.pe_oi_chg >= 0 ? zeroY - peH : zeroY
+                      const isAtm = spot && Math.abs(s.strike - spot) < STRIKE_PROXIMITY_THRESHOLD
+                      return (
+                        <g
+                          key={s.strike}
+                          onMouseEnter={() => setOiChgBarHover(s)}
+                          style={{ cursor: 'crosshair' }}
+                        >
+                          {/* CE bar (red) */}
+                          <rect
+                            x={x} y={ceY}
+                            width={barGroupW} height={Math.max(ceH, 1)}
+                            fill="#ef4444" fillOpacity={0.75}
+                          />
+                          {/* PE bar (green) */}
+                          <rect
+                            x={x + barGroupW + barPairGap} y={peY}
+                            width={barGroupW} height={Math.max(peH, 1)}
+                            fill="#22c55e" fillOpacity={0.75}
+                          />
+                          {/* Strike label */}
+                          <text
+                            x={x + barGroupW + barPairGap / 2}
+                            y={chartH - 5}
+                            textAnchor="middle"
+                            fontSize={8}
+                            fill={isAtm ? '#f59e0b' : 'currentColor'}
+                            fontWeight={isAtm ? 'bold' : 'normal'}
+                          >
+                            {s.strike}
+                          </text>
+                        </g>
+                      )
+                    })}
+                    {/* Y-axis labels */}
+                    <text x={28} y={chartPadTop + 4} textAnchor="end" fontSize={9} fill="currentColor" opacity={0.6}>
+                      {formatOiLakh(maxAbsOi)}
+                    </text>
+                    <text x={28} y={zeroY + 4} textAnchor="end" fontSize={9} fill="currentColor" opacity={0.6}>0</text>
+                    <text x={28} y={zeroY + maxBarH - 2} textAnchor="end" fontSize={9} fill="currentColor" opacity={0.6}>
+                      -{formatOiLakh(maxAbsOi)}
+                    </text>
+                    {/* Spot marker */}
+                    {spot && (() => {
+                      const spotIdx = sorted.findIndex((s) => s.strike >= spot)
+                      if (spotIdx < 0) return null
+                      const sx = 30 + spotIdx * (barGroupW * 2 + barPairGap + groupGap) - groupGap / 2
+                      return (
+                        <line x1={sx} y1={chartPadTop} x2={sx} y2={zeroY + 10}
+                          stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4,3" />
+                      )
+                    })()}
+                  </svg>
+                  {/* Legend */}
+                  <div className="flex justify-center gap-6 mt-1 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block h-0.5 w-5 rounded bg-red-400" />
+                      Call OI Change
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block h-0.5 w-5 rounded bg-green-400" />
+                      Put OI Change
+                    </span>
+                  </div>
+                </div>
+              )
+            })()}
+            {/* Line chart legend */}
+            {oiChgViewMode === 'line' && (
+              <div className="flex justify-center gap-6 mt-2 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block h-0.5 w-5 rounded bg-red-400" />
+                  Call OI Change
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block h-0.5 w-5 rounded bg-green-400" />
+                  Put OI Change
+                </span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* ================================================================
           Section C — IVR & Skew Dashboard
