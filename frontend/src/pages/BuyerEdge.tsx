@@ -322,6 +322,8 @@ export default function BuyerEdge() {
   const [gexMode, setGexMode] = useState<'selected' | 'cumulative'>('selected')
   const [gexExpiries, setGexExpiries] = useState<string[]>([])
   const [gexSectionOpen, setGexSectionOpen] = useState(true)
+  const [gexViewMode, setGexViewMode] = useState<'line' | 'bar'>('line')
+  const [gexLineHover, setGexLineHover] = useState<{ strike: number; net_gex: number } | null>(null)
 
   // ── PCR Chart state ────────────────────────────────────────────
   const [pcrData, setPcrData] = useState<PcrChartResponse | null>(null)
@@ -1898,7 +1900,7 @@ export default function BuyerEdge() {
               )}
             </div>
             <div className="flex items-center gap-2">
-              {/* Mode toggle */}
+              {/* Selected / Cumulative mode toggle */}
               <div className="flex rounded-md overflow-hidden border border-border text-xs">
                 <button
                   type="button"
@@ -1913,6 +1915,23 @@ export default function BuyerEdge() {
                   className={`px-2 py-1 ${gexMode === 'cumulative' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
                 >
                   ∑ Cumulative
+                </button>
+              </div>
+              {/* Line / Bar view toggle */}
+              <div className="flex rounded-md overflow-hidden border border-border text-xs">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setGexViewMode('line') }}
+                  className={`px-3 py-1 transition-colors ${gexViewMode === 'line' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                >
+                  Line
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setGexViewMode('bar') }}
+                  className={`px-3 py-1 transition-colors border-l border-border ${gexViewMode === 'bar' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                >
+                  Bar
                 </button>
               </div>
               {gexSectionOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -1981,84 +2000,251 @@ export default function BuyerEdge() {
                   />
                 </div>
 
-                {/* GEX bar chart (inline SVG-based for zero-dependency approach) */}
+                {/* GEX chart — Line or Bar mode */}
                 {gexData.chain.length > 0 && (() => {
                   const sorted = [...gexData.chain].sort((a, b) => a.strike - b.strike)
                   const maxAbs = Math.max(...sorted.map((d) => Math.abs(d.net_gex)), 1)
-                  const barHeight = GEX_BAR_HEIGHT
-                  const barGap = GEX_BAR_GAP
-                  const chartH = sorted.length * (barHeight + barGap)
-                  const maxW = GEX_CHART_MAX_WIDTH
                   const spot = gexData.spot_price
+
+                  if (gexViewMode === 'bar') {
+                    // ── Horizontal bar chart (original view) ─────────────────────────
+                    const barHeight = GEX_BAR_HEIGHT
+                    const barGap = GEX_BAR_GAP
+                    const chartH = sorted.length * (barHeight + barGap)
+                    const maxW = GEX_CHART_MAX_WIDTH
+
+                    return (
+                      <div className="overflow-x-auto">
+                        <div className="text-xs text-muted-foreground mb-1 text-center">
+                          Net GEX per Strike (green=long gamma dealer, red=short gamma)
+                        </div>
+                        <svg
+                          viewBox={`0 0 ${maxW * 2 + 120} ${chartH + 20}`}
+                          className="w-full max-w-2xl mx-auto"
+                          style={{ minHeight: Math.min(chartH + 20, STRADDLE_CHART_HEIGHT) }}
+                        >
+                          {/* Center line */}
+                          <line
+                            x1={maxW + 60} y1={0}
+                            x2={maxW + 60} y2={chartH + 20}
+                            stroke="currentColor" strokeOpacity={0.2} strokeWidth={1}
+                          />
+                          {sorted.map((d, i) => {
+                            const y = i * (barHeight + barGap) + 10
+                            const barW = (Math.abs(d.net_gex) / maxAbs) * maxW
+                            const isPos = d.net_gex >= 0
+                            const barX = isPos ? maxW + 60 : maxW + 60 - barW
+                            const isAtm = spot && Math.abs(d.strike - spot) < STRIKE_PROXIMITY_THRESHOLD
+                            const isFlip = gexData.levels.gamma_flip != null &&
+                              Math.abs(d.strike - gexData.levels.gamma_flip) < STRIKE_PROXIMITY_THRESHOLD
+                            return (
+                              <g key={d.strike}>
+                                <rect
+                                  x={barX} y={y}
+                                  width={barW} height={barHeight}
+                                  fill={isPos ? '#22c55e' : '#ef4444'}
+                                  fillOpacity={0.7}
+                                />
+                                <text
+                                  x={55} y={y + barHeight / 2 + 4}
+                                  textAnchor="end"
+                                  fontSize={10}
+                                  fill={isAtm ? '#f59e0b' : isFlip ? '#a78bfa' : 'currentColor'}
+                                  fontWeight={isAtm || isFlip ? 'bold' : 'normal'}
+                                >
+                                  {d.strike}
+                                </text>
+                              </g>
+                            )
+                          })}
+                          {/* Spot line */}
+                          {spot && (() => {
+                            const spotIdx = sorted.findIndex((d) => d.strike >= spot)
+                            const approxY = spotIdx >= 0
+                              ? spotIdx * (barHeight + barGap) + 10
+                              : chartH
+                            return (
+                              <line
+                                x1={0} y1={approxY}
+                                x2={maxW * 2 + 120} y2={approxY}
+                                stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4,3"
+                              />
+                            )
+                          })()}
+                          {/* Legend */}
+                          <text x={maxW + 62} y={chartH + 18} fontSize={9} fill="#f59e0b">
+                            Spot: {spot?.toFixed(0)}
+                          </text>
+                          {gexData.levels.gamma_flip != null && (
+                            <text x={maxW + 62} y={chartH + 10} fontSize={9} fill="#a78bfa">
+                              Γ Flip: {gexData.levels.gamma_flip.toFixed(0)}
+                            </text>
+                          )}
+                        </svg>
+                      </div>
+                    )
+                  }
+
+                  // ── Line chart: strike on X-axis, net_gex on Y-axis ───────────────
+                  const perStrikeW = 30
+                  const padLeft = 65
+                  const padRight = 20
+                  const padTop = 20
+                  const padBot = 45
+                  const halfH = 110
+                  const svgW = padLeft + sorted.length * perStrikeW + padRight
+                  const svgH = padTop + halfH * 2 + padBot
+                  const zeroY = padTop + halfH
+
+                  const xs = sorted.map((_, i) => padLeft + i * perStrikeW + perStrikeW / 2)
+                  const ys = sorted.map((d) => zeroY - (d.net_gex / maxAbs) * halfH)
+
+                  const polylinePts = xs.map((x, i) => `${x},${ys[i]}`).join(' ')
+
+                  // Positive fill: area above the zero line
+                  const posPolyPts = [
+                    `${xs[0]},${zeroY}`,
+                    ...xs.map((x, i) => `${x},${Math.min(ys[i], zeroY)}`),
+                    `${xs[xs.length - 1]},${zeroY}`,
+                  ].join(' ')
+
+                  // Negative fill: area below the zero line
+                  const negPolyPts = [
+                    `${xs[0]},${zeroY}`,
+                    ...xs.map((x, i) => `${x},${Math.max(ys[i], zeroY)}`),
+                    `${xs[xs.length - 1]},${zeroY}`,
+                  ].join(' ')
 
                   return (
                     <div className="overflow-x-auto">
-                      <div className="text-xs text-muted-foreground mb-1 text-center">
-                        Net GEX per Strike (green=long gamma dealer, red=short gamma)
+                      {/* Hover status */}
+                      <div
+                        className="mb-2 text-xs text-center text-foreground min-h-[1.25rem]"
+                        aria-live="polite"
+                        aria-atomic="true"
+                        role="status"
+                      >
+                        {gexLineHover ? (
+                          <>
+                            <span className="font-bold">Strike: {gexLineHover.strike}</span>
+                            &nbsp;&nbsp;
+                            <span style={{ color: gexLineHover.net_gex >= 0 ? '#22c55e' : '#ef4444' }}>
+                              Net GEX: {formatOiLakh(gexLineHover.net_gex)}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">Hover a strike to see details</span>
+                        )}
                       </div>
                       <svg
-                        viewBox={`0 0 ${maxW * 2 + 120} ${chartH + 20}`}
-                        className="w-full max-w-2xl mx-auto"
-                        style={{ minHeight: Math.min(chartH + 20, STRADDLE_CHART_HEIGHT) }}
+                        viewBox={`0 0 ${svgW} ${svgH}`}
+                        className="w-full mx-auto"
+                        style={{ maxHeight: svgH + 20, minHeight: 200 }}
+                        onMouseLeave={() => setGexLineHover(null)}
                       >
-                        {/* Center line */}
+                        {/* Positive area fill (green) */}
+                        <polygon points={posPolyPts} fill="#22c55e" fillOpacity={0.15} />
+                        {/* Negative area fill (red) */}
+                        <polygon points={negPolyPts} fill="#ef4444" fillOpacity={0.15} />
+                        {/* Zero line */}
                         <line
-                          x1={maxW + 60} y1={0}
-                          x2={maxW + 60} y2={chartH + 20}
-                          stroke="currentColor" strokeOpacity={0.2} strokeWidth={1}
+                          x1={padLeft} y1={zeroY} x2={svgW - padRight} y2={zeroY}
+                          stroke="currentColor" strokeOpacity={0.25} strokeWidth={1}
                         />
-                        {sorted.map((d, i) => {
-                          const y = i * (barHeight + barGap) + 10
-                          const barW = (Math.abs(d.net_gex) / maxAbs) * maxW
-                          const isPos = d.net_gex >= 0
-                          const barX = isPos ? maxW + 60 : maxW + 60 - barW
-                          const isAtm = spot && Math.abs(d.strike - spot) < STRIKE_PROXIMITY_THRESHOLD
-                          const isFlip = gexData.levels.gamma_flip != null &&
-                            Math.abs(d.strike - gexData.levels.gamma_flip) < STRIKE_PROXIMITY_THRESHOLD
-                          return (
-                            <g key={d.strike}>
-                              <rect
-                                x={barX} y={y}
-                                width={barW} height={barHeight}
-                                fill={isPos ? '#22c55e' : '#ef4444'}
-                                fillOpacity={0.7}
-                              />
-                              <text
-                                x={55} y={y + barHeight / 2 + 4}
-                                textAnchor="end"
-                                fontSize={10}
-                                fill={isAtm ? '#f59e0b' : isFlip ? '#a78bfa' : 'currentColor'}
-                                fontWeight={isAtm || isFlip ? 'bold' : 'normal'}
-                              >
-                                {d.strike}
-                              </text>
-                            </g>
-                          )
-                        })}
-                        {/* Spot line */}
+                        {/* Net GEX polyline */}
+                        <polyline
+                          points={polylinePts}
+                          fill="none"
+                          stroke="#10b981"
+                          strokeWidth={2}
+                          strokeLinejoin="round"
+                        />
+                        {/* Per-strike dots coloured by sign */}
+                        {sorted.map((d, i) => (
+                          <circle
+                            key={d.strike}
+                            cx={xs[i]} cy={ys[i]} r={3}
+                            fill={d.net_gex >= 0 ? '#22c55e' : '#ef4444'}
+                          />
+                        ))}
+                        {/* Spot vertical marker */}
                         {spot && (() => {
-                          const spotIdx = sorted.findIndex((d) => d.strike >= spot)
-                          const approxY = spotIdx >= 0
-                            ? spotIdx * (barHeight + barGap) + 10
-                            : chartH
+                          const spotIdx = sorted.findIndex((s) => s.strike >= spot)
+                          if (spotIdx < 0) return null
                           return (
                             <line
-                              x1={0} y1={approxY}
-                              x2={maxW * 2 + 120} y2={approxY}
+                              x1={xs[spotIdx]} y1={padTop} x2={xs[spotIdx]} y2={zeroY + halfH}
                               stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4,3"
                             />
                           )
                         })()}
-                        {/* Legend */}
-                        <text x={maxW + 62} y={chartH + 18} fontSize={9} fill="#f59e0b">
-                          Spot: {spot?.toFixed(0)}
+                        {/* Gamma flip vertical marker */}
+                        {gexData.levels.gamma_flip != null && (() => {
+                          const flipIdx = sorted.findIndex((d) =>
+                            Math.abs(d.strike - gexData.levels.gamma_flip!) < STRIKE_PROXIMITY_THRESHOLD
+                          )
+                          if (flipIdx < 0) return null
+                          return (
+                            <line
+                              x1={xs[flipIdx]} y1={padTop} x2={xs[flipIdx]} y2={zeroY + halfH}
+                              stroke="#a78bfa" strokeWidth={1.5} strokeDasharray="4,3"
+                            />
+                          )
+                        })()}
+                        {/* Y-axis labels */}
+                        <text x={padLeft - 4} y={padTop + 4} textAnchor="end" fontSize={9} fill="currentColor" opacity={0.6}>
+                          {formatOiLakh(maxAbs)}
                         </text>
-                        {gexData.levels.gamma_flip != null && (
-                          <text x={maxW + 62} y={chartH + 10} fontSize={9} fill="#a78bfa">
-                            Γ Flip: {gexData.levels.gamma_flip.toFixed(0)}
-                          </text>
-                        )}
+                        <text x={padLeft - 4} y={zeroY + 4} textAnchor="end" fontSize={9} fill="currentColor" opacity={0.6}>0</text>
+                        <text x={padLeft - 4} y={padTop + halfH * 2 - 2} textAnchor="end" fontSize={9} fill="currentColor" opacity={0.6}>
+                          -{formatOiLakh(maxAbs)}
+                        </text>
+                        {/* X-axis strike labels */}
+                        {sorted.map((d, i) => {
+                          const isAtm = spot && Math.abs(d.strike - spot) < STRIKE_PROXIMITY_THRESHOLD
+                          const isFlip = gexData.levels.gamma_flip != null &&
+                            Math.abs(d.strike - gexData.levels.gamma_flip) < STRIKE_PROXIMITY_THRESHOLD
+                          return (
+                            <text
+                              key={d.strike}
+                              x={xs[i]} y={svgH - 5}
+                              textAnchor="middle" fontSize={8}
+                              fill={isAtm ? '#f59e0b' : isFlip ? '#a78bfa' : 'currentColor'}
+                              fontWeight={isAtm || isFlip ? 'bold' : 'normal'}
+                            >
+                              {d.strike}
+                            </text>
+                          )
+                        })}
+                        {/* Invisible hit areas per strike for hover */}
+                        {sorted.map((d, i) => (
+                          <rect
+                            key={d.strike}
+                            x={xs[i] - perStrikeW / 2} y={padTop}
+                            width={perStrikeW} height={halfH * 2}
+                            fill="transparent"
+                            style={{ cursor: 'crosshair' }}
+                            onMouseEnter={() => setGexLineHover({ strike: d.strike, net_gex: d.net_gex })}
+                          />
+                        ))}
                       </svg>
+                      {/* Legend */}
+                      <div className="flex flex-wrap justify-center gap-6 mt-1 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1.5">
+                          <span className="inline-block h-0.5 w-5 rounded bg-green-400" />
+                          Long Gamma (Dealer)
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="inline-block h-0.5 w-5 rounded bg-red-400" />
+                          Short Gamma (Dealer)
+                        </span>
+                        {spot && (
+                          <span style={{ color: '#f59e0b' }}>── Spot: {spot.toFixed(0)}</span>
+                        )}
+                        {gexData.levels.gamma_flip != null && (
+                          <span style={{ color: '#a78bfa' }}>── Γ Flip: {gexData.levels.gamma_flip.toFixed(0)}</span>
+                        )}
+                      </div>
                     </div>
                   )
                 })()}
