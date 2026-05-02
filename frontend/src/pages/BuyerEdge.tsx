@@ -926,23 +926,18 @@ export default function BuyerEdge() {
   }, [loadPcrData])
 
   // Build / update PCR lightweight-charts
+  // PCR chart — always-rendered container (same pattern as straddle chart).
+  // The chart container div is never unmounted so offsetWidth is always valid
+  // when this effect fires.  Collapse only hides the CardContent via CSS
+  // (display:none), not via conditional rendering, which avoids the
+  // clientWidth=0 bug that caused lightweight-charts to collapse all series
+  // onto the same right price scale.
   useEffect(() => {
-    // Destroy chart whenever the PCR section collapses so it rebuilds cleanly on reopen
-    if (!pcrSectionOpen) {
-      pcrChartRef.current?.remove()
-      pcrChartRef.current = null
-      pcrOiSeriesRef.current = null
-      pcrVolSeriesRef.current = null
-      pcrSpotSeriesRef.current = null
-      pcrSyntheticSeriesRef.current = null
-      return
-    }
-
     if (!pcrChartContainerRef.current) return
     const container = pcrChartContainerRef.current
     if (!pcrChartRef.current) {
       const c = createChart(container, {
-        width: container.clientWidth,
+        width: container.offsetWidth || container.clientWidth,
         height: PCR_CHART_HEIGHT,
         layout: {
           background: { type: ColorType.Solid, color: 'transparent' },
@@ -962,15 +957,7 @@ export default function BuyerEdge() {
         },
         timeScale: { borderColor: chartColors.border, timeVisible: true, secondsVisible: false },
       })
-      pcrChartRef.current = c
-      pcrOiSeriesRef.current = c.addSeries(LineSeries, {
-        color: '#f59e0b', lineWidth: 2, title: 'PCR(OI)',
-        priceScaleId: 'right', lastValueVisible: true, priceLineVisible: true,
-      })
-      pcrVolSeriesRef.current = c.addSeries(LineSeries, {
-        color: '#60a5fa', lineWidth: 2, title: 'PCR(Vol)',
-        priceScaleId: 'right', lastValueVisible: true, priceLineVisible: false,
-      })
+      // Add series in same order as straddle chart: left-scale series first, right-scale after
       pcrSpotSeriesRef.current = c.addSeries(LineSeries, {
         color: chartColors.spot, lineWidth: 2, title: 'Spot',
         priceScaleId: 'left', lastValueVisible: true, priceLineVisible: true,
@@ -979,6 +966,15 @@ export default function BuyerEdge() {
         color: '#a78bfa', lineWidth: 1, lineStyle: 2, title: 'Syn Fut',
         priceScaleId: 'left', lastValueVisible: true, priceLineVisible: false,
       })
+      pcrOiSeriesRef.current = c.addSeries(LineSeries, {
+        color: '#f59e0b', lineWidth: 2, title: 'PCR(OI)',
+        priceScaleId: 'right', lastValueVisible: true, priceLineVisible: true,
+      })
+      pcrVolSeriesRef.current = c.addSeries(LineSeries, {
+        color: '#60a5fa', lineWidth: 2, title: 'PCR(Vol)',
+        priceScaleId: 'right', lastValueVisible: true, priceLineVisible: false,
+      })
+      pcrChartRef.current = c
     }
     // Apply series data
     const series = pcrData?.data?.series ?? []
@@ -1012,19 +1008,19 @@ export default function BuyerEdge() {
 
     // Only fit content when at least spot data is present (PCR may be null in live-only mode)
     if (sorted.length > 0) pcrChartRef.current?.timeScale().fitContent()
-  }, [pcrSectionOpen, pcrData, showPcrOi, showPcrVolume, showPcrSpot, showPcrSynthetic, chartColors])
+  }, [pcrData, showPcrOi, showPcrVolume, showPcrSpot, showPcrSynthetic, chartColors])
 
-  // PCR chart resize — re-attach whenever section opens so the new container is observed
+  // PCR chart resize — set up once on mount (container is always in DOM)
   useEffect(() => {
-    if (!pcrSectionOpen || !pcrChartContainerRef.current || !pcrChartRef.current) return
+    if (!pcrChartContainerRef.current) return
     const ro = new ResizeObserver(() => {
       if (pcrChartContainerRef.current && pcrChartRef.current) {
-        pcrChartRef.current.applyOptions({ width: pcrChartContainerRef.current.clientWidth })
+        pcrChartRef.current.applyOptions({ width: pcrChartContainerRef.current.offsetWidth || pcrChartContainerRef.current.clientWidth })
       }
     })
     ro.observe(pcrChartContainerRef.current)
     return () => ro.disconnect()
-  }, [pcrSectionOpen])
+  }, [])
 
   // Destroy PCR chart on unmount
   useEffect(() => {
@@ -1849,8 +1845,10 @@ export default function BuyerEdge() {
             </div>
           </div>
         </CardHeader>
-        {pcrSectionOpen && (
-          <CardContent className="pt-0">
+        {/* CardContent is always rendered so the chart container stays in the DOM and
+            offsetWidth is valid when the chart is first created. Collapse only
+            hides it via CSS (matching the straddle chart pattern). */}
+        <CardContent className="pt-0" style={{ display: pcrSectionOpen ? undefined : 'none' }}>
             <div className="relative">
               <div
                 ref={pcrChartContainerRef}
@@ -1910,7 +1908,6 @@ export default function BuyerEdge() {
               PCR &gt; 1.2 = Bearish / PCR &lt; 0.8 = Bullish / PCR ≈ 1.0 = Neutral
             </p>
           </CardContent>
-        )}
       </Card>
 
       {/* ================================================================
