@@ -76,6 +76,13 @@ const tools = [
     href: '/oiprofile',
     color: 'bg-orange-500',
   },
+  {
+    title: 'Buyer Edge',
+    description:
+      'State engine: Are sellers still in control? NO_TRADE / WATCH / EXECUTE signal from structure + OI + Greeks + Straddle',
+    href: '/buyeredge',
+    color: 'bg-emerald-600',
+  },
 ]
 
 export default function Tools() {
