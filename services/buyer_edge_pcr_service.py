@@ -319,7 +319,10 @@ def get_pcr_chart_data(
                     atm_ce_close = ce_data.get("close", 0)
                     atm_pe_close = pe_data.get("close", 0)
 
-                # ADR: compare combined CE+PE OI to the previous candle
+                # ADR: compare combined CE+PE OI to the previous candle.
+                # For missing strikes (new strike in window) the fallback to
+                # curr_total_oi means no change → counted as neutral, which is
+                # the safest assumption when no prior reference exists.
                 curr_total_oi = ce_oi + pe_oi
                 if not first_candle:
                     prev_total_oi = prev_strike_oi.get(k_strike, curr_total_oi)
@@ -330,6 +333,7 @@ def get_pcr_chart_data(
                     else:
                         neutral_count += 1
                 else:
+                    # First candle — no prior reference; all strikes counted neutral
                     neutral_count += 1
                 prev_strike_oi[k_strike] = curr_total_oi
 

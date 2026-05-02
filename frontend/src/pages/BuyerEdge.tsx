@@ -1061,7 +1061,7 @@ export default function BuyerEdge() {
             <span style="color:#10b981">${point.adr.toFixed(4)}&nbsp;<span style="font-size:10px;color:${adrMeta!.color}">${adrMeta!.label}</span></span>
           </div>
           <div style="display:flex;justify-content:space-between;gap:16px">
-            <span style="color:${cl.tooltipMuted};font-size:11px">↑${(point as import('../api/buyerEdge').PcrDataPoint).advances ?? 0} ↓${(point as import('../api/buyerEdge').PcrDataPoint).declines ?? 0} →${(point as import('../api/buyerEdge').PcrDataPoint).neutral ?? 0}</span>
+            <span style="color:${cl.tooltipMuted};font-size:11px">↑${point.advances ?? 0} ↓${point.declines ?? 0} →${point.neutral ?? 0}</span>
           </div>` : ''}
           ${point.synthetic_future != null ? `<div style="display:flex;justify-content:space-between;gap:16px">
             <span style="color:#a78bfa">Syn Fut</span>
