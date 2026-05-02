@@ -202,11 +202,12 @@ def get_pcr_chart_data(
             unique_strikes = sorted(s for s in set(atm_per_row) if s is not None)
 
         # Step 4: Collect ALL unique window strikes across every unique ATM first, then
-        # fetch CE+PE history for each strike exactly ONCE.  The previous approach re-fetched
-        # the same strikes for every unique ATM (heavily overlapping windows) — with 5 ATMs
-        # and a window of ±5 strikes that's up to 110 redundant API calls (~38 s of waiting).
-        # Fetching each unique strike once cuts this to at most 2×(2×_PCR_STRIKE_WINDOW+1)
-        # unique calls, which is ~22 calls for the default window.
+        # fetch one CE history call and one PE history call per unique strike.
+        # The previous approach re-fetched the same strikes for every unique ATM
+        # (heavily overlapping windows) — with 5 ATMs and a ±5-strike window that was
+        # up to 5 × 11 × 2 = 110 history calls (~38 s at 350 ms per call).
+        # Fetching each unique strike once reduces it to at most
+        # (2×_PCR_STRIKE_WINDOW + 1 + n_atm_spread) × 2 calls, roughly 22-30 calls.
         strike_history: dict[float, dict] = {}  # strike -> {ce: {ts: {oi, volume, close}}, pe: {...}}
 
         all_window_strikes: set[float] = set()

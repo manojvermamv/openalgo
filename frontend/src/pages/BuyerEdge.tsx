@@ -1010,7 +1010,8 @@ export default function BuyerEdge() {
     pcrSpotSeriesRef.current?.applyOptions({ visible: showPcrSpot })
     pcrSyntheticSeriesRef.current?.applyOptions({ visible: showPcrSynthetic })
 
-    if (sorted.length) pcrChartRef.current?.timeScale().fitContent()
+    // Only fit content when at least spot data is present (PCR may be null in live-only mode)
+    if (sorted.length > 0) pcrChartRef.current?.timeScale().fitContent()
   }, [pcrSectionOpen, pcrData, showPcrOi, showPcrVolume, showPcrSpot, showPcrSynthetic, chartColors])
 
   // PCR chart resize — re-attach whenever section opens so the new container is observed
