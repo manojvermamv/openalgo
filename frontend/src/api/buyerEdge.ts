@@ -120,6 +120,10 @@ export interface PcrDataPoint {
   pcr_oi: number | null
   pcr_volume: number | null
   synthetic_future: number | null
+  advances: number
+  declines: number
+  neutral: number
+  adr: number | null
 }
 
 export interface PcrChartData {
@@ -130,6 +134,7 @@ export interface PcrChartData {
   live_only: boolean
   current_pcr_oi: number | null
   current_pcr_volume: number | null
+  current_adr: number | null
   series: PcrDataPoint[]
 }
 

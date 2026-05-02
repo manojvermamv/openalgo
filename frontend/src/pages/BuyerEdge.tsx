@@ -80,6 +80,15 @@ function formatIST(unixSeconds: number): { date: string; time: string } {
   return { date: `${dd} ${mo}`, time: `${hh}:${mm} ${ampm}` }
 }
 
+/** Return interpretation label + colour for an ADR value. */
+function getAdrMeta(adr: number): { label: string; color: string } {
+  if (adr >= 1.5) return { label: 'Strong Bull', color: '#22c55e' }
+  if (adr >= 1.0) return { label: 'Bullish',     color: '#86efac' }
+  if (adr >= 0.9) return { label: 'Sideways',    color: '#fbbf24' }
+  if (adr >= 0.7) return { label: 'Bearish',     color: '#fb923c' }
+  return                  { label: 'Strong Bear', color: '#ef4444' }
+}
+
 /**
  * Compute 1-Day Anchored VWAP on straddle price.
  * Since straddle data carries no exchange volume, each bar is treated with equal
@@ -313,6 +322,7 @@ export default function BuyerEdge() {
   const [showPcrVolume, setShowPcrVolume] = useState(true)
   const [showPcrSpot, setShowPcrSpot] = useState(true)
   const [showPcrSynthetic, setShowPcrSynthetic] = useState(true)
+  const [showPcrAdr, setShowPcrAdr] = useState(true)
   const [pcrSectionOpen, setPcrSectionOpen] = useState(true)
   const pcrChartContainerRef = useRef<HTMLDivElement>(null)
   const pcrChartRef = useRef<IChartApi | null>(null)
@@ -320,6 +330,7 @@ export default function BuyerEdge() {
   const pcrVolSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
   const pcrSpotSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
   const pcrSyntheticSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
+  const pcrAdrSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
   const pcrTooltipRef = useRef<HTMLDivElement | null>(null)
   const pcrDataMapRef = useRef<Map<number, import('../api/buyerEdge').PcrDataPoint>>(new Map())
 
@@ -992,6 +1003,10 @@ export default function BuyerEdge() {
         color: '#60a5fa', lineWidth: 2, title: 'PCR(Vol)',
         priceScaleId: 'right', lastValueVisible: true, priceLineVisible: false,
       })
+      pcrAdrSeriesRef.current = c.addSeries(LineSeries, {
+        color: '#10b981', lineWidth: 2, lineStyle: 0, title: 'ADR',
+        priceScaleId: 'right', lastValueVisible: true, priceLineVisible: false,
+      })
 
       // Crosshair tooltip div
       if (!pcrTooltipRef.current) {
@@ -1031,6 +1046,7 @@ export default function BuyerEdge() {
         tt.style.background = cl.tooltipBg
         tt.style.border = `1px solid ${cl.tooltipBorder}`
         tt.style.color = cl.tooltipText
+        const adrMeta = point.adr != null ? getAdrMeta(point.adr) : null
         tt.innerHTML = `
           <div style="display:flex;justify-content:space-between;gap:16px">
             <span style="color:#f59e0b;font-weight:600">PCR(OI)</span>
@@ -1040,6 +1056,13 @@ export default function BuyerEdge() {
             <span style="color:#60a5fa">PCR(Vol)</span>
             <span style="color:#60a5fa">${point.pcr_volume != null ? point.pcr_volume.toFixed(4) : '—'}</span>
           </div>
+          ${point.adr != null ? `<div style="display:flex;justify-content:space-between;gap:16px">
+            <span style="color:#10b981">ADR</span>
+            <span style="color:#10b981">${point.adr.toFixed(4)}&nbsp;<span style="font-size:10px;color:${adrMeta!.color}">${adrMeta!.label}</span></span>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:16px">
+            <span style="color:${cl.tooltipMuted};font-size:11px">↑${(point as import('../api/buyerEdge').PcrDataPoint).advances ?? 0} ↓${(point as import('../api/buyerEdge').PcrDataPoint).declines ?? 0} →${(point as import('../api/buyerEdge').PcrDataPoint).neutral ?? 0}</span>
+          </div>` : ''}
           ${point.synthetic_future != null ? `<div style="display:flex;justify-content:space-between;gap:16px">
             <span style="color:#a78bfa">Syn Fut</span>
             <span style="color:#a78bfa">${point.synthetic_future.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
@@ -1100,10 +1123,17 @@ export default function BuyerEdge() {
         value: p.synthetic_future as number,
       }))
     )
+    pcrAdrSeriesRef.current?.setData(
+      sorted.filter((p) => p.adr != null).map((p) => ({
+        time: p.time as import('lightweight-charts').UTCTimestamp,
+        value: p.adr as number,
+      }))
+    )
     pcrOiSeriesRef.current?.applyOptions({ visible: showPcrOi })
     pcrVolSeriesRef.current?.applyOptions({ visible: showPcrVolume })
     pcrSpotSeriesRef.current?.applyOptions({ visible: showPcrSpot })
     pcrSyntheticSeriesRef.current?.applyOptions({ visible: showPcrSynthetic })
+    pcrAdrSeriesRef.current?.applyOptions({ visible: showPcrAdr })
 
     // Update timeScale formatter whenever pcrDays changes (chart is persistent, not rebuilt)
     pcrChartRef.current?.applyOptions({
@@ -1125,7 +1155,7 @@ export default function BuyerEdge() {
 
     // Only fit content when at least spot data is present (PCR may be null in live-only mode)
     if (sorted.length > 0) pcrChartRef.current?.timeScale().fitContent()
-  }, [pcrData, pcrDays, showPcrOi, showPcrVolume, showPcrSpot, showPcrSynthetic, chartColors])
+  }, [pcrData, pcrDays, showPcrOi, showPcrVolume, showPcrSpot, showPcrSynthetic, showPcrAdr, chartColors])
 
   // PCR chart resize — set up once on mount (container is always in DOM)
   useEffect(() => {
@@ -1920,6 +1950,15 @@ export default function BuyerEdge() {
                 <div className="flex gap-3 text-xs text-muted-foreground">
                   <span>PCR(OI): <strong className="text-foreground">{pcrData.data.current_pcr_oi?.toFixed(2) ?? 'N/A'}</strong></span>
                   <span>PCR(Vol): <strong className="text-foreground">{pcrData.data.current_pcr_volume?.toFixed(2) ?? 'N/A'}</strong></span>
+                  {pcrData.data.current_adr != null && (() => {
+                    const m = getAdrMeta(pcrData.data.current_adr!)
+                    return (
+                      <span>
+                        ADR: <strong style={{ color: m.color }}>{pcrData.data.current_adr!.toFixed(2)}</strong>
+                        <span className="ml-1 text-[10px]" style={{ color: m.color }}>• {m.label}</span>
+                      </span>
+                    )
+                  })()}
                 </div>
               )}
             </div>
@@ -2020,9 +2059,19 @@ export default function BuyerEdge() {
                 <span className="inline-block h-0.5 w-5 rounded border-dashed border-t-2 border-purple-400" style={{ backgroundColor: 'transparent' }} />
                 Syn Fut
               </button>
+              <button
+                type="button"
+                onClick={() => setShowPcrAdr((v) => !v)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showPcrAdr ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
+              >
+                <span className="inline-block h-0.5 w-5 rounded bg-emerald-400" />
+                ADR
+              </button>
             </div>
             <p className="text-xs text-muted-foreground text-center mt-1">
               PCR &gt; 1.2 = Bearish / PCR &lt; 0.8 = Bullish / PCR ≈ 1.0 = Neutral
+              &nbsp;|&nbsp;
+              ADR &gt; 1.5 = Strong Bull / 1.0–1.5 = Bullish / ~1.0 = Sideways / 0.7–1.0 = Bearish / &lt; 0.7 = Strong Bear
             </p>
           </CardContent>
       </Card>

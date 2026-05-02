@@ -274,6 +274,9 @@ def get_pcr_chart_data(
         # Step 5: Build PCR series per candle (only when underlying history is available)
         series = []
         has_oi_data = False
+        # ADR: track previous total OI (CE+PE) per strike to detect advances/declines
+        prev_strike_oi: dict[float, float] = {}
+        first_candle = True
 
         for ts, row in (df_underlying.iterrows() if df_underlying is not None else []):
             spot = float(row["close"])
@@ -297,17 +300,38 @@ def get_pcr_chart_data(
             atm_ce_close = 0.0
             atm_pe_close = 0.0
 
+            # ADR accumulators for this candle
+            advances = 0
+            declines = 0
+            neutral_count = 0
+
             for k_strike in window_strikes:
                 sh = strike_history.get(k_strike, {"ce": {}, "pe": {}})
                 ce_data = sh["ce"].get(ts, {})
                 pe_data = sh["pe"].get(ts, {})
-                total_ce_oi += ce_data.get("oi", 0)
-                total_pe_oi += pe_data.get("oi", 0)
+                ce_oi = ce_data.get("oi", 0)
+                pe_oi = pe_data.get("oi", 0)
+                total_ce_oi += ce_oi
+                total_pe_oi += pe_oi
                 total_ce_vol += ce_data.get("volume", 0)
                 total_pe_vol += pe_data.get("volume", 0)
                 if k_strike == atm:
                     atm_ce_close = ce_data.get("close", 0)
                     atm_pe_close = pe_data.get("close", 0)
+
+                # ADR: compare combined CE+PE OI to the previous candle
+                curr_total_oi = ce_oi + pe_oi
+                if not first_candle:
+                    prev_total_oi = prev_strike_oi.get(k_strike, curr_total_oi)
+                    if curr_total_oi > prev_total_oi:
+                        advances += 1
+                    elif curr_total_oi < prev_total_oi:
+                        declines += 1
+                    else:
+                        neutral_count += 1
+                else:
+                    neutral_count += 1
+                prev_strike_oi[k_strike] = curr_total_oi
 
             pcr_oi = round(total_pe_oi / total_ce_oi, _PCR_DECIMAL_PRECISION) if total_ce_oi > 0 else None
             pcr_volume = round(total_pe_vol / total_ce_vol, _PCR_DECIMAL_PRECISION) if total_ce_vol > 0 else None
@@ -316,6 +340,18 @@ def get_pcr_chart_data(
                 if atm_ce_close and atm_pe_close
                 else None
             )
+
+            # ADR = advances / declines; 0.0 when no movement; capped at 10.0
+            if first_candle:
+                adr = None
+            elif declines > 0:
+                adr = round(min(advances / declines, 10.0), _PCR_DECIMAL_PRECISION)
+            elif advances > 0:
+                adr = 10.0  # All advancing, no declining
+            else:
+                adr = 0.0  # No OI movement in this window
+
+            first_candle = False
 
             if pcr_oi is not None:
                 has_oi_data = True
@@ -328,6 +364,10 @@ def get_pcr_chart_data(
                     "pcr_oi": pcr_oi,
                     "pcr_volume": pcr_volume,
                     "synthetic_future": synthetic_future,
+                    "advances": advances,
+                    "declines": declines,
+                    "neutral": neutral_count,
+                    "adr": adr,
                 }
             )
 
@@ -422,6 +462,10 @@ def get_pcr_chart_data(
                     "pcr_oi": live_pcr_oi,
                     "pcr_volume": live_pcr_volume,
                     "synthetic_future": None,
+                    "advances": 0,
+                    "declines": 0,
+                    "neutral": 0,
+                    "adr": None,
                 }
             ]
             live_only = True
@@ -435,6 +479,12 @@ def get_pcr_chart_data(
         )
         underlying_ltp = quote_resp.get("data", {}).get("ltp", 0) if success_q else 0
 
+        # Derive current ADR from the last non-null adr value in the series
+        current_adr = next(
+            (pt["adr"] for pt in reversed(series) if pt.get("adr") is not None),
+            None,
+        )
+
         return (
             True,
             {
@@ -447,6 +497,7 @@ def get_pcr_chart_data(
                     "live_only": live_only,
                     "current_pcr_oi": live_pcr_oi,
                     "current_pcr_volume": live_pcr_volume,
+                    "current_adr": current_adr,
                     "series": series,
                 },
             },
