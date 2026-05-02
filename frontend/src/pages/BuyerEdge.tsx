@@ -320,6 +320,8 @@ export default function BuyerEdge() {
   const pcrVolSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
   const pcrSpotSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
   const pcrSyntheticSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
+  const pcrTooltipRef = useRef<HTMLDivElement | null>(null)
+  const pcrDataMapRef = useRef<Map<number, import('../api/buyerEdge').PcrDataPoint>>(new Map())
 
   // ── IVR Dashboard state ────────────────────────────────────────
   const [ivData, setIvData] = useState<IvDashboardResponse | null>(null)
@@ -990,11 +992,92 @@ export default function BuyerEdge() {
         color: '#60a5fa', lineWidth: 2, title: 'PCR(Vol)',
         priceScaleId: 'right', lastValueVisible: true, priceLineVisible: false,
       })
+
+      // Crosshair tooltip div
+      if (!pcrTooltipRef.current) {
+        const tt = document.createElement('div')
+        tt.style.cssText = [
+          'position:absolute', 'display:none', 'z-index:100', 'pointer-events:none',
+          'padding:8px 10px', 'border-radius:6px', 'font-size:12px', 'line-height:1.6',
+          'min-width:180px', 'white-space:nowrap',
+        ].join(';')
+        pcrTooltipRef.current = tt
+        container.appendChild(pcrTooltipRef.current)
+      }
+
+      c.subscribeCrosshairMove((param) => {
+        const tt = pcrTooltipRef.current
+        if (!tt || !container) return
+        if (
+          !param.time ||
+          !param.point ||
+          param.point.x < 0 ||
+          param.point.y < 0 ||
+          param.point.x > container.offsetWidth ||
+          param.point.y > container.offsetHeight
+        ) {
+          tt.style.display = 'none'
+          return
+        }
+        const time = param.time as number
+        const point = pcrDataMapRef.current.get(time)
+        if (!point) {
+          tt.style.display = 'none'
+          return
+        }
+        const cl = chartColorsRef.current
+        const { date, time: timeStr } = formatIST(time)
+        tt.style.display = 'block'
+        tt.style.background = cl.tooltipBg
+        tt.style.border = `1px solid ${cl.tooltipBorder}`
+        tt.style.color = cl.tooltipText
+        tt.innerHTML = `
+          <div style="display:flex;justify-content:space-between;gap:16px">
+            <span style="color:#f59e0b;font-weight:600">PCR(OI)</span>
+            <span style="color:#f59e0b;font-weight:600">${point.pcr_oi != null ? point.pcr_oi.toFixed(4) : '—'}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:16px">
+            <span style="color:#60a5fa">PCR(Vol)</span>
+            <span style="color:#60a5fa">${point.pcr_volume != null ? point.pcr_volume.toFixed(4) : '—'}</span>
+          </div>
+          ${point.synthetic_future != null ? `<div style="display:flex;justify-content:space-between;gap:16px">
+            <span style="color:#a78bfa">Syn Fut</span>
+            <span style="color:#a78bfa">${point.synthetic_future.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>` : ''}
+          <div style="display:flex;justify-content:space-between;gap:16px">
+            <span style="color:${cl.tooltipMuted}">Spot</span>
+            <span>${point.spot.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:16px;margin-top:4px;border-top:1px solid ${cl.tooltipBorder};padding-top:4px">
+            <span style="color:${cl.tooltipMuted}">${date}</span>
+            <span style="color:${cl.tooltipMuted}">${timeStr}</span>
+          </div>
+        `
+        const tooltipW = tt.offsetWidth
+        const tooltipH = tt.offsetHeight
+        const x = param.point.x
+        const y = param.point.y
+        const margin = 16
+        let left = x + margin
+        if (left + tooltipW > container.offsetWidth) left = x - tooltipW - margin
+        let top = y - tooltipH / 2
+        if (top < 0) top = 0
+        if (top + tooltipH > container.offsetHeight) top = container.offsetHeight - tooltipH
+        tt.style.left = `${left}px`
+        tt.style.top = `${top}px`
+      })
+
       pcrChartRef.current = c
     }
     // Apply series data
     const series = pcrData?.data?.series ?? []
     const sorted = [...series].sort((a, b) => a.time - b.time)
+
+    // Build data map for crosshair tooltip lookup
+    const dataMap = new Map<number, import('../api/buyerEdge').PcrDataPoint>()
+    for (const p of sorted) dataMap.set(p.time, p)
+    pcrDataMapRef.current = dataMap
+
 
     pcrOiSeriesRef.current?.setData(
       sorted.filter((p) => p.pcr_oi != null).map((p) => ({
