@@ -12,6 +12,8 @@ export interface OIIntelligence {
   oi_migrating: boolean
   migration_direction: string
   oi_roll_detected: boolean
+  current_pcr_oi?: number | null
+  current_pcr_oi_chg?: number | null
 }
 
 export interface GreeksEngine {
@@ -296,6 +298,7 @@ export const buyerEdgeApi = {
     expiry_date: string
     interval: string
     days?: number
+<<<<<<< Updated upstream
     pcr_strike_window?: number
     max_snapshot_strikes?: number
   }): Promise<{
@@ -312,4 +315,22 @@ export const buyerEdgeApi = {
     }>('/buyeredge/api/unified_monitor', params)
     return response.data
   },
+=======
+    lb_bars?: number
+    lb_tf?: string
+    pcr_strike_window?: number
+    max_snapshot_strikes?: number
+  }): Promise<UnifiedMonitorResponse> => {
+    const response = await webClient.post<UnifiedMonitorResponse>('/buyeredge/api/unified_monitor', params)
+    return response.data
+  },
+}
+
+export interface UnifiedMonitorResponse {
+  status: 'success' | 'error'
+  message?: string
+  straddle: import('./straddle-chart').StraddleChartResponse
+  pcr: PcrChartResponse
+  analysis: BuyerEdgeResponse | null
+>>>>>>> Stashed changes
 }

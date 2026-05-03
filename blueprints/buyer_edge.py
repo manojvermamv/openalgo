@@ -283,6 +283,10 @@ def buyer_edge_pcr_chart():
 def buyer_edge_unified_monitor():
     """Unified endpoint for parallel Straddle and PCR data loading."""
     try:
+<<<<<<< Updated upstream
+=======
+        from services.buyer_edge_service import get_buyer_edge_data
+>>>>>>> Stashed changes
         from concurrent.futures import ThreadPoolExecutor
 
         login_username = session.get("user")
@@ -298,7 +302,13 @@ def buyer_edge_unified_monitor():
         exchange = data.get("exchange", "").strip().upper()[:20]
         expiry_date = data.get("expiry_date", "").strip().upper()[:10]
         interval = str(data.get("interval", "1m")).strip()
+<<<<<<< Updated upstream
         days = max(1, min(int(data.get("days", 1)), 5))
+=======
+        days = max(1, min(int(data.get("days", 1)), 30)) # Allow up to 30 days for charts
+        lb_bars = max(5, min(int(data.get("lb_bars", 20)), 200))
+        lb_tf = str(data.get("lb_tf", interval)).strip()
+>>>>>>> Stashed changes
         pcr_strike_window = max(1, min(int(data.get("pcr_strike_window", 10)), 15))
         max_snapshot_strikes = max(5, min(int(data.get("max_snapshot_strikes", 40)), 100))
 
@@ -323,14 +333,35 @@ def buyer_edge_unified_monitor():
                 pcr_strike_window=pcr_strike_window,
                 max_snapshot_strikes=max_snapshot_strikes,
             )
+<<<<<<< Updated upstream
 
             res_straddle = future_straddle.result()
             res_pcr = future_pcr.result()
+=======
+            future_analysis = executor.submit(
+                get_buyer_edge_data,
+                underlying=underlying,
+                exchange=exchange,
+                expiry_date=expiry_date,
+                strike_count=max_snapshot_strikes // 2,
+                api_key=api_key,
+                lb_bars=lb_bars,
+                lb_tf=lb_tf,
+            )
+
+            res_straddle = future_straddle.result()
+            res_pcr = future_pcr.result()
+            res_analysis = future_analysis.result()
+>>>>>>> Stashed changes
 
         return jsonify({
             "status": "success",
             "straddle": res_straddle[1],
             "pcr": res_pcr[1],
+<<<<<<< Updated upstream
+=======
+            "analysis": res_analysis[1] if res_analysis[0] else None
+>>>>>>> Stashed changes
         }), 200
 
     except Exception as exc:

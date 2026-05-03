@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronsUpDown, RefreshCw, ChevronDown, ChevronUp, Wifi, WifiOff, Info } from 'lucide-react'
 import {
@@ -13,14 +14,18 @@ import { useSupportedExchanges } from '@/hooks/useSupportedExchanges'
 import { useThemeStore } from '@/stores/themeStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useOptionChainLive } from '@/hooks/useOptionChainLive'
+=======
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
+import { useSupportedExchanges } from '@/hooks/useSupportedExchanges'
+import { useThemeStore } from '@/stores/themeStore'
+import { useAuthStore } from '@/stores/authStore'
+>>>>>>> Stashed changes
 import { useMarketStatus } from '@/hooks/useMarketStatus'
 import {
   buyerEdgeApi,
-  type BuyerEdgeResponse,
   type GexLevelsResponse,
-  type PcrChartResponse,
-  type StrikeOiChange,
   type IvDashboardResponse,
+<<<<<<< Updated upstream
   type SignalType,
   type SpotCandleResponse,
 } from '@/api/buyerEdge'
@@ -60,16 +65,28 @@ const STRIKE_PROXIMITY_THRESHOLD = 50
 const IVX_BAR_WIDTH = 40
 const IVX_BAR_GAP = 16
 const IVX_CHART_HEIGHT = 120
+=======
+  type SpotCandleResponse,
+  type UnifiedMonitorResponse,
+} from '@/api/buyerEdge'
 
-function convertExpiryForAPI(expiry: string): string {
-  if (!expiry) return ''
-  const parts = expiry.split('-')
-  if (parts.length === 3) {
-    return `${parts[0]}${parts[1].toUpperCase()}${parts[2].slice(-2)}`
-  }
-  return expiry.replace(/-/g, '').toUpperCase()
-}
+// Sub-components (Lazy Loaded)
+const Controls = lazy(() => import('./buyeredge/Controls').then(m => ({ default: m.Controls })))
+const PremiumMonitor = lazy(() => import('./buyeredge/PremiumMonitor').then(m => ({ default: m.PremiumMonitor })))
+const IntradayOiChange = lazy(() => import('./buyeredge/IntradayOiChange').then(m => ({ default: m.IntradayOiChange })))
+const MarketBreadth = lazy(() => import('./buyeredge/MarketBreadth').then(m => ({ default: m.MarketBreadth })))
+const GexLevels = lazy(() => import('./buyeredge/GexLevels').then(m => ({ default: m.GexLevels })))
+const GexSpotChart = lazy(() => import('./buyeredge/GexSpotChart').then(m => ({ default: m.GexSpotChart })))
+const IvrDashboard = lazy(() => import('./buyeredge/IvrDashboard').then(m => ({ default: m.IvrDashboard })))
+const InterpretationGuide = lazy(() => import('./buyeredge/InterpretationGuide').then(m => ({ default: m.InterpretationGuide })))
+>>>>>>> Stashed changes
 
+// Logic and Utils
+import { AUTO_REFRESH_INTERVAL } from './buyeredge/types'
+import { convertExpiryForAPI } from './buyeredge/utils'
+import { computeDirectionalScore } from './buyeredge/logic'
+
+<<<<<<< Updated upstream
 function formatIST(unixSeconds: number): { date: string; time: string } {
   const d = new Date(unixSeconds * 1000)
   const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000)
@@ -698,29 +715,37 @@ function DeltaBar({
 export default function BuyerEdge() {
   const { fnoExchanges, defaultFnoExchange, defaultUnderlyings } = useSupportedExchanges()
   const { mode, appMode } = useThemeStore()
+=======
+export default function BuyerEdge() {
+  const { fnoExchanges, defaultFnoExchange, defaultUnderlyings } = useSupportedExchanges()
+  const { mode } = useThemeStore()
+>>>>>>> Stashed changes
   const { apiKey } = useAuthStore()
   const { isMarketOpen } = useMarketStatus()
   const isDarkMode = mode === 'dark'
-  const isAnalyzer = appMode === 'analyzer'
 
   const [selectedExchange, setSelectedExchange] = useState(defaultFnoExchange)
   const [underlyings, setUnderlyings] = useState<string[]>(
-    defaultUnderlyings[defaultFnoExchange] || []
+    (defaultUnderlyings[defaultFnoExchange] as any) || []
   )
   const [underlyingOpen, setUnderlyingOpen] = useState(false)
   const [selectedUnderlying, setSelectedUnderlying] = useState(
-    defaultUnderlyings[defaultFnoExchange]?.[0] || ''
+    (defaultUnderlyings[defaultFnoExchange]?.[0] as string) || ''
   )
   const [expiries, setExpiries] = useState<string[]>([])
   const [selectedExpiry, setSelectedExpiry] = useState('')
-  const [data, setData] = useState<BuyerEdgeResponse | null>(null)
+  const [data, setData] = useState<UnifiedMonitorResponse | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(false)
+<<<<<<< Updated upstream
   const requestIdRef = useRef(0)
+=======
+>>>>>>> Stashed changes
 
-  // ── Straddle Chart state ───────────────────────────────────────
+  // ── Premium Monitor (Straddle + PCR) state ─────────────────────
   const [straddleInterval, setStraddleInterval] = useState('1m')
   const [straddleDays, setStraddleDays] = useState('1')
+<<<<<<< Updated upstream
   const [straddleChartData, setStraddleChartData] = useState<StraddleChartData | null>(null)
   const [straddleIntervals, setStraddleIntervals] = useState<string[]>(['1m', '3m', '5m', '10m', '15m', '30m', '1h'])
   const [isChartLoading, setIsChartLoading] = useState(false)
@@ -730,21 +755,29 @@ export default function BuyerEdge() {
   const [showVwap, setShowVwap] = useState(false)            // always toggled together with showStraddle
   const [straddleSectionOpen, setStraddleSectionOpen] = useState(true)
   const [showStraddleInfo, setShowStraddleInfo] = useState(false)
+=======
+  const [showStraddle, setShowStraddle] = useState(false)
+  const [showSpot, setShowSpot] = useState(false)
+  const [showSynthetic, setShowSynthetic] = useState(false)
+  const [showVwap, setShowVwap] = useState(false)
+  const [showPcrOi, setShowPcrOi] = useState(true)
+  const [showPcrVol, setShowPcrVol] = useState(false)
+  const [straddleSectionOpen, setStraddleSectionOpen] = useState(true)
+  const [showPremiumInfo, setShowPremiumInfo] = useState(false)
+>>>>>>> Stashed changes
 
   // ── Engine lookback settings ───────────────────────────────────
   const [lbBars, setLbBars] = useState('20')
   const [lbTf, setLbTf] = useState('3m')
   const [strikeCount, setStrikeCount] = useState('10')
 
-  // ── Advanced GEX Levels state ──────────────────────────────────
+  // ── GEX Levels state ──────────────────────────────────────────
   const [gexData, setGexData] = useState<GexLevelsResponse | null>(null)
   const [isGexLoading, setIsGexLoading] = useState(false)
   const [gexMode, setGexMode] = useState<'selected' | 'cumulative'>('selected')
-  const [gexExpiries, setGexExpiries] = useState<string[]>([])
   const [gexSectionOpen, setGexSectionOpen] = useState(true)
-  const [gexViewMode, setGexViewMode] = useState<'line' | 'bar'>('line')
-  const [gexLineHover, setGexLineHover] = useState<{ strike: number; net_gex: number } | null>(null)
 
+<<<<<<< Updated upstream
   // ── PCR state (unified with straddle) ──────────────────────────
   const [pcrData, setPcrData] = useState<PcrChartResponse | null>(null)
   const [isPcrLoading, setIsPcrLoading] = useState(false)
@@ -759,23 +792,23 @@ export default function BuyerEdge() {
   const pcrSortedDataRef = useRef<import('../api/buyerEdge').PcrDataPoint[]>([])
 
   // ── OI Change Chart state ──────────────────────────────────────
+=======
+  // ── OI Change state ───────────────────────────────────────────
+>>>>>>> Stashed changes
   const [oiChgSectionOpen, setOiChgSectionOpen] = useState(true)
   const [showOiChgInfo, setShowOiChgInfo] = useState(false)
   const [oiChgViewMode, setOiChgViewMode] = useState<'line' | 'bar'>('line')
-  const [oiChgBarHover, setOiChgBarHover] = useState<StrikeOiChange | null>(null)
-  const oiChgChartContainerRef = useRef<HTMLDivElement>(null)
-  const oiChgChartRef = useRef<IChartApi | null>(null)
-  const oiChgCeSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
-  const oiChgPeSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
-  const oiChgTooltipRef = useRef<HTMLDivElement | null>(null)
-  const oiChgDataMapRef = useRef<Map<number, { ce_oi_chg: number; pe_oi_chg: number }>>(new Map())
 
-  // ── IVR Dashboard state ────────────────────────────────────────
+  // ── Breadth state ─────────────────────────────────────────────
+  const [breadthSectionOpen, setBreadthSectionOpen] = useState(true)
+  const [showBreadthInfo, setShowBreadthInfo] = useState(false)
+
+  // ── IVR Dashboard state ───────────────────────────────────────
   const [ivData, setIvData] = useState<IvDashboardResponse | null>(null)
-  const [isIvLoading, _setIsIvLoading] = useState(false)
-  const [ivExpiries, setIvExpiries] = useState<string[]>([])
+  const [isIvLoading, setIsIvLoading] = useState(false)
   const [ivSectionOpen, setIvSectionOpen] = useState(true)
 
+<<<<<<< Updated upstream
   // ── IV Chart (intraday ATM IV series via ivChartApi) ────────────
   const [ivChartData, setIvChartData] = useState<IVChartData | null>(null)
   const [ivChartInterval, setIvChartInterval] = useState('5m')
@@ -785,11 +818,15 @@ export default function BuyerEdge() {
   const [ivChartSectionOpen, setIvChartSectionOpen] = useState(true)
 
   // ── GEX Spot Chart state ───────────────────────────────────────
+=======
+  // ── GEX Spot Chart state ──────────────────────────────────────
+>>>>>>> Stashed changes
   const [spotCandleData, setSpotCandleData] = useState<SpotCandleResponse | null>(null)
   const [spotChartInterval, setSpotChartInterval] = useState('15m')
   const [spotChartDays, setSpotChartDays] = useState('5')
   const [isSpotCandleLoading, setIsSpotCandleLoading] = useState(false)
   const [spotChartSectionOpen, setSpotChartSectionOpen] = useState(true)
+<<<<<<< Updated upstream
 
   // Refs for the GEX spot chart
   const spotChartContainerRef = useRef<HTMLDivElement>(null)
@@ -809,63 +846,13 @@ export default function BuyerEdge() {
   const straddleChartDataRef = useRef<StraddleChartData | null>(null)
   const seriesDataMapRef = useRef<Map<number, StraddleDataPoint>>(new Map())
   const vwapDataMapRef = useRef<Map<number, number>>(new Map())
+=======
+>>>>>>> Stashed changes
 
-  // Theme colors for the embedded straddle chart
-  const chartColors = useMemo(() => {
-    if (isAnalyzer) {
-      return {
-        text: '#d4bfff',
-        grid: 'rgba(139, 92, 246, 0.1)',
-        border: 'rgba(139, 92, 246, 0.2)',
-        crosshair: 'rgba(139, 92, 246, 0.5)',
-        crosshairLabel: '#4c1d95',
-        spot: '#e2e8f0',
-        straddle: '#a78bfa',
-        synthetic: '#60a5fa',
-        vwap: '#fbbf24',
-        watermark: 'rgba(139, 92, 246, 0.12)',
-        tooltipBg: 'rgba(30, 15, 60, 0.92)',
-        tooltipBorder: 'rgba(139, 92, 246, 0.3)',
-        tooltipText: '#d4bfff',
-        tooltipMuted: '#a78bfa',
-      }
-    }
-    if (isDarkMode) {
-      return {
-        text: '#a6adbb',
-        grid: 'rgba(166, 173, 187, 0.1)',
-        border: 'rgba(166, 173, 187, 0.2)',
-        crosshair: 'rgba(166, 173, 187, 0.5)',
-        crosshairLabel: '#1f2937',
-        spot: '#e2e8f0',
-        straddle: '#4ade80',
-        synthetic: '#60a5fa',
-        vwap: '#f59e0b',
-        watermark: 'rgba(166, 173, 187, 0.12)',
-        tooltipBg: 'rgba(17, 24, 39, 0.92)',
-        tooltipBorder: 'rgba(166, 173, 187, 0.2)',
-        tooltipText: '#e2e8f0',
-        tooltipMuted: '#9ca3af',
-      }
-    }
-    return {
-      text: '#333',
-      grid: 'rgba(0, 0, 0, 0.1)',
-      border: 'rgba(0, 0, 0, 0.2)',
-      crosshair: 'rgba(0, 0, 0, 0.3)',
-      crosshairLabel: '#2563eb',
-      spot: '#1e293b',
-      straddle: '#16a34a',
-      synthetic: '#2563eb',
-      vwap: '#d97706',
-      watermark: 'rgba(0, 0, 0, 0.06)',
-      tooltipBg: 'rgba(255, 255, 255, 0.95)',
-      tooltipBorder: 'rgba(0, 0, 0, 0.15)',
-      tooltipText: '#1e293b',
-      tooltipMuted: '#6b7280',
-    }
-  }, [isDarkMode, isAnalyzer])
+  // ── Interpretation state ──────────────────────────────────────
+  const [showInterpretation, setShowInterpretation] = useState(false)
 
+<<<<<<< Updated upstream
   // Keep a stable ref to colors for the crosshair callback
   const chartColorsRef = useRef(chartColors)
   chartColorsRef.current = chartColors
@@ -875,82 +862,46 @@ export default function BuyerEdge() {
   straddleShowsRef.current = { showStraddle, showVwap, showSpot, showSynthetic, showPcrOi, showPcrVolume }
 
   // Sync exchange when broker caps load
+=======
+  // ── Data Refresh Logic ────────────────────────────────────────
+>>>>>>> Stashed changes
   useEffect(() => {
-    setSelectedExchange((prev) =>
-      prev && fnoExchanges.some((ex) => ex.value === prev) ? prev : defaultFnoExchange
-    )
-  }, [defaultFnoExchange, fnoExchanges])
+    if (!selectedUnderlying || !selectedExchange) return
 
-  // Fetch underlyings when exchange changes
-  useEffect(() => {
-    const defaults = defaultUnderlyings[selectedExchange] || []
-    setUnderlyings(defaults)
-    setSelectedUnderlying(defaults[0] || '')
-    setExpiries([])
-    setSelectedExpiry('')
-    setData(null)
-    setStraddleChartData(null)
-    straddleChartDataRef.current = null
-
-    let cancelled = false
-    const fetch = async () => {
+    const loadExpiries = async () => {
       try {
-        const response = await buyerEdgeApi.getUnderlyings(selectedExchange)
-        if (cancelled) return
-        if (response.status === 'success' && response.underlyings.length > 0) {
-          setUnderlyings(response.underlyings)
-          if (!response.underlyings.includes(defaults[0])) {
-            setSelectedUnderlying(response.underlyings[0])
+        const res = await buyerEdgeApi.getExpiries(selectedExchange, selectedUnderlying)
+        if (res.status === 'success' && res.expiries.length > 0) {
+          setExpiries(res.expiries)
+          if (!selectedExpiry || !res.expiries.includes(selectedExpiry)) {
+            setSelectedExpiry(res.expiries[0])
           }
         }
-      } catch {
-        // keep defaults
+      } catch (err) {
+        console.error('Failed to load expiries:', err)
       }
     }
-    fetch()
-    return () => {
-      cancelled = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedExchange])
 
-  // Fetch expiries when underlying changes
-  useEffect(() => {
-    if (!selectedUnderlying) return
-    setExpiries([])
-    setSelectedExpiry('')
-    setData(null)
-    setStraddleChartData(null)
-    straddleChartDataRef.current = null
+    loadExpiries()
+  }, [selectedUnderlying, selectedExchange])
 
-    let cancelled = false
-    const fetch = async () => {
-      try {
-        const response = await buyerEdgeApi.getExpiries(selectedExchange, selectedUnderlying)
-        if (cancelled) return
-        if (response.status === 'success' && response.expiries.length > 0) {
-          setExpiries(response.expiries)
-          setSelectedExpiry(response.expiries[0])
-        }
-      } catch {
-        if (cancelled) return
-        setExpiries([])
-        setSelectedExpiry('')
-      }
-    }
-    fetch()
-    return () => {
-      cancelled = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedUnderlying])
+  const convictionScore = useMemo(() => {
+    return computeDirectionalScore({
+      pcrSeries: data?.pcr?.data?.series || [],
+      pcrOi: data?.analysis?.oi_intelligence?.current_pcr_oi || data?.pcr?.data?.current_pcr_oi || null,
+      pcrOiChg: data?.analysis?.oi_intelligence?.current_pcr_oi_chg || data?.pcr?.data?.current_pcr_oi_chg || null,
+      deltaImbalance: data?.analysis?.greeks_engine?.delta_imbalance || null,
+      trend: data?.analysis?.market_state?.trend || null,
+    })
+  }, [data])
 
-  // Fetch buyer edge data
-  const fetchData = useCallback(async () => {
-    if (!selectedExpiry) return
-    const requestId = ++requestIdRef.current
+  // ── Data Loaders ──────────────────────────────────────────────
+
+  const loadData = useCallback(async () => {
+    if (!selectedUnderlying || !selectedExpiry || !apiKey) return
     setIsLoading(true)
     try {
+<<<<<<< Updated upstream
       const expiryForAPI = convertExpiryForAPI(selectedExpiry)
 
       // Run state engine + IVR in parallel (GEX is loaded separately via loadGexData)
@@ -994,15 +945,111 @@ export default function BuyerEdge() {
     } catch {
       if (requestIdRef.current !== requestId) return
       showToast.error('Failed to fetch buyer edge data')
+=======
+      const res = await buyerEdgeApi.getUnifiedMonitor({
+        underlying: selectedUnderlying,
+        exchange: selectedExchange,
+        expiry_date: selectedExpiry,
+        interval: straddleInterval,
+        days: parseInt(straddleDays),
+        lb_bars: parseInt(lbBars),
+        lb_tf: lbTf,
+        pcr_strike_window: 10,
+        max_snapshot_strikes: parseInt(strikeCount),
+      })
+      if (res.status === 'success') {
+        setData(res)
+      }
+    } catch (err: any) {
+      console.error('PCR error:', err)
+>>>>>>> Stashed changes
     } finally {
-      if (requestIdRef.current === requestId) setIsLoading(false)
+      setIsLoading(false) // shared loading for unified monitor
     }
+<<<<<<< Updated upstream
   }, [selectedUnderlying, selectedExpiry, selectedExchange, strikeCount, lbBars, lbTf, ivExpiries])
+=======
+  }, [selectedUnderlying, selectedExpiry, selectedExchange, straddleInterval, straddleDays, lbBars, lbTf, strikeCount, apiKey])
+>>>>>>> Stashed changes
 
+
+
+  const loadGexData = useCallback(async () => {
+    if (!selectedUnderlying || !apiKey) return
+    setIsGexLoading(true)
+    try {
+      const expiryForAPI = convertExpiryForAPI(selectedExpiry)
+      const res = await buyerEdgeApi.getGexLevels({
+        underlying: selectedUnderlying,
+        exchange: selectedExchange,
+        mode: gexMode,
+        expiry_date: gexMode === 'selected' ? expiryForAPI : undefined,
+        expiry_dates: gexMode === 'cumulative' ? expiries.map(convertExpiryForAPI) : undefined,
+        strike_count: 20,
+      })
+      if (res.status === 'success') {
+        setGexData(res)
+      }
+    } catch (err: any) {
+      console.error('GEX error:', err)
+    } finally {
+      setIsGexLoading(false)
+    }
+  }, [selectedUnderlying, selectedExpiry, selectedExchange, gexMode, expiries, apiKey])
+
+  const loadIvDashboardData = useCallback(async () => {
+    if (!selectedUnderlying || !apiKey || expiries.length === 0) return
+    setIsIvLoading(true)
+    try {
+      const res = await buyerEdgeApi.getIvDashboard({
+        underlying: selectedUnderlying,
+        exchange: selectedExchange,
+        expiry_dates: expiries.slice(0, 4).map(convertExpiryForAPI),
+        strike_count: 10,
+      })
+      if (res.status === 'success') {
+        setIvData(res)
+      }
+    } catch (err: any) {
+      console.error('IVR error:', err)
+    } finally {
+      setIsIvLoading(false)
+    }
+  }, [selectedUnderlying, selectedExchange, expiries, apiKey])
+
+  const loadSpotCandleData = useCallback(async () => {
+    if (!selectedUnderlying || !apiKey) return
+    setIsSpotCandleLoading(true)
+    try {
+      const res = await buyerEdgeApi.getSpotCandles({
+        underlying: selectedUnderlying,
+        exchange: selectedExchange,
+        interval: spotChartInterval,
+        days: parseInt(spotChartDays),
+      })
+      if (res.status === 'success') {
+        setSpotCandleData(res)
+      }
+    } catch (err: any) {
+      console.error('Spot candle error:', err)
+    } finally {
+      setIsSpotCandleLoading(false)
+    }
+  }, [selectedUnderlying, selectedExchange, spotChartInterval, spotChartDays, apiKey])
+
+  const refreshAll = useCallback(() => {
+    loadData()
+    loadGexData()
+    loadIvDashboardData()
+    loadSpotCandleData()
+  }, [loadData, loadGexData, loadIvDashboardData, loadSpotCandleData])
+
+  // Initial load
   useEffect(() => {
-    if (selectedExpiry) fetchData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedExpiry])
+    if (selectedUnderlying && selectedExpiry) {
+      refreshAll()
+    }
+  }, [selectedUnderlying, selectedExpiry])
 
   // ── Dedicated GEX loader — runs independently on mode/expiry/expiries changes ─────
   const loadGexData = useCallback(async () => {
@@ -1031,6 +1078,7 @@ export default function BuyerEdge() {
   }, [selectedUnderlying, selectedExpiry, selectedExchange, gexMode, gexExpiries])
 
   useEffect(() => {
+<<<<<<< Updated upstream
     if (selectedExpiry) loadGexData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadGexData])
@@ -1903,6 +1951,12 @@ export default function BuyerEdge() {
 
   const signal = data?.signal_engine?.signal ?? null
   const signalCfg = signal ? SIGNAL_CONFIG[signal] : null
+=======
+    if (!autoRefresh || !isMarketOpen) return
+    const timer = setInterval(refreshAll, AUTO_REFRESH_INTERVAL)
+    return () => clearInterval(timer)
+  }, [autoRefresh, isMarketOpen, refreshAll])
+>>>>>>> Stashed changes
 
   // ── Directional Conviction Score ────────────────────────────────────────
   const directionalScore = useMemo<DirectionalScoreResult | null>(() => {
@@ -1920,79 +1974,79 @@ export default function BuyerEdge() {
   }, [pcrData, data])
 
   return (
-    <div className="py-6 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">Buyer Edge</h1>
-        <p className="text-muted-foreground mt-1">
-          State engine: Are sellers still in control, or are they being forced to reprice?
-        </p>
-      </div>
+    <div className="container mx-auto py-6 space-y-6 max-w-[1600px] animate-in fade-in duration-700">
+      <Suspense fallback={<div className="h-20 flex items-center justify-center italic text-muted-foreground">Loading controls...</div>}>
+        <Controls
+          fnoExchanges={fnoExchanges}
+          selectedExchange={selectedExchange}
+          onExchangeChange={(ex) => {
+            setSelectedExchange(ex)
+            setUnderlyings(defaultUnderlyings[ex] || [])
+            setSelectedUnderlying(defaultUnderlyings[ex]?.[0] || '')
+          }}
+          underlyings={underlyings}
+          selectedUnderlying={selectedUnderlying}
+          onUnderlyingChange={setSelectedUnderlying}
+          underlyingOpen={underlyingOpen}
+          setUnderlyingOpen={setUnderlyingOpen}
+          expiries={expiries}
+          selectedExpiry={selectedExpiry}
+          onExpiryChange={setSelectedExpiry}
+          lbBars={lbBars}
+          setLbBars={setLbBars}
+          lbTf={lbTf}
+          setLbTf={setLbTf}
+          strikeCount={strikeCount}
+          setStrikeCount={setStrikeCount}
+          isLoading={isLoading}
+          onRefresh={refreshAll}
+          autoRefresh={autoRefresh}
+          setAutoRefresh={setAutoRefresh}
+          isMarketOpen={isMarketOpen(selectedExchange)}
+        />
+      </Suspense>
 
-      {/* Controls */}
-      <Card>
-        <CardContent className="pt-4">
-          <div className="flex flex-wrap gap-3 items-end">
-            {/* Exchange */}
-            <div className="space-y-1">
-              <label className="text-xs text-muted-foreground">Exchange</label>
-              <Select value={selectedExchange} onValueChange={setSelectedExchange}>
-                <SelectTrigger className="w-36 h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {fnoExchanges.map((ex) => (
-                    <SelectItem key={ex.value} value={ex.value}>
-                      {ex.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+      <Suspense fallback={null}>
+        <InterpretationGuide
+          isOpen={showInterpretation}
+          onToggle={() => setShowInterpretation(!showInterpretation)}
+        />
+      </Suspense>
 
-            {/* Underlying */}
-            <div className="space-y-1">
-              <label className="text-xs text-muted-foreground">Underlying</label>
-              <Popover open={underlyingOpen} onOpenChange={setUnderlyingOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={underlyingOpen}
-                    className="w-44 h-9 justify-between font-normal"
-                  >
-                    {selectedUnderlying || 'Select…'}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50 shrink-0" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-44 p-0">
-                  <Command>
-                    <CommandInput placeholder="Search…" />
-                    <CommandList>
-                      <CommandEmpty>No results.</CommandEmpty>
-                      <CommandGroup>
-                        {underlyings.map((u) => (
-                          <CommandItem
-                            key={u}
-                            value={u}
-                            onSelect={() => {
-                              setSelectedUnderlying(u)
-                              setUnderlyingOpen(false)
-                            }}
-                          >
-                            <Check
-                              className={`mr-2 h-4 w-4 ${selectedUnderlying === u ? 'opacity-100' : 'opacity-0'}`}
-                            />
-                            {u}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-            </div>
+      <div className="grid grid-cols-1 gap-6">
+        <Suspense fallback={<div className="h-[400px] flex items-center justify-center border rounded-lg animate-pulse bg-muted/20">Loading Premium Monitor...</div>}>
+          <PremiumMonitor
+            data={data?.analysis}
+            pcrData={data?.pcr || null}
+            straddleData={data?.straddle?.data || null}
+            convictionScore={convictionScore}
+            isLoading={isLoading}
+            isPcrLoading={isLoading}
+            isChartLoading={isLoading}
+            interval={straddleInterval}
+            setInterval={setStraddleInterval}
+            days={straddleDays}
+            setDays={setStraddleDays}
+            showStraddle={showStraddle}
+            setShowStraddle={setShowStraddle}
+            showSpot={showSpot}
+            setShowSpot={setShowSpot}
+            showSynthetic={showSynthetic}
+            setShowSynthetic={setShowSynthetic}
+            showVwap={showVwap}
+            setShowVwap={setShowVwap}
+            showPcrOi={showPcrOi}
+            setShowPcrOi={setShowPcrOi}
+            showPcrVol={showPcrVol}
+            setShowPcrVol={setShowPcrVol}
+            isOpen={straddleSectionOpen}
+            onToggle={() => setStraddleSectionOpen(!straddleSectionOpen)}
+            onShowInfo={() => setShowPremiumInfo(!showPremiumInfo)}
+            isDarkMode={isDarkMode}
+          />
+        </Suspense>
 
+<<<<<<< Updated upstream
             {/* Expiry */}
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">Expiry</label>
@@ -4068,6 +4122,70 @@ export default function BuyerEdge() {
           </CardContent>
         )}
       </Card>
+=======
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Suspense fallback={<div className="h-[300px] flex items-center justify-center border rounded-lg animate-pulse bg-muted/20">Loading OI Change...</div>}>
+            <IntradayOiChange
+              data={data}
+              isLoading={isLoading}
+              isOpen={oiChgSectionOpen}
+              onToggle={() => setOiChgSectionOpen(!oiChgSectionOpen)}
+              onShowInfo={() => setShowOiChgInfo(!showOiChgInfo)}
+              viewMode={oiChgViewMode}
+              setViewMode={setOiChgViewMode}
+              isDarkMode={isDarkMode}
+            />
+          </Suspense>
+
+          <Suspense fallback={<div className="h-[300px] flex items-center justify-center border rounded-lg animate-pulse bg-muted/20">Loading Breadth...</div>}>
+            <MarketBreadth
+              data={data}
+              isLoading={isLoading}
+              isOpen={breadthSectionOpen}
+              onToggle={() => setBreadthSectionOpen(!breadthSectionOpen)}
+              onShowInfo={() => setShowBreadthInfo(!showBreadthInfo)}
+            />
+          </Suspense>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Suspense fallback={<div className="h-[300px] flex items-center justify-center border rounded-lg animate-pulse bg-muted/20">Loading GEX...</div>}>
+            <GexLevels
+              gexData={gexData}
+              isLoading={isGexLoading}
+              mode={gexMode}
+              setMode={setGexMode}
+              isOpen={gexSectionOpen}
+              onToggle={() => setGexSectionOpen(!gexSectionOpen)}
+            />
+          </Suspense>
+
+          <Suspense fallback={<div className="h-[300px] flex items-center justify-center border rounded-lg animate-pulse bg-muted/20">Loading IVR...</div>}>
+            <IvrDashboard
+              ivData={ivData}
+              isLoading={isIvLoading}
+              isOpen={ivSectionOpen}
+              onToggle={() => setIvSectionOpen(!ivSectionOpen)}
+            />
+          </Suspense>
+        </div>
+
+        <Suspense fallback={<div className="h-[400px] flex items-center justify-center border rounded-lg animate-pulse bg-muted/20">Loading GEX Spot Chart...</div>}>
+          <GexSpotChart
+            gexData={gexData}
+            spotCandleData={spotCandleData}
+            isLoading={isSpotCandleLoading}
+            interval={spotChartInterval}
+            setInterval={setSpotChartInterval}
+            days={spotChartDays}
+            setDays={setSpotChartDays}
+            isOpen={spotChartSectionOpen}
+            onToggle={() => setSpotChartSectionOpen(!spotChartSectionOpen)}
+            isDarkMode={isDarkMode}
+          />
+        </Suspense>
+      </div>
+>>>>>>> Stashed changes
     </div>
   )
 }
