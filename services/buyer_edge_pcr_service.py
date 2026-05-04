@@ -44,6 +44,7 @@ from datetime import datetime
 import pandas as pd
 import pytz
 
+from services.buyer_edge_utils import get_buyer_edge_quote_exchange
 from services.history_service import get_history
 from services.option_chain_service import get_option_chain
 from services.option_symbol_service import (
@@ -64,51 +65,29 @@ from utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-# How many strikes on each side of ATM to sum OI/volume for PCR
-_PCR_STRIKE_WINDOW = 5
+# Shared IST timezone object — created once at module level to avoid repeated construction
+_IST = pytz.timezone("Asia/Kolkata")
 # Decimal precision for PCR values
 _PCR_DECIMAL_PRECISION = 4
-# Max strikes per side for the combined live-snapshot PCR (covers the full
-# "selected expiry combined Options Strike Range" the user expects).
-_MAX_SNAPSHOT_STRIKES = 50
-
-NSE_INDEX_SYMBOLS = {
-    "NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY",
-    "NIFTYNXT50", "NIFTYIT", "NIFTYPHARMA", "NIFTYBANK",
-}
-BSE_INDEX_SYMBOLS = {"SENSEX", "BANKEX", "SENSEX50"}
-
-
-def _get_quote_exchange(base_symbol: str, exchange: str) -> str:
-    if base_symbol in NSE_INDEX_SYMBOLS:
-        return "NSE_INDEX"
-    if base_symbol in BSE_INDEX_SYMBOLS:
-        return "BSE_INDEX"
-    if exchange.upper() in ("NFO", "BFO"):
-        return "NSE" if exchange.upper() == "NFO" else "BSE"
-    if exchange.upper() in CRYPTO_EXCHANGES:
-        return exchange.upper()
-    return exchange.upper()
 
 
 def _convert_timestamp_to_ist(df: pd.DataFrame) -> pd.DataFrame | None:
-    ist = pytz.timezone("Asia/Kolkata")
     try:
         if "timestamp" not in df.columns:
             return None
         try:
             df["datetime"] = pd.to_datetime(df["timestamp"], unit="s", utc=True)
-            df["datetime"] = df["datetime"].dt.tz_convert(ist)
+            df["datetime"] = df["datetime"].dt.tz_convert(_IST)
         except Exception:
             try:
                 df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
-                df["datetime"] = df["datetime"].dt.tz_convert(ist)
+                df["datetime"] = df["datetime"].dt.tz_convert(_IST)
             except Exception:
                 df["datetime"] = pd.to_datetime(df["timestamp"])
                 if df["datetime"].dt.tz is None:
-                    df["datetime"] = df["datetime"].dt.tz_localize("UTC").dt.tz_convert(ist)
+                    df["datetime"] = df["datetime"].dt.tz_localize("UTC").dt.tz_convert(_IST)
                 else:
-                    df["datetime"] = df["datetime"].dt.tz_convert(ist)
+                    df["datetime"] = df["datetime"].dt.tz_convert(_IST)
         df.set_index("datetime", inplace=True)
         return df.sort_index()
     except Exception as e:
@@ -123,27 +102,30 @@ def get_pcr_chart_data(
     interval: str,
     api_key: str,
     days: int = 1,
+    pcr_strike_window: int = 5,
+    max_snapshot_strikes: int = 50,
 ) -> tuple[bool, dict, int]:
     """
     Compute intraday PCR(OI) and PCR(Volume) time series.
 
     Args:
-        underlying:  Underlying symbol (e.g., NIFTY)
-        exchange:    Exchange (NSE_INDEX, BSE_INDEX, NFO, BFO, …)
-        expiry_date: Expiry in DDMMMYY format
-        interval:    Candle interval (1m, 3m, 5m, 15m, 30m, 1h, 1d)
-        api_key:     OpenAlgo API key
-        days:        Number of trading days of history (1–5)
+        underlying:           Underlying symbol (e.g., NIFTY)
+        exchange:             Exchange (NSE_INDEX, BSE_INDEX, NFO, BFO, …)
+        expiry_date:          Expiry in DDMMMYY format
+        interval:             Candle interval (1m, 3m, 5m, 15m, 30m, 1h, 1d)
+        api_key:              OpenAlgo API key
+        days:                 Number of trading days of history (1–5)
+        pcr_strike_window:    Strikes on each side of ATM for intraday PCR sum
+        max_snapshot_strikes: Max strikes per side for the live total PCR snapshot
 
     Returns:
         (success, response_dict, status_code)
     """
     try:
-        ist = pytz.timezone("Asia/Kolkata")
-        start_date_str, end_date_str = _resolve_trading_window(days, ist)
+        start_date_str, end_date_str = _resolve_trading_window(days, _IST)
 
         base_symbol = underlying.upper()
-        quote_exchange = _get_quote_exchange(base_symbol, exchange)
+        quote_exchange = get_buyer_edge_quote_exchange(base_symbol, exchange)
         options_exchange = get_option_exchange(quote_exchange)
 
         # CRYPTO: resolve perpetual symbol
@@ -203,11 +185,6 @@ def get_pcr_chart_data(
 
         # Step 4: Collect ALL unique window strikes across every unique ATM first, then
         # fetch one CE history call and one PE history call per unique strike.
-        # The previous approach re-fetched the same strikes for every unique ATM
-        # (heavily overlapping windows) — with 5 ATMs and a ±5-strike window that was
-        # up to 5 × 11 × 2 = 110 history calls (~38 s at 350 ms per call).
-        # Fetching each unique strike once reduces it to at most
-        # (2×_PCR_STRIKE_WINDOW + 1 + n_atm_spread) × 2 calls, roughly 22-30 calls.
         strike_history: dict[float, dict] = {}  # strike -> {ce: {ts: {oi, volume, close}}, pe: {...}}
 
         all_window_strikes: set[float] = set()
@@ -216,8 +193,8 @@ def get_pcr_chart_data(
             if atm_idx is None:
                 continue
             window = available_strikes[
-                max(0, atm_idx - _PCR_STRIKE_WINDOW):
-                min(len(available_strikes), atm_idx + _PCR_STRIKE_WINDOW + 1)
+                max(0, atm_idx - pcr_strike_window):
+                min(len(available_strikes), atm_idx + pcr_strike_window + 1)
             ]
             all_window_strikes.update(window)
 
@@ -276,6 +253,9 @@ def get_pcr_chart_data(
         has_oi_data = False
         # ADR: track previous total OI (CE+PE) per strike to detect advances/declines
         prev_strike_oi: dict[float, float] = {}
+        # Split breadth: track previous CE OI and PE OI independently per strike
+        prev_ce_oi_per_strike: dict[float, float] = {}
+        prev_pe_oi_per_strike: dict[float, float] = {}
         first_candle = True
 
         for ts, row in (df_underlying.iterrows() if df_underlying is not None else []):
@@ -289,8 +269,8 @@ def get_pcr_chart_data(
                 continue
 
             window_strikes = available_strikes[
-                max(0, atm_idx - _PCR_STRIKE_WINDOW):
-                min(len(available_strikes), atm_idx + _PCR_STRIKE_WINDOW + 1)
+                max(0, atm_idx - pcr_strike_window):
+                min(len(available_strikes), atm_idx + pcr_strike_window + 1)
             ]
 
             total_ce_oi = 0.0
@@ -304,6 +284,11 @@ def get_pcr_chart_data(
             advances = 0
             declines = 0
             neutral_count = 0
+            # Split CE/PE breadth accumulators
+            ce_advances = 0
+            ce_declines = 0
+            pe_advances = 0
+            pe_declines = 0
 
             for k_strike in window_strikes:
                 sh = strike_history.get(k_strike, {"ce": {}, "pe": {}})
@@ -320,9 +305,6 @@ def get_pcr_chart_data(
                     atm_pe_close = pe_data.get("close", 0)
 
                 # ADR: compare combined CE+PE OI to the previous candle.
-                # For missing strikes (new strike in window) the fallback to
-                # curr_total_oi means no change → counted as neutral, which is
-                # the safest assumption when no prior reference exists.
                 curr_total_oi = ce_oi + pe_oi
                 if not first_candle:
                     prev_total_oi = prev_strike_oi.get(k_strike, curr_total_oi)
@@ -332,10 +314,23 @@ def get_pcr_chart_data(
                         declines += 1
                     else:
                         neutral_count += 1
+
+                    # Split CE/PE breadth: track each leg's OI independently
+                    prev_ce = prev_ce_oi_per_strike.get(k_strike, ce_oi)
+                    prev_pe = prev_pe_oi_per_strike.get(k_strike, pe_oi)
+                    if ce_oi > prev_ce:
+                        ce_advances += 1
+                    elif ce_oi < prev_ce:
+                        ce_declines += 1
+                    if pe_oi > prev_pe:
+                        pe_advances += 1
+                    elif pe_oi < prev_pe:
+                        pe_declines += 1
                 else:
-                    # First candle — no prior reference; all strikes counted neutral
                     neutral_count += 1
                 prev_strike_oi[k_strike] = curr_total_oi
+                prev_ce_oi_per_strike[k_strike] = ce_oi
+                prev_pe_oi_per_strike[k_strike] = pe_oi
 
             pcr_oi = round(total_pe_oi / total_ce_oi, _PCR_DECIMAL_PRECISION) if total_ce_oi > 0 else None
             pcr_volume = round(total_pe_vol / total_ce_vol, _PCR_DECIMAL_PRECISION) if total_ce_vol > 0 else None
@@ -345,15 +340,15 @@ def get_pcr_chart_data(
                 else None
             )
 
-            # ADR = advances / declines; 0.0 when no movement; capped at 10.0
+            # ADR = advances / declines
             if first_candle:
                 adr = None
             elif declines > 0:
                 adr = round(min(advances / declines, 10.0), _PCR_DECIMAL_PRECISION)
             elif advances > 0:
-                adr = 10.0  # All advancing, no declining
+                adr = 10.0
             else:
-                adr = 0.0  # No OI movement in this window
+                adr = 0.0
 
             first_candle = False
 
@@ -372,21 +367,24 @@ def get_pcr_chart_data(
                     "declines": declines,
                     "neutral": neutral_count,
                     "adr": adr,
-                    # Raw window totals for OI-change chart (frontend computes delta vs first candle)
                     "ce_oi": round(total_ce_oi),
                     "pe_oi": round(total_pe_oi),
+                    "atm_ce_ltp": round(atm_ce_close, 2),
+                    "atm_pe_ltp": round(atm_pe_close, 2),
+                    "ce_advances": ce_advances,
+                    "ce_declines": ce_declines,
+                    "pe_advances": pe_advances,
+                    "pe_declines": pe_declines,
                 }
             )
 
         # Trim to last N trading days
-        series = _cap_last_n_trading_dates(series, days, ist)
+        series = _cap_last_n_trading_dates(series, days, _IST)
 
-        # Step 6: Live snapshot PCR — uses ALL available strikes for the selected expiry
-        # (= "combined Options Strike Range") so PCR matches what NSE publishes.
-        # strike_count=50 → up to 101 strikes (50 above + ATM + 50 below).
+        # Step 6: Live snapshot PCR
         live_pcr_oi = None
         live_pcr_volume = None
-        snapshot_strike_count = min(len(available_strikes) // 2 + 1, _MAX_SNAPSHOT_STRIKES)
+        snapshot_strike_count = min(len(available_strikes) // 2 + 1, max_snapshot_strikes)
         success_oc, oc_resp, _ = get_option_chain(
             underlying=base_symbol,
             exchange=exchange,
@@ -463,7 +461,7 @@ def get_pcr_chart_data(
             _spot = _sq_resp.get("data", {}).get("ltp", 0) if _sq_ok else 0
             series = [
                 {
-                    "time": int(datetime.now(ist).timestamp()),
+                    "time": int(datetime.now(_IST).timestamp()),
                     "spot": float(_spot or 0),
                     "atm_strike": None,
                     "pcr_oi": live_pcr_oi,
@@ -475,6 +473,12 @@ def get_pcr_chart_data(
                     "adr": None,
                     "ce_oi": 0,
                     "pe_oi": 0,
+                    "atm_ce_ltp": 0.0,
+                    "atm_pe_ltp": 0.0,
+                    "ce_advances": 0,
+                    "ce_declines": 0,
+                    "pe_advances": 0,
+                    "pe_declines": 0,
                 }
             ]
             live_only = True
@@ -553,4 +557,100 @@ def get_pcr_chart_data(
 
     except Exception as exc:
         logger.exception(f"Error in get_pcr_chart_data: {exc}")
+        return False, {"status": "error", "message": str(exc)}, 500
+
+
+# ---------------------------------------------------------------------------
+# get_spot_candles — lightweight OHLCV history for the GEX spot chart
+# ---------------------------------------------------------------------------
+
+def get_spot_candles(
+    underlying: str,
+    exchange: str,
+    interval: str,
+    api_key: str,
+    days: int = 5,
+) -> tuple[bool, dict, int]:
+    """
+    Fetch OHLCV candle history for the underlying spot symbol.
+
+    Args:
+        underlying:  Base symbol (e.g. NIFTY, BANKNIFTY)
+        exchange:    Option exchange (NFO, BFO, …); used only to derive the
+                     quote exchange via _get_quote_exchange
+        interval:    Candle interval (1m, 3m, 5m, 15m, 30m, 1h, 1d)
+        api_key:     OpenAlgo API key
+        days:        Trading days of history to return (1–30)
+
+    Returns:
+        (success, response_dict, status_code)
+        response_dict: {status, underlying, exchange, candles:[{time,open,high,low,close,volume}]}
+    """
+    try:
+        start_date_str, end_date_str = _resolve_trading_window(days, _IST)
+
+        base_symbol = underlying.upper()
+        quote_exchange = get_buyer_edge_quote_exchange(base_symbol, exchange)
+
+        if exchange.upper() in CRYPTO_EXCHANGES:
+            _perp = fno_search_symbols(
+                query=f"{base_symbol}USDFUT",
+                exchange=exchange,
+                instrumenttype=INSTRUMENT_PERPFUT,
+                limit=1,
+            )
+            if not _perp:
+                return False, {
+                    "status": "error",
+                    "message": f"No perpetual futures found for {base_symbol}",
+                }, 404
+            underlying_quote_symbol = _perp[0]["symbol"]
+        else:
+            underlying_quote_symbol = base_symbol
+
+        success_u, resp_u, _ = get_history(
+            symbol=underlying_quote_symbol,
+            exchange=quote_exchange,
+            interval=interval,
+            start_date=start_date_str,
+            end_date=end_date_str,
+            api_key=api_key,
+        )
+        if not success_u:
+            return False, {"status": "error", "message": "Failed to fetch spot history"}, 502
+
+        raw = resp_u.get("data", [])
+        if not raw:
+            return True, {
+                "status": "success",
+                "underlying": base_symbol,
+                "exchange": quote_exchange,
+                "candles": [],
+            }, 200
+
+        df = pd.DataFrame(raw)
+        df = _convert_timestamp_to_ist(df)
+        if df is None:
+            return False, {"status": "error", "message": "Failed to parse candle timestamps"}, 500
+
+        candles = []
+        for ts, row in df.iterrows():
+            candles.append({
+                "time": int(ts.timestamp()),
+                "open": round(float(row.get("open", 0) or 0), 2),
+                "high": round(float(row.get("high", 0) or 0), 2),
+                "low": round(float(row.get("low", 0) or 0), 2),
+                "close": round(float(row.get("close", 0) or 0), 2),
+                "volume": int(row.get("volume", 0) or 0),
+            })
+
+        return True, {
+            "status": "success",
+            "underlying": base_symbol,
+            "exchange": quote_exchange,
+            "candles": candles,
+        }, 200
+
+    except Exception as exc:
+        logger.exception(f"Error in get_spot_candles: {exc}")
         return False, {"status": "error", "message": str(exc)}, 500
