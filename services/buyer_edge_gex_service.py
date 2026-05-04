@@ -313,8 +313,17 @@ def get_gex_levels(
         chain = chain_resp.get("chain", [])
         spot_price = chain_resp.get("underlying_ltp", 0) or 0
 
-        if not spot_price:
-            return False, {"status": "error", "message": "Could not determine spot price"}, 500
+        if not chain or not spot_price:
+            # Fallback to cache if live data is empty (market closed but call succeeded)
+            fallback = _get_gex_cache(cache_key)
+            if fallback:
+                logger.info(f"Using GEX empty-chain fallback cache for {cache_key}")
+                fallback["data_mode"] = "last_day_fallback"
+                return True, fallback, 200
+            
+            if not spot_price:
+                return False, {"status": "error", "message": "Could not determine spot price"}, 500
+            return False, {"status": "error", "message": "No option chain data available"}, 404
 
         gex_chain = _compute_gex_from_chain(chain, spot_price, options_exchange)
         levels = _derive_gex_levels(gex_chain, spot_price)
