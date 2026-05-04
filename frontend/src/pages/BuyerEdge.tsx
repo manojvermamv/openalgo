@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Check, ChevronsUpDown, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react'
+import { Check, ChevronsUpDown, RefreshCw, ChevronDown, ChevronUp, Wifi, WifiOff, Info } from 'lucide-react'
 import {
   ColorType,
   CrosshairMode,
   LineSeries,
+  CandlestickSeries,
   createChart,
   type IChartApi,
   type ISeriesApi,
 } from 'lightweight-charts'
 import { useSupportedExchanges } from '@/hooks/useSupportedExchanges'
 import { useThemeStore } from '@/stores/themeStore'
+import { useAuthStore } from '@/stores/authStore'
+import { useOptionChainLive } from '@/hooks/useOptionChainLive'
+import { useMarketStatus } from '@/hooks/useMarketStatus'
 import {
   buyerEdgeApi,
   type BuyerEdgeResponse,
@@ -18,12 +22,14 @@ import {
   type StrikeOiChange,
   type IvDashboardResponse,
   type SignalType,
+  type SpotCandleResponse,
 } from '@/api/buyerEdge'
 import {
   straddleChartApi,
   type StraddleChartData,
   type StraddleDataPoint,
 } from '@/api/straddle-chart'
+import { ivChartApi, type IVChartData } from '@/api/iv-chart'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -47,7 +53,6 @@ import { showToast } from '@/utils/toast'
 
 const AUTO_REFRESH_INTERVAL = 30000
 const STRADDLE_CHART_HEIGHT = 400
-const PCR_CHART_HEIGHT = 300
 const OI_CHANGE_CHART_HEIGHT = 300
 // Threshold (in price points) for proximity annotations in GEX/IVx charts
 const STRIKE_PROXIMITY_THRESHOLD = 50
@@ -77,13 +82,429 @@ function formatIST(unixSeconds: number): { date: string; time: string } {
   return { date: `${dd} ${mo}`, time: `${hh}:${mm} ${ampm}` }
 }
 
-/** Return interpretation label + colour for an ADR value. */
+/** Return interpretation label + colour for an ADR value (combined strike OI breadth). */
 function getAdrMeta(adr: number): { label: string; color: string } {
   if (adr >= 1.5) return { label: 'Strong Bull', color: '#22c55e' }
-  if (adr >= 1.0) return { label: 'Bullish',     color: '#86efac' }
-  if (adr >= 0.9) return { label: 'Sideways',    color: '#fbbf24' }
-  if (adr >= 0.7) return { label: 'Bearish',     color: '#fb923c' }
-  return                  { label: 'Strong Bear', color: '#ef4444' }
+  if (adr >= 1.0) return { label: 'Bullish', color: '#86efac' }
+  if (adr >= 0.9) return { label: 'Sideways', color: '#fbbf24' }
+  if (adr >= 0.7) return { label: 'Bearish', color: '#fb923c' }
+  return { label: 'Strong Bear', color: '#ef4444' }
+}
+
+/**
+ * Premium + OI matrix for an individual options leg.
+ * Uses ATM option premium direction (CE or PE LTP change from session open).
+ *
+ * CE leg — directional interpretation:
+ *   OI↑ + Prem↑ = Call Buying   (bullish demand — real call buyers)
+ *   OI↑ + Prem↓ = Call Writing  (bearish ceiling — sellers writing OTM calls)
+ *   OI↓ + Prem↑ = CE Short Covering (call shorts closing — mild bullish)
+ *   OI↓ + Prem↓ = CE Long Unwinding (call longs exiting — bearish)
+ *
+ * PE leg — directional interpretation:
+ *   OI↑ + Prem↑ = Put Buying   (bearish demand — real put buyers / hedgers)
+ *   OI↑ + Prem↓ = Put Writing  (bullish floor — sellers writing OTM puts)
+ *   OI↓ + Prem↑ = PE Short Covering (put shorts closing — mildly bearish)
+ *   OI↓ + Prem↓ = PE Long Unwinding (put longs exiting — bullish)
+ */
+function getOiFlowMeta(
+  leg: 'CE' | 'PE',
+  oiDelta: number,
+  /** Session-start to session-current ATM CE or PE LTP change. null = no premium data. */
+  premiumDelta: number | null,
+): { label: string; color: string; note: string } | null {
+  if (oiDelta === 0) return null
+  // Treat tiny premium moves (< ₹0.50) as noise — don't classify direction
+  const premUp: boolean | null =
+    premiumDelta !== null ? (Math.abs(premiumDelta) >= 0.5 ? premiumDelta > 0 : null) : null
+
+  if (leg === 'CE') {
+    if (oiDelta > 0) {
+      if (premUp === true) return { label: 'Call Buying', color: '#22c55e', note: 'CE Prem↑ + OI↑ → real call demand (Bullish)' }
+      if (premUp === false) return { label: 'Call Writing', color: '#ef4444', note: 'CE Prem↓ + OI↑ → writers adding supply (Bearish ceiling)' }
+      return { label: 'CE OI Rising', color: '#86efac', note: 'CE OI↑ — confirm with ATM CE premium direction' }
+    }
+    if (premUp === true) return { label: 'CE Short Covering', color: '#86efac', note: 'CE Prem↑ + OI↓ → call shorts exiting (Mild Bullish)' }
+    if (premUp === false) return { label: 'CE Long Unwinding', color: '#fb923c', note: 'CE Prem↓ + OI↓ → call longs exiting (Bearish)' }
+    return { label: 'CE OI Falling', color: '#fb923c', note: 'CE OI↓ — confirm with ATM CE premium direction' }
+  }
+
+  // PE leg
+  if (oiDelta > 0) {
+    if (premUp === true) return { label: 'Put Buying', color: '#ef4444', note: 'PE Prem↑ + OI↑ → real put demand (Bearish hedge)' }
+    if (premUp === false) return { label: 'Put Writing', color: '#22c55e', note: 'PE Prem↓ + OI↑ → writers building floor (Bullish support)' }
+    return { label: 'PE OI Rising', color: '#f59e0b', note: 'PE OI↑ — confirm with ATM PE premium direction' }
+  }
+  if (premUp === true) return { label: 'PE Short Covering', color: '#f59e0b', note: 'PE Prem↑ + OI↓ → put shorts uncertain (Mildly Bearish)' }
+  if (premUp === false) return { label: 'PE Long Unwinding', color: '#86efac', note: 'PE Prem↓ + OI↓ → hedgers exiting (Bullish)' }
+  return { label: 'PE OI Falling', color: '#86efac', note: 'PE OI↓ — confirm with ATM PE premium direction' }
+}
+
+/**
+ * OI regime when CE and PE legs are considered together.
+ * "Dual OI Expansion" is deliberately ambiguous — add ATM premium direction
+ * to distinguish straddle buying (OI↑ + Prem↑) from straddle writing (OI↑ + Prem↓).
+ */
+function getOiRegimeMeta(
+  ceDelta: number,
+  peDelta: number,
+): { label: string; color: string } {
+  if (ceDelta > 0 && peDelta > 0) return { label: 'Dual OI Expansion', color: '#f59e0b' }
+  if (ceDelta < 0 && peDelta < 0) return { label: 'OI Convergence', color: '#818cf8' }
+  if (ceDelta > 0) return { label: 'CE Dominant', color: '#ef4444' }
+  return { label: 'PE Dominant', color: '#22c55e' }
+}
+
+/**
+ * Directional Breadth Bias from per-leg strike advancers.
+ * Breadth Bias = PE Advancers / CE Advancers.
+ * > 1.2 → more puts advancing = Bearish breadth.
+ * < 0.83 → more calls advancing = Bullish breadth.
+ */
+function getBreadthBias(
+  ceAdvances: number,
+  peAdvances: number,
+): { bias: number; label: string; color: string } | null {
+  if (ceAdvances + peAdvances === 0) return null
+  if (ceAdvances === 0) return { bias: 99, label: 'PE Dominated', color: '#ef4444' }
+  const bias = peAdvances / ceAdvances
+  if (bias >= 1.5) return { bias, label: 'Bearish Breadth', color: '#ef4444' }
+  if (bias >= 1.2) return { bias, label: 'Mild Bearish Breadth', color: '#fb923c' }
+  if (bias <= 0.67) return { bias, label: 'Bullish Breadth', color: '#22c55e' }
+  if (bias <= 0.83) return { bias, label: 'Mild Bullish Breadth', color: '#86efac' }
+  return { bias, label: 'Neutral Breadth', color: '#fbbf24' }
+}
+
+// ---------------------------------------------------------------------------
+// Directional Conviction Score
+// ---------------------------------------------------------------------------
+
+interface ScoreComponent {
+  label: string
+  score: number   // raw contribution (may be fractional)
+  max: number     // maximum absolute contribution for this component
+  note: string    // human-readable signal value
+  direction: 'bullish' | 'bearish' | 'neutral'
+}
+
+interface DirectionalScoreResult {
+  /** Normalised score: -100 to +100 */
+  pct: number
+  /** Raw sum */
+  raw: number
+  /** Maximum possible absolute raw sum */
+  maxRaw: number
+  label: 'Strong Bullish' | 'Mild Bullish' | 'Neutral' | 'Mild Bearish' | 'Strong Bearish'
+  color: string
+  components: ScoreComponent[]
+}
+
+/**
+ * Aggregate up to 10 signal dimensions into a single directional conviction score.
+ *
+ * Scoring weights:
+ *  1. Spot short-term (vs prev PCR bar)            ±1
+ *  2. Spot session anchor (vs first PCR bar)       ±1
+ *  3. Spot vs session spot-VWAP (mean of PCR spots)±1
+ *  4. PCR OI level                                 ±1
+ *  5. PCR OI change direction                      ±1
+ *  6. CE Flow (premium+OI matrix)                  ±2
+ *  7. PE Flow (premium+OI matrix)                  ±2
+ *  8. Breadth Bias (PE/CE advancers ratio)         ±1
+ *  9. Delta Imbalance (greeks engine)              ±1
+ * 10. Market State Trend                           ±1
+ *                                            Max = 12
+ */
+function computeDirectionalScore(params: {
+  pcrSeries: import('../api/buyerEdge').PcrDataPoint[]
+  pcrOi: number | null
+  pcrOiChg: number | null
+  deltaImbalance: number | null
+  trend: string | null
+}): DirectionalScoreResult {
+  const { pcrSeries, pcrOi, pcrOiChg, deltaImbalance, trend } = params
+  const components: ScoreComponent[] = []
+  let raw = 0
+  const MAX_RAW = 12
+
+  // ── helpers ──────────────────────────────────────────────────────────────
+  function push(c: ScoreComponent) {
+    components.push(c)
+    raw += c.score
+  }
+  function dir(s: number): 'bullish' | 'bearish' | 'neutral' {
+    return s > 0 ? 'bullish' : s < 0 ? 'bearish' : 'neutral'
+  }
+
+  const hasSeries = pcrSeries.length >= 2
+  const latest = hasSeries ? pcrSeries[pcrSeries.length - 1] : null
+  const prevBar = hasSeries ? pcrSeries[pcrSeries.length - 2] : null
+  const first = hasSeries ? pcrSeries[0] : null
+
+  // ── 1. Spot short-term (vs previous bar) ─────────────────────────────────
+  {
+    const s =
+      latest && prevBar
+        ? latest.spot > prevBar.spot
+          ? 1
+          : latest.spot < prevBar.spot
+            ? -1
+            : 0
+        : 0
+    push({ label: 'Spot (short-term)', score: s, max: 1, note: s > 0 ? 'Spot ↑ vs prev bar' : s < 0 ? 'Spot ↓ vs prev bar' : 'Spot flat', direction: dir(s) })
+  }
+
+  // ── 2. Spot session anchor (vs first bar) ─────────────────────────────────
+  {
+    const s =
+      latest && first
+        ? latest.spot > first.spot
+          ? 1
+          : latest.spot < first.spot
+            ? -1
+            : 0
+        : 0
+    push({ label: 'Spot (session)', score: s, max: 1, note: s > 0 ? 'Spot ↑ vs open' : s < 0 ? 'Spot ↓ vs open' : 'Spot at open', direction: dir(s) })
+  }
+
+  // ── 3. Spot vs session spot-VWAP ─────────────────────────────────────────
+  {
+    let spotVwap: number | null = null
+    if (hasSeries && latest) {
+      const sum = pcrSeries.reduce((acc, p) => acc + p.spot, 0)
+      spotVwap = sum / pcrSeries.length
+    }
+    const s =
+      latest && spotVwap !== null
+        ? latest.spot > spotVwap
+          ? 1
+          : latest.spot < spotVwap
+            ? -1
+            : 0
+        : 0
+    push({ label: 'Spot vs VWAP', score: s, max: 1, note: spotVwap !== null ? `Spot ${s > 0 ? '↑' : s < 0 ? '↓' : '='} VWAP ${spotVwap.toFixed(1)}` : '—', direction: dir(s) })
+  }
+
+  // ── 4. PCR OI Level ───────────────────────────────────────────────────────
+  {
+    let s = 0
+    let note = '—'
+    if (pcrOi !== null) {
+      if (pcrOi >= 1.2) { s = 1; note = `PCR OI ${pcrOi.toFixed(2)} (Strong put writing)` }
+      else if (pcrOi >= 1.0) { s = 0.5; note = `PCR OI ${pcrOi.toFixed(2)} (Moderate bullish)` }
+      else if (pcrOi <= 0.6) { s = -1; note = `PCR OI ${pcrOi.toFixed(2)} (Strong call writing)` }
+      else if (pcrOi <= 0.8) { s = -0.5; note = `PCR OI ${pcrOi.toFixed(2)} (Moderate bearish)` }
+      else { s = 0; note = `PCR OI ${pcrOi.toFixed(2)} (Neutral)` }
+    }
+    push({ label: 'PCR OI Level', score: s, max: 1, note, direction: dir(s) })
+  }
+
+  // ── 5. PCR OI Change direction ────────────────────────────────────────────
+  {
+    let s = 0
+    let note = '—'
+    if (pcrOiChg !== null) {
+      if (pcrOiChg >= 1.2) { s = 1; note = `PCR Δ ${pcrOiChg.toFixed(2)} (Intraday put build-up)` }
+      else if (pcrOiChg >= 0.9) { s = 0.5; note = `PCR Δ ${pcrOiChg.toFixed(2)} (Moderate build-up)` }
+      else if (pcrOiChg <= 0.5) { s = -1; note = `PCR Δ ${pcrOiChg.toFixed(2)} (Intraday call build-up)` }
+      else if (pcrOiChg <= 0.7) { s = -0.5; note = `PCR Δ ${pcrOiChg.toFixed(2)} (Moderate call build-up)` }
+      else { s = 0; note = `PCR Δ ${pcrOiChg.toFixed(2)} (Neutral intraday)` }
+    }
+    push({ label: 'PCR OI Change', score: s, max: 1, note, direction: dir(s) })
+  }
+
+  // ── 6. CE Flow (premium + OI matrix) ─────────────────────────────────────
+  // CE scoring: Call Buying = bullish demand = +2, Call Writing = bearish ceiling = -2
+  {
+    let s = 0
+    let note = '—'
+    if (latest && first) {
+      const ceOiDelta = latest.ce_oi - first.ce_oi
+      const cePremDelta = latest.atm_ce_ltp - first.atm_ce_ltp
+      const meta = getOiFlowMeta('CE', ceOiDelta, cePremDelta)
+      if (meta) {
+        note = meta.label
+        switch (meta.label) {
+          case 'Call Buying': s = 2; break
+          case 'CE Short Covering': s = 1; break
+          case 'CE Long Unwinding': s = -1; break
+          case 'Call Writing': s = -2; break
+          default: s = 0
+        }
+      }
+    }
+    push({ label: 'CE Flow', score: s, max: 2, note, direction: dir(s) })
+  }
+
+  // ── 7. PE Flow (premium + OI matrix) ─────────────────────────────────────
+  {
+    let s = 0
+    let note = '—'
+    if (latest && first) {
+      const peOiDelta = latest.pe_oi - first.pe_oi
+      const pePremDelta = latest.atm_pe_ltp - first.atm_pe_ltp
+      const meta = getOiFlowMeta('PE', peOiDelta, pePremDelta)
+      if (meta) {
+        note = meta.label
+        // PE scoring:
+        // Put Writing = bullish support floor = +2
+        // PE Long Unwinding = hedgers exiting = +1 (bullish)
+        // PE Short Covering = mildly bearish = -1
+        // Put Buying = bearish demand = -2
+        switch (meta.label) {
+          case 'Put Writing': s = 2; break
+          case 'PE Long Unwinding': s = 1; break
+          case 'PE Short Covering': s = -1; break
+          case 'Put Buying': s = -2; break
+          default: s = 0
+        }
+      }
+    }
+    push({ label: 'PE Flow', score: s, max: 2, note, direction: dir(s) })
+  }
+
+  // ── 8. Breadth Bias ───────────────────────────────────────────────────────
+  {
+    let s = 0
+    let note = '—'
+    if (latest) {
+      const bb = getBreadthBias(latest.ce_advances, latest.pe_advances)
+      if (bb) {
+        note = bb.label
+        switch (bb.label) {
+          case 'Bullish Breadth': s = 1; break
+          case 'Mild Bullish Breadth': s = 0.5; break
+          case 'Neutral Breadth': s = 0; break
+          case 'Mild Bearish Breadth': s = -0.5; break
+          case 'Bearish Breadth':
+          case 'PE Dominated': s = -1; break
+        }
+      }
+    }
+    push({ label: 'Breadth Bias', score: s, max: 1, note, direction: dir(s) })
+  }
+
+  // ── 9. Delta Imbalance ────────────────────────────────────────────────────
+  {
+    let s = 0
+    let note = '—'
+    if (deltaImbalance !== null) {
+      if (deltaImbalance >= 0.1) { s = 1; note = `Δ imbalance +${deltaImbalance.toFixed(3)} (Call delta dominant)` }
+      else if (deltaImbalance >= 0.05) { s = 0.5; note = `Δ imbalance +${deltaImbalance.toFixed(3)} (Mild call bias)` }
+      else if (deltaImbalance <= -0.1) { s = -1; note = `Δ imbalance ${deltaImbalance.toFixed(3)} (Put delta dominant)` }
+      else if (deltaImbalance <= -0.05) { s = -0.5; note = `Δ imbalance ${deltaImbalance.toFixed(3)} (Mild put bias)` }
+      else { s = 0; note = `Δ imbalance ${deltaImbalance.toFixed(3)} (Balanced)` }
+    }
+    push({ label: 'Delta Imbalance', score: s, max: 1, note, direction: dir(s) })
+  }
+
+  // ── 10. Market State Trend ────────────────────────────────────────────────
+  {
+    let s = 0
+    let note = trend ?? '—'
+    if (trend === 'Bullish') s = 1
+    if (trend === 'Bearish') s = -1
+    push({ label: 'Market Trend', score: s, max: 1, note, direction: dir(s) })
+  }
+
+  // ── Normalise ─────────────────────────────────────────────────────────────
+  const pct = Math.round((raw / MAX_RAW) * 100)
+  let label: DirectionalScoreResult['label']
+  let color: string
+  if (pct >= 50) { label = 'Strong Bullish'; color = '#22c55e' }
+  else if (pct >= 20) { label = 'Mild Bullish'; color = '#86efac' }
+  else if (pct <= -50) { label = 'Strong Bearish'; color = '#ef4444' }
+  else if (pct <= -20) { label = 'Mild Bearish'; color = '#fb923c' }
+  else { label = 'Neutral'; color = '#fbbf24' }
+
+  return { pct, raw, maxRaw: MAX_RAW, label, color, components }
+}
+
+// ---------------------------------------------------------------------------
+// Directional Score Gauge component
+// ---------------------------------------------------------------------------
+function DirectionalScoreGauge({ result }: { result: DirectionalScoreResult }) {
+  // Position of the needle: map -100..+100 to 0..100%
+  const needlePct = Math.min(100, Math.max(0, ((result.pct + 100) / 200) * 100))
+  return (
+    <Card className="border-2" style={{ borderColor: result.color + '55' }}>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Directional Conviction Score</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Score display */}
+        <div className="flex items-center gap-4">
+          <span className="text-4xl font-black" style={{ color: result.color }}>
+            {result.pct > 0 ? '+' : ''}{result.pct}
+          </span>
+          <div className="flex flex-col gap-1">
+            <span className="font-semibold text-sm" style={{ color: result.color }}>{result.label}</span>
+            <span className="text-xs text-muted-foreground">
+              Raw {result.raw.toFixed(1)} / max ±{result.maxRaw} · {result.components.length} signals
+            </span>
+          </div>
+        </div>
+
+        {/* Thermometer gauge */}
+        <div className="space-y-1">
+          <div className="relative h-4 rounded-full overflow-hidden"
+            style={{ background: 'linear-gradient(to right, #ef4444 0%, #fb923c 25%, #fbbf24 50%, #86efac 75%, #22c55e 100%)' }}>
+            {/* Center line */}
+            <div className="absolute top-0 bottom-0 w-0.5 bg-background/70 left-1/2" />
+            {/* Needle */}
+            <div
+              className="absolute top-0.5 bottom-0.5 w-2.5 rounded-full bg-white shadow-md border border-background/60 transition-all duration-500"
+              style={{ left: `calc(${needlePct}% - 5px)` }}
+            />
+          </div>
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>Strong Bear -100</span>
+            <span>Neutral 0</span>
+            <span>+100 Strong Bull</span>
+          </div>
+        </div>
+
+        {/* Per-signal breakdown */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 pt-1">
+          {result.components.map((c) => {
+            const barPct = Math.round((Math.abs(c.score) / c.max) * 100)
+            const barColor = c.direction === 'bullish' ? '#22c55e' : c.direction === 'bearish' ? '#ef4444' : '#fbbf24'
+            const scoreStr = c.score > 0 ? `+${c.score}` : c.score === 0 ? '0' : `${c.score}`
+            return (
+              <div key={c.label} className="flex items-center gap-2 py-0.5">
+                <span className="text-xs text-muted-foreground w-[120px] shrink-0 truncate" title={c.label}>{c.label}</span>
+                <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-300"
+                    style={{
+                      width: `${barPct}%`,
+                      background: barColor,
+                      marginLeft: c.score < 0 ? 'auto' : undefined,
+                    }}
+                  />
+                </div>
+                <span
+                  className="text-xs font-bold w-8 text-right shrink-0"
+                  style={{ color: barColor }}
+                >
+                  {scoreStr}
+                </span>
+                <span className="text-xs text-muted-foreground max-w-[140px] truncate hidden sm:block" title={c.note}>{c.note}</span>
+              </div>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+/** Return moneyness label for a strike relative to current spot. */
+function getMoneyness(strike: number, spot: number): string {
+  // Use 0.3% of spot as ATM band — scales with the underlying level
+  const atmBand = spot * 0.003
+  if (Math.abs(strike - spot) <= atmBand) return 'ATM'
+  return strike > spot ? 'OTM-CE / ITM-PE' : 'ITM-CE / OTM-PE'
 }
 
 /** Format an OI value as Indian Lakh (1L = 100,000) or Crore. */
@@ -259,11 +680,11 @@ function DeltaBar({
       </div>
       <div className="flex h-3 rounded-full overflow-hidden">
         <div
-          className="bg-red-500 transition-all duration-300"
+          className="bg-green-500 transition-all duration-300"
           style={{ width: `${callPct}%` }}
         />
         <div
-          className="bg-green-500 transition-all duration-300"
+          className="bg-red-500 transition-all duration-300"
           style={{ width: `${putPct}%` }}
         />
       </div>
@@ -277,6 +698,8 @@ function DeltaBar({
 export default function BuyerEdge() {
   const { fnoExchanges, defaultFnoExchange, defaultUnderlyings } = useSupportedExchanges()
   const { mode, appMode } = useThemeStore()
+  const { apiKey } = useAuthStore()
+  const { isMarketOpen } = useMarketStatus()
   const isDarkMode = mode === 'dark'
   const isAnalyzer = appMode === 'analyzer'
 
@@ -294,7 +717,6 @@ export default function BuyerEdge() {
   const [isLoading, setIsLoading] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(false)
   const requestIdRef = useRef(0)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // ── Straddle Chart state ───────────────────────────────────────
   const [straddleInterval, setStraddleInterval] = useState('1m')
@@ -302,10 +724,12 @@ export default function BuyerEdge() {
   const [straddleChartData, setStraddleChartData] = useState<StraddleChartData | null>(null)
   const [straddleIntervals, setStraddleIntervals] = useState<string[]>(['1m', '3m', '5m', '10m', '15m', '30m', '1h'])
   const [isChartLoading, setIsChartLoading] = useState(false)
-  const [showStraddle, setShowStraddle] = useState(true)
+  const [showStraddle, setShowStraddle] = useState(false)    // Straddle line default OFF (PCR lines show by default)
   const [showSpot, setShowSpot] = useState(false)
   const [showSynthetic, setShowSynthetic] = useState(false)
-  const [showVwap, setShowVwap] = useState(true)
+  const [showVwap, setShowVwap] = useState(false)            // always toggled together with showStraddle
+  const [straddleSectionOpen, setStraddleSectionOpen] = useState(true)
+  const [showStraddleInfo, setShowStraddleInfo] = useState(false)
 
   // ── Engine lookback settings ───────────────────────────────────
   const [lbBars, setLbBars] = useState('20')
@@ -314,34 +738,29 @@ export default function BuyerEdge() {
 
   // ── Advanced GEX Levels state ──────────────────────────────────
   const [gexData, setGexData] = useState<GexLevelsResponse | null>(null)
-  const [isGexLoading, _setIsGexLoading] = useState(false)
+  const [isGexLoading, setIsGexLoading] = useState(false)
   const [gexMode, setGexMode] = useState<'selected' | 'cumulative'>('selected')
   const [gexExpiries, setGexExpiries] = useState<string[]>([])
   const [gexSectionOpen, setGexSectionOpen] = useState(true)
   const [gexViewMode, setGexViewMode] = useState<'line' | 'bar'>('line')
   const [gexLineHover, setGexLineHover] = useState<{ strike: number; net_gex: number } | null>(null)
 
-  // ── PCR Chart state ────────────────────────────────────────────
+  // ── PCR state (unified with straddle) ──────────────────────────
   const [pcrData, setPcrData] = useState<PcrChartResponse | null>(null)
   const [isPcrLoading, setIsPcrLoading] = useState(false)
-  const [pcrInterval, setPcrInterval] = useState('1m')
-  const [pcrDays, setPcrDays] = useState('1')
+  const [pcrStrikeWindow, setPcrStrikeWindow] = useState('10')
+  const [maxSnapshotStrikes, setMaxSnapshotStrikes] = useState('40')
   const [showPcrOi, setShowPcrOi] = useState(true)
   const [showPcrVolume, setShowPcrVolume] = useState(true)
-  const [showPcrSpot, setShowPcrSpot] = useState(true)
-  const [showPcrSynthetic, setShowPcrSynthetic] = useState(true)
-  const [pcrSectionOpen, setPcrSectionOpen] = useState(true)
-  const pcrChartContainerRef = useRef<HTMLDivElement>(null)
-  const pcrChartRef = useRef<IChartApi | null>(null)
+  // PCR series are hosted inside the Options Premium Monitor (straddle chart)
   const pcrOiSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
   const pcrVolSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
-  const pcrSpotSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
-  const pcrSyntheticSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
-  const pcrTooltipRef = useRef<HTMLDivElement | null>(null)
   const pcrDataMapRef = useRef<Map<number, import('../api/buyerEdge').PcrDataPoint>>(new Map())
+  const pcrSortedDataRef = useRef<import('../api/buyerEdge').PcrDataPoint[]>([])
 
   // ── OI Change Chart state ──────────────────────────────────────
   const [oiChgSectionOpen, setOiChgSectionOpen] = useState(true)
+  const [showOiChgInfo, setShowOiChgInfo] = useState(false)
   const [oiChgViewMode, setOiChgViewMode] = useState<'line' | 'bar'>('line')
   const [oiChgBarHover, setOiChgBarHover] = useState<StrikeOiChange | null>(null)
   const oiChgChartContainerRef = useRef<HTMLDivElement>(null)
@@ -356,6 +775,27 @@ export default function BuyerEdge() {
   const [isIvLoading, _setIsIvLoading] = useState(false)
   const [ivExpiries, setIvExpiries] = useState<string[]>([])
   const [ivSectionOpen, setIvSectionOpen] = useState(true)
+
+  // ── IV Chart (intraday ATM IV series via ivChartApi) ────────────
+  const [ivChartData, setIvChartData] = useState<IVChartData | null>(null)
+  const [ivChartInterval, setIvChartInterval] = useState('5m')
+  const [ivChartDays, setIvChartDays] = useState('1')
+  const [ivChartIntervals, setIvChartIntervals] = useState<string[]>(['1m', '3m', '5m', '10m', '15m', '30m', '1h'])
+  const [isIvChartLoading, setIsIvChartLoading] = useState(false)
+  const [ivChartSectionOpen, setIvChartSectionOpen] = useState(true)
+
+  // ── GEX Spot Chart state ───────────────────────────────────────
+  const [spotCandleData, setSpotCandleData] = useState<SpotCandleResponse | null>(null)
+  const [spotChartInterval, setSpotChartInterval] = useState('15m')
+  const [spotChartDays, setSpotChartDays] = useState('5')
+  const [isSpotCandleLoading, setIsSpotCandleLoading] = useState(false)
+  const [spotChartSectionOpen, setSpotChartSectionOpen] = useState(true)
+
+  // Refs for the GEX spot chart
+  const spotChartContainerRef = useRef<HTMLDivElement>(null)
+  const spotChartRef = useRef<IChartApi | null>(null)
+  const spotCandleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
+  const spotPriceLinesRef = useRef<import('lightweight-charts').IPriceLine[]>([])
 
   // Chart DOM refs
   const chartContainerRef = useRef<HTMLDivElement>(null)
@@ -429,6 +869,10 @@ export default function BuyerEdge() {
   // Keep a stable ref to colors for the crosshair callback
   const chartColorsRef = useRef(chartColors)
   chartColorsRef.current = chartColors
+
+  // Stable ref to toggle states — read inside crosshair callbacks without re-init
+  const straddleShowsRef = useRef({ showStraddle, showVwap, showSpot, showSynthetic, showPcrOi, showPcrVolume })
+  straddleShowsRef.current = { showStraddle, showVwap, showSpot, showSynthetic, showPcrOi, showPcrVolume }
 
   // Sync exchange when broker caps load
   useEffect(() => {
@@ -509,8 +953,8 @@ export default function BuyerEdge() {
     try {
       const expiryForAPI = convertExpiryForAPI(selectedExpiry)
 
-      // Run all three: state engine + GEX + IVR in parallel
-      const [response, gexResp, ivResp] = await Promise.allSettled([
+      // Run state engine + IVR in parallel (GEX is loaded separately via loadGexData)
+      const [response, ivResp] = await Promise.allSettled([
         buyerEdgeApi.getData({
           underlying: selectedUnderlying,
           exchange: selectedExchange,
@@ -518,16 +962,6 @@ export default function BuyerEdge() {
           strike_count: parseInt(strikeCount),
           lb_bars: parseInt(lbBars),
           lb_tf: lbTf,
-        }),
-        buyerEdgeApi.getGexLevels({
-          underlying: selectedUnderlying,
-          exchange: selectedExchange,
-          mode: gexMode,
-          expiry_date: gexMode === 'selected' ? expiryForAPI : undefined,
-          expiry_dates: gexMode === 'cumulative'
-            ? (gexExpiries.length > 0 ? gexExpiries.map(convertExpiryForAPI) : [expiryForAPI])
-            : undefined,
-          strike_count: 25,
         }),
         buyerEdgeApi.getIvDashboard({
           underlying: selectedUnderlying,
@@ -552,11 +986,6 @@ export default function BuyerEdge() {
         showToast.error('Failed to fetch buyer edge data')
       }
 
-      // GEX
-      if (gexResp.status === 'fulfilled' && gexResp.value.status === 'success') {
-        setGexData(gexResp.value)
-      }
-
       // IV Dashboard
       if (ivResp.status === 'fulfilled' && ivResp.value.status === 'success') {
         setIvData(ivResp.value)
@@ -568,25 +997,319 @@ export default function BuyerEdge() {
     } finally {
       if (requestIdRef.current === requestId) setIsLoading(false)
     }
-  }, [selectedUnderlying, selectedExpiry, selectedExchange, strikeCount, lbBars, lbTf, gexMode, gexExpiries, ivExpiries])
+  }, [selectedUnderlying, selectedExpiry, selectedExchange, strikeCount, lbBars, lbTf, ivExpiries])
 
   useEffect(() => {
     if (selectedExpiry) fetchData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedExpiry])
 
-  // Auto-refresh
+  // ── Dedicated GEX loader — runs independently on mode/expiry/expiries changes ─────
+  const loadGexData = useCallback(async () => {
+    if (!selectedExpiry) return
+    setIsGexLoading(true)
+    try {
+      const expiryForAPI = convertExpiryForAPI(selectedExpiry)
+      const res = await buyerEdgeApi.getGexLevels({
+        underlying: selectedUnderlying,
+        exchange: selectedExchange,
+        mode: gexMode,
+        expiry_date: gexMode === 'selected' ? expiryForAPI : undefined,
+        expiry_dates: gexMode === 'cumulative'
+          ? (gexExpiries.length > 0 ? gexExpiries.map(convertExpiryForAPI) : [expiryForAPI])
+          : undefined,
+        strike_count: 25,
+      })
+      if (res.status === 'success') {
+        setGexData(res)
+      }
+    } catch {
+      // silent — GEX is supplementary; avoid noisy toasts
+    } finally {
+      setIsGexLoading(false)
+    }
+  }, [selectedUnderlying, selectedExpiry, selectedExchange, gexMode, gexExpiries])
+
   useEffect(() => {
-    if (autoRefresh && selectedExpiry) {
-      intervalRef.current = setInterval(fetchData, AUTO_REFRESH_INTERVAL)
+    if (selectedExpiry) loadGexData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadGexData])
+
+  // ── useOptionChainLive: real-time option chain data ─────────────
+  // When Auto ON + market open → WebSocket delivers live LTP/OI updates.
+  // When Auto OFF or market closed → hook stays disabled; manual Analyse
+  // button or Refresh button triggers a one-shot REST fetch instead.
+  const expiryForLive = selectedExpiry ? convertExpiryForAPI(selectedExpiry) : ''
+  const marketOpen = isMarketOpen(selectedExchange)
+  const liveEnabled = autoRefresh && !!expiryForLive && marketOpen
+
+  const {
+    data: liveChainData,
+    isStreaming,
+    isConnected: isLiveConnected,
+    isPaused: isLivePaused,
+    lastUpdate: liveLastUpdate,
+    streamingSymbols,
+    refetch: refetchLive,
+  } = useOptionChainLive(
+    apiKey,
+    selectedUnderlying,
+    selectedExchange,
+    selectedExchange,
+    expiryForLive,
+    parseInt(strikeCount),
+    { enabled: liveEnabled, oiRefreshInterval: AUTO_REFRESH_INTERVAL, pauseWhenHidden: true }
+  )
+
+  // When Auto ON and market closed, fall back to a simple setInterval for
+  // the backend engine calls (same cadence as the live OI polling interval).
+  const autoRefreshFallbackRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  useEffect(() => {
+    if (autoRefresh && selectedExpiry && !marketOpen) {
+      autoRefreshFallbackRef.current = setInterval(fetchData, AUTO_REFRESH_INTERVAL)
     }
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-        intervalRef.current = null
+      if (autoRefreshFallbackRef.current) {
+        clearInterval(autoRefreshFallbackRef.current)
+        autoRefreshFallbackRef.current = null
       }
     }
-  }, [autoRefresh, fetchData, selectedExpiry])
+  }, [autoRefresh, fetchData, selectedExpiry, marketOpen])
+
+  // When live chain OI polling fires (liveLastUpdate changes) re-run the
+  // backend engines so signal/Greeks stay in sync with the fresh OI data.
+  const prevLiveLastUpdateRef = useRef<Date | null>(null)
+  useEffect(() => {
+    if (!liveEnabled || !liveLastUpdate) return
+    if (prevLiveLastUpdateRef.current === liveLastUpdate) return
+    prevLiveLastUpdateRef.current = liveLastUpdate
+    fetchData()
+  }, [liveEnabled, liveLastUpdate, fetchData])
+
+  // ── IV Chart: intraday ATM IV series via ivChartApi ─────────────
+  const loadIvChartData = useCallback(async () => {
+    if (!selectedExpiry || !selectedUnderlying) return
+    setIsIvChartLoading(true)
+    try {
+      const res = await ivChartApi.getIVData({
+        underlying: selectedUnderlying,
+        exchange: selectedExchange,
+        expiry_date: convertExpiryForAPI(selectedExpiry),
+        interval: ivChartInterval,
+        days: parseInt(ivChartDays),
+      })
+      if (res.status === 'success' && res.data) {
+        setIvChartData(res.data)
+      } else {
+        setIvChartData(null)
+      }
+    } catch {
+      setIvChartData(null)
+    } finally {
+      setIsIvChartLoading(false)
+    }
+  }, [selectedExpiry, selectedUnderlying, selectedExchange, ivChartInterval, ivChartDays])
+
+  // Auto-load IV chart when its deps change
+  useEffect(() => {
+    if (selectedExpiry) loadIvChartData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadIvChartData])
+
+  // Fetch available IV chart intervals once
+  useEffect(() => {
+    ivChartApi.getIntervals().then((res) => {
+      if (res.status === 'success' && res.data) {
+        const all = [...(res.data.seconds || []), ...(res.data.minutes || []), ...(res.data.hours || [])]
+        if (all.length > 0) setIvChartIntervals(all)
+      }
+    }).catch(() => {/* keep defaults */ })
+  }, [])
+
+  // ── GEX Spot Chart: data loader ────────────────────────────────
+  const loadSpotCandleData = useCallback(async () => {
+    if (!selectedUnderlying) return
+    setIsSpotCandleLoading(true)
+    try {
+      const res = await buyerEdgeApi.getSpotCandles({
+        underlying: selectedUnderlying,
+        exchange: selectedExchange,
+        interval: spotChartInterval,
+        days: parseInt(spotChartDays),
+      })
+      if (res.status === 'success') {
+        setSpotCandleData(res)
+      } else {
+        setSpotCandleData(null)
+      }
+    } catch {
+      setSpotCandleData(null)
+    } finally {
+      setIsSpotCandleLoading(false)
+    }
+  }, [selectedUnderlying, selectedExchange, spotChartInterval, spotChartDays])
+
+  // Auto-load spot candles when deps change (including after expiry is set)
+  useEffect(() => {
+    if (selectedUnderlying) loadSpotCandleData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadSpotCandleData])
+
+  // ── GEX Spot Chart: lightweight-charts init/destroy ────────────
+  const initSpotChart = useCallback(() => {
+    const container = spotChartContainerRef.current
+    if (!container) return
+
+    if (spotChartRef.current) {
+      spotChartRef.current.remove()
+      spotChartRef.current = null
+    }
+    container.innerHTML = ''
+
+    const chart = createChart(container, {
+      width: container.offsetWidth,
+      height: 380,
+      layout: {
+        background: { type: ColorType.Solid, color: 'transparent' },
+        textColor: chartColors.text,
+      },
+      grid: {
+        vertLines: { color: chartColors.grid, style: 1 as const, visible: true },
+        horzLines: { color: chartColors.grid, style: 1 as const, visible: true },
+      },
+      rightPriceScale: {
+        visible: true,
+        borderColor: chartColors.border,
+        scaleMargins: { top: 0.08, bottom: 0.08 },
+      },
+      timeScale: {
+        borderColor: chartColors.border,
+        timeVisible: true,
+        secondsVisible: false,
+        tickMarkFormatter: (time: number) => {
+          const d = new Date(time * 1000)
+          const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000)
+          const hh = ist.getUTCHours().toString().padStart(2, '0')
+          const mm = ist.getUTCMinutes().toString().padStart(2, '0')
+          if (parseInt(spotChartDays) > 1) {
+            const dd = ist.getUTCDate().toString().padStart(2, '0')
+            const mo = (ist.getUTCMonth() + 1).toString().padStart(2, '0')
+            return `${dd}/${mo} ${hh}:${mm}`
+          }
+          return `${hh}:${mm}`
+        },
+      },
+      crosshair: {
+        mode: CrosshairMode.Normal,
+        vertLine: { width: 1 as const, color: chartColors.crosshair, style: 2 as const, labelVisible: true },
+        horzLine: { width: 1 as const, color: chartColors.crosshair, style: 2 as const, labelBackgroundColor: chartColors.crosshairLabel },
+      },
+    })
+
+    const candleSeries = chart.addSeries(CandlestickSeries, {
+      upColor: '#22c55e',
+      downColor: '#ef4444',
+      wickUpColor: '#22c55e',
+      wickDownColor: '#ef4444',
+      borderVisible: false,
+      priceScaleId: 'right',
+    })
+
+    spotChartRef.current = chart
+    spotCandleSeriesRef.current = candleSeries
+
+    const ro = new ResizeObserver(() => {
+      chart.applyOptions({ width: container.offsetWidth })
+    })
+    ro.observe(container)
+
+    return () => {
+      ro.disconnect()
+      chart.remove()
+      spotChartRef.current = null
+      spotCandleSeriesRef.current = null
+    }
+    // chartColors deliberately omitted — re-init is driven by the caller
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spotChartDays])
+
+  // Re-init spot chart when section becomes visible or interval/days change
+  useEffect(() => {
+    if (!spotChartSectionOpen) return
+    const cleanup = initSpotChart()
+    return () => { cleanup?.() }
+  }, [spotChartSectionOpen, initSpotChart])
+
+  // Push candle data + GEX price lines into the chart whenever either changes
+  useEffect(() => {
+    const series = spotCandleSeriesRef.current
+    const chart = spotChartRef.current
+    if (!series || !chart) return
+
+    const candles = spotCandleData?.candles ?? []
+    series.setData(
+      candles.map((c) => ({
+        time: c.time as import('lightweight-charts').UTCTimestamp,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+      }))
+    )
+    if (candles.length > 0) chart.timeScale().fitContent()
+
+    // ── Overlay GEX key levels as horizontal price lines ─────────
+    // Remove previously created price lines before adding fresh ones so that
+    // repeated effect runs (e.g. on auto-refresh) do not accumulate duplicates.
+    // series is already validated non-null above; suppress only stale-line errors
+    // that occur when the chart was re-initialised between renders.
+    for (const pl of spotPriceLinesRef.current) {
+      try { series.removePriceLine(pl) } catch { /* price line already removed on chart re-init */ }
+    }
+    spotPriceLinesRef.current = []
+
+    if (!gexData?.levels) return
+
+    const gexLevels = gexData.levels
+    const newPriceLines: import('lightweight-charts').IPriceLine[] = []
+
+    const keyLevels: Array<{ price: number | null; color: string; title: string; lineStyle?: number }> = [
+      { price: gexLevels.call_gamma_wall, color: '#22c55e', title: 'Call Wall', lineStyle: 0 },
+      { price: gexLevels.put_gamma_wall, color: '#ef4444', title: 'Put Wall', lineStyle: 0 },
+      { price: gexLevels.gamma_flip, color: '#f59e0b', title: 'HVL / Γ Flip', lineStyle: 2 },
+      { price: gexLevels.absolute_wall, color: '#a78bfa', title: 'Abs Wall', lineStyle: 1 },
+    ]
+
+    for (const lvl of keyLevels) {
+      if (lvl.price == null || lvl.price === 0) continue
+      newPriceLines.push(series.createPriceLine({
+        price: lvl.price,
+        color: lvl.color,
+        lineWidth: 2,
+        lineStyle: (lvl.lineStyle ?? 0) as 0 | 1 | 2 | 3 | 4,
+        axisLabelVisible: true,
+        title: lvl.title,
+      }))
+    }
+
+    // Per-expiry walls when in cumulative mode (weekly vs monthly overlay)
+    if (gexData.per_expiry && gexData.per_expiry.length > 1) {
+      const perExpiryColors = ['#6ee7b7', '#fca5a5', '#93c5fd', '#fde68a', '#d8b4fe']
+      gexData.per_expiry.forEach((exp, idx) => {
+        if (!exp.levels) return
+        const c = perExpiryColors[idx % perExpiryColors.length]
+        const label = exp.expiry_date.slice(-5)
+        if (exp.levels.call_gamma_wall != null && exp.levels.call_gamma_wall !== 0) {
+          newPriceLines.push(series.createPriceLine({ price: exp.levels.call_gamma_wall, color: c, lineWidth: 1, lineStyle: 1, axisLabelVisible: false, title: `${label} CW` }))
+        }
+        if (exp.levels.put_gamma_wall != null && exp.levels.put_gamma_wall !== 0) {
+          newPriceLines.push(series.createPriceLine({ price: exp.levels.put_gamma_wall, color: c, lineWidth: 1, lineStyle: 1, axisLabelVisible: false, title: `${label} PW` }))
+        }
+      })
+    }
+
+    spotPriceLinesRef.current = newPriceLines
+  }, [spotCandleData, gexData])
 
   // ── Straddle Chart: init & destroy ───────────────────────────
 
@@ -726,7 +1449,7 @@ export default function BuyerEdge() {
       priceScaleId: 'right',
       title: 'Straddle',
       lastValueVisible: true,
-      priceLineVisible: true,
+      priceLineVisible: false,
       visible: showStraddle,
     })
     const syntheticSeries = chart.addSeries(LineSeries, {
@@ -736,7 +1459,7 @@ export default function BuyerEdge() {
       priceScaleId: 'left',
       title: 'Synthetic Fut',
       lastValueVisible: true,
-      priceLineVisible: false,
+      priceLineVisible: true,
       visible: showSynthetic,
     })
     const vwapSeries = chart.addSeries(LineSeries, {
@@ -749,12 +1472,50 @@ export default function BuyerEdge() {
       priceLineVisible: false,
       visible: showVwap,
     })
+    // PCR(OI) and PCR(Vol) — overlay scale so they don't clash with straddle/spot scales
+    const pcrOiSeries = chart.addSeries(LineSeries, {
+      color: '#f59e0b',
+      lineWidth: 2,
+      priceScaleId: 'right',
+      title: 'PCR(OI)',
+      lastValueVisible: true,
+      priceLineVisible: false,
+      visible: showPcrOi,
+    })
+    const pcrVolSeries = chart.addSeries(LineSeries, {
+      color: '#60a5fa',
+      lineWidth: 2,
+      priceScaleId: 'right',
+      title: 'PCR(Vol)',
+      lastValueVisible: true,
+      priceLineVisible: false,
+      visible: showPcrVolume,
+    })
 
     chartRef.current = chart
     spotSeriesRef.current = spotSeries
     straddleSeriesRef.current = straddleSeries
     syntheticSeriesRef.current = syntheticSeries
     vwapSeriesRef.current = vwapSeries
+    pcrOiSeriesRef.current = pcrOiSeries
+    pcrVolSeriesRef.current = pcrVolSeries
+
+    // Re-apply existing PCR data so chart reinit doesn't lose already-loaded data
+    const existingPcr = pcrSortedDataRef.current
+    if (existingPcr.length > 0) {
+      pcrOiSeries.setData(
+        existingPcr.filter((p) => p.pcr_oi != null).map((p) => ({
+          time: p.time as import('lightweight-charts').UTCTimestamp,
+          value: p.pcr_oi as number,
+        }))
+      )
+      pcrVolSeries.setData(
+        existingPcr.filter((p) => p.pcr_volume != null).map((p) => ({
+          time: p.time as import('lightweight-charts').UTCTimestamp,
+          value: p.pcr_volume as number,
+        }))
+      )
+    }
 
     // Crosshair tooltip
     chart.subscribeCrosshairMove((param) => {
@@ -779,21 +1540,19 @@ export default function BuyerEdge() {
       }
 
       const vwapVal = vwapDataMapRef.current.get(time)
+      const pcrPoint = pcrDataMapRef.current.get(time)
       const cl = chartColorsRef.current
+      const shows = straddleShowsRef.current
       const { date, time: timeStr } = formatIST(time)
       tt.style.display = 'block'
       tt.style.background = cl.tooltipBg
       tt.style.border = `1px solid ${cl.tooltipBorder}`
       tt.style.color = cl.tooltipText
       tt.innerHTML = `
-        <div style="display:flex;justify-content:space-between;gap:16px">
+        ${shows.showStraddle ? `<div style="display:flex;justify-content:space-between;gap:16px">
           <span style="color:${cl.straddle};font-weight:600">Straddle Price</span>
           <span style="color:${cl.straddle};font-weight:600">${point.straddle.toFixed(2)}</span>
         </div>
-        ${vwapVal != null ? `<div style="display:flex;justify-content:space-between;gap:16px">
-          <span style="color:${cl.vwap}">VWAP (Day)</span>
-          <span style="color:${cl.vwap}">${vwapVal.toFixed(2)}</span>
-        </div>` : ''}
         <div style="display:flex;justify-content:space-between;gap:16px">
           <span style="color:${cl.tooltipMuted}">&bull; ${point.atm_strike} Call:</span>
           <span>${point.ce_price.toFixed(2)}</span>
@@ -801,15 +1560,27 @@ export default function BuyerEdge() {
         <div style="display:flex;justify-content:space-between;gap:16px">
           <span style="color:${cl.tooltipMuted}">&bull; ${point.atm_strike} Put:</span>
           <span>${point.pe_price.toFixed(2)}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;gap:16px">
+        </div>` : ''}
+        ${shows.showVwap && vwapVal != null ? `<div style="display:flex;justify-content:space-between;gap:16px">
+          <span style="color:${cl.vwap}">VWAP (Day)</span>
+          <span style="color:${cl.vwap}">${vwapVal.toFixed(2)}</span>
+        </div>` : ''}
+        ${shows.showSynthetic ? `<div style="display:flex;justify-content:space-between;gap:16px">
           <span style="color:${cl.synthetic}">Synthetic Fut</span>
           <span style="color:${cl.synthetic}">${point.synthetic_future.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;gap:16px">
+        </div>` : ''}
+        ${shows.showSpot ? `<div style="display:flex;justify-content:space-between;gap:16px">
           <span style="color:${cl.tooltipMuted}">Spot Price</span>
           <span>${point.spot.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-        </div>
+        </div>` : ''}
+        ${shows.showPcrOi && pcrPoint?.pcr_oi != null ? `<div style="display:flex;justify-content:space-between;gap:16px">
+          <span style="color:#f59e0b">PCR(OI)</span>
+          <span style="color:#f59e0b">${pcrPoint.pcr_oi.toFixed(4)}</span>
+        </div>` : ''}
+        ${shows.showPcrVolume && pcrPoint?.pcr_volume != null ? `<div style="display:flex;justify-content:space-between;gap:16px">
+          <span style="color:#60a5fa">PCR(Vol)</span>
+          <span style="color:#60a5fa">${pcrPoint.pcr_volume.toFixed(4)}</span>
+        </div>` : ''}
         <div style="display:flex;justify-content:space-between;gap:16px;margin-top:4px;border-top:1px solid ${cl.tooltipBorder};padding-top:4px">
           <span style="color:${cl.tooltipMuted}">${date}</span>
           <span style="color:${cl.tooltipMuted}">${timeStr}</span>
@@ -845,9 +1616,9 @@ export default function BuyerEdge() {
     }
     window.addEventListener('resize', handleResize)
     return () => { window.removeEventListener('resize', handleResize) }
-  // `applyDataToChart` is intentionally omitted from deps: it is defined with
-  // useCallback([], []) so it never changes — omitting it matches the standalone
-  // StraddleChart.tsx pattern and avoids a spurious chart re-init.
+    // `applyDataToChart` is intentionally omitted from deps: it is defined with
+    // useCallback([], []) so it never changes — omitting it matches the standalone
+    // StraddleChart.tsx pattern and avoids a spurious chart re-init.
   }, [chartColors, straddleDays, showStraddle, showSpot, showSynthetic, showVwap])
 
   // Chart lifecycle — the chart card is always rendered so chartContainerRef is
@@ -873,240 +1644,74 @@ export default function BuyerEdge() {
         const all = [...(res.data.seconds || []), ...(res.data.minutes || []), ...(res.data.hours || [])]
         if (all.length > 0) setStraddleIntervals(all)
       }
-    }).catch(() => {/* keep defaults */})
+    }).catch(() => {/* keep defaults */ })
   }, [])
 
-  // Load straddle chart data
-  const loadStraddleData = useCallback(async () => {
+  // Unified load for straddle + PCR data
+  const refreshMonitorData = useCallback(async () => {
     if (!selectedExpiry) return
     setIsChartLoading(true)
+    setIsPcrLoading(true)
     try {
-      const res = await straddleChartApi.getStraddleData({
+      const res = await buyerEdgeApi.getUnifiedMonitor({
         underlying: selectedUnderlying,
         exchange: selectedExchange,
         expiry_date: convertExpiryForAPI(selectedExpiry),
         interval: straddleInterval,
         days: parseInt(straddleDays),
-      })
-      if (res.status === 'success' && res.data) {
-        straddleChartDataRef.current = res.data
-        setStraddleChartData(res.data)
-        applyDataToChart(res.data)
-      } else {
-        straddleChartDataRef.current = null
-        setStraddleChartData(null)
-        seriesDataMapRef.current = new Map()
-        vwapDataMapRef.current = new Map()
-        spotSeriesRef.current?.setData([])
-        straddleSeriesRef.current?.setData([])
-        syntheticSeriesRef.current?.setData([])
-        vwapSeriesRef.current?.setData([])
-        showToast.error(res.message || 'Failed to load straddle data')
-      }
-    } catch {
-      straddleChartDataRef.current = null
-      setStraddleChartData(null)
-      seriesDataMapRef.current = new Map()
-      vwapDataMapRef.current = new Map()
-      spotSeriesRef.current?.setData([])
-      straddleSeriesRef.current?.setData([])
-      syntheticSeriesRef.current?.setData([])
-      vwapSeriesRef.current?.setData([])
-      showToast.error('Failed to fetch straddle chart data')
-    } finally {
-      setIsChartLoading(false)
-    }
-  }, [selectedExpiry, selectedUnderlying, selectedExchange, straddleInterval, straddleDays, applyDataToChart])
-
-  // Auto-load straddle chart when loadStraddleData deps change
-  useEffect(() => {
-    if (selectedExpiry) loadStraddleData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadStraddleData])
-
-  // ── PCR Chart: load data + chart init ───────────────────────────
-
-  const loadPcrData = useCallback(async () => {
-    if (!selectedExpiry) return
-    setIsPcrLoading(true)
-    try {
-      const res = await buyerEdgeApi.getPcrChart({
-        underlying: selectedUnderlying,
-        exchange: selectedExchange,
-        expiry_date: convertExpiryForAPI(selectedExpiry),
-        interval: pcrInterval,
-        days: parseInt(pcrDays),
+        pcr_strike_window: parseInt(pcrStrikeWindow),
+        max_snapshot_strikes: parseInt(maxSnapshotStrikes),
       })
       if (res.status === 'success') {
-        setPcrData(res)
+        // Handle Straddle data
+        if (res.straddle?.status === 'success' && res.straddle.data) {
+          straddleChartDataRef.current = res.straddle.data
+          setStraddleChartData(res.straddle.data)
+          applyDataToChart(res.straddle.data)
+        } else if (res.straddle?.status === 'error') {
+          straddleChartDataRef.current = null
+          setStraddleChartData(null)
+          seriesDataMapRef.current = new Map()
+          vwapDataMapRef.current = new Map()
+          spotSeriesRef.current?.setData([])
+          straddleSeriesRef.current?.setData([])
+          syntheticSeriesRef.current?.setData([])
+          vwapSeriesRef.current?.setData([])
+          showToast.error(res.straddle.message || 'Failed to load straddle data')
+        }
+
+        // Handle PCR data
+        if (res.pcr?.status === 'success') {
+          setPcrData(res.pcr)
+        } else if (res.pcr?.status === 'error') {
+          showToast.error(res.pcr.message || 'Failed to load PCR data')
+        }
       } else {
-        showToast.error(res.message || 'Failed to load PCR data')
+        showToast.error(res.message || 'Failed to load monitor data')
       }
     } catch {
-      showToast.error('Failed to fetch PCR chart data')
+      showToast.error('Failed to fetch monitor data')
     } finally {
+      setIsChartLoading(false)
       setIsPcrLoading(false)
     }
-  }, [selectedExpiry, selectedUnderlying, selectedExchange, pcrInterval, pcrDays])
+  }, [selectedExpiry, selectedUnderlying, selectedExchange, straddleInterval, straddleDays, pcrStrikeWindow, maxSnapshotStrikes, applyDataToChart])
 
-  // Auto-load PCR chart when its deps change
+  // Auto-load monitor chart when its deps change
   useEffect(() => {
-    if (selectedExpiry) loadPcrData()
+    if (selectedExpiry) refreshMonitorData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadPcrData])
+  }, [refreshMonitorData])
 
-  // Build / update PCR lightweight-charts
-  // PCR chart — always-rendered container (same pattern as straddle chart).
-  // The chart container div is never unmounted so offsetWidth is always valid
-  // when this effect fires.  Collapse only hides the CardContent via CSS
-  // (display:none), not via conditional rendering, which avoids the
-  // clientWidth=0 bug that caused lightweight-charts to collapse all series
-  // onto the same right price scale.
+  // ── PCR data → push to Options Premium Monitor straddle chart ────
+  // When PCR data loads/refreshes, populate the PCR series that live
+  // inside the straddle (Options Premium Monitor) chart.
   useEffect(() => {
-    if (!pcrChartContainerRef.current) return
-    const container = pcrChartContainerRef.current
-    if (!pcrChartRef.current) {
-      const c = createChart(container, {
-        width: container.offsetWidth || container.clientWidth,
-        height: PCR_CHART_HEIGHT,
-        layout: {
-          background: { type: ColorType.Solid, color: 'transparent' },
-          textColor: chartColors.text,
-        },
-        grid: { vertLines: { color: chartColors.grid }, horzLines: { color: chartColors.grid } },
-        crosshair: { mode: CrosshairMode.Normal },
-        leftPriceScale: {
-          visible: true,
-          borderColor: chartColors.border,
-          scaleMargins: { top: 0.05, bottom: 0.05 },
-        },
-        rightPriceScale: {
-          visible: true,
-          borderColor: chartColors.border,
-          scaleMargins: { top: 0.05, bottom: 0.05 },
-        },
-        timeScale: {
-          borderColor: chartColors.border,
-          timeVisible: true,
-          secondsVisible: false,
-          tickMarkFormatter: (time: number) => {
-            const d = new Date(time * 1000)
-            const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000)
-            const hh = ist.getUTCHours().toString().padStart(2, '0')
-            const mm = ist.getUTCMinutes().toString().padStart(2, '0')
-            if (parseInt(pcrDays) > 1) {
-              const dd = ist.getUTCDate().toString().padStart(2, '0')
-              const mo = (ist.getUTCMonth() + 1).toString().padStart(2, '0')
-              return `${dd}/${mo} ${hh}:${mm}`
-            }
-            return `${hh}:${mm}`
-          },
-        },
-      })
-      // Add series in same order as straddle chart: left-scale series first, right-scale after
-      pcrSpotSeriesRef.current = c.addSeries(LineSeries, {
-        color: chartColors.spot, lineWidth: 2, title: 'Spot',
-        priceScaleId: 'left', lastValueVisible: true, priceLineVisible: true,
-      })
-      pcrSyntheticSeriesRef.current = c.addSeries(LineSeries, {
-        color: '#a78bfa', lineWidth: 1, lineStyle: 2, title: 'Syn Fut',
-        priceScaleId: 'left', lastValueVisible: true, priceLineVisible: false,
-      })
-      pcrOiSeriesRef.current = c.addSeries(LineSeries, {
-        color: '#f59e0b', lineWidth: 2, title: 'PCR(OI)',
-        priceScaleId: 'right', lastValueVisible: true, priceLineVisible: true,
-      })
-      pcrVolSeriesRef.current = c.addSeries(LineSeries, {
-        color: '#60a5fa', lineWidth: 2, title: 'PCR(Vol)',
-        priceScaleId: 'right', lastValueVisible: true, priceLineVisible: false,
-      })
-
-      // Crosshair tooltip div
-      if (!pcrTooltipRef.current) {
-        const tt = document.createElement('div')
-        tt.style.cssText = [
-          'position:absolute', 'display:none', 'z-index:100', 'pointer-events:none',
-          'padding:8px 10px', 'border-radius:6px', 'font-size:12px', 'line-height:1.6',
-          'min-width:180px', 'white-space:nowrap',
-        ].join(';')
-        pcrTooltipRef.current = tt
-        container.appendChild(pcrTooltipRef.current)
-      }
-
-      c.subscribeCrosshairMove((param) => {
-        const tt = pcrTooltipRef.current
-        if (!tt || !container) return
-        if (
-          !param.time ||
-          !param.point ||
-          param.point.x < 0 ||
-          param.point.y < 0 ||
-          param.point.x > container.offsetWidth ||
-          param.point.y > container.offsetHeight
-        ) {
-          tt.style.display = 'none'
-          return
-        }
-        const time = param.time as number
-        const point = pcrDataMapRef.current.get(time)
-        if (!point) {
-          tt.style.display = 'none'
-          return
-        }
-        const cl = chartColorsRef.current
-        const { date, time: timeStr } = formatIST(time)
-        tt.style.display = 'block'
-        tt.style.background = cl.tooltipBg
-        tt.style.border = `1px solid ${cl.tooltipBorder}`
-        tt.style.color = cl.tooltipText
-        tt.innerHTML = `
-          <div style="display:flex;justify-content:space-between;gap:16px">
-            <span style="color:#f59e0b;font-weight:600">PCR(OI)</span>
-            <span style="color:#f59e0b;font-weight:600">${point.pcr_oi != null ? point.pcr_oi.toFixed(4) : '—'}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;gap:16px">
-            <span style="color:#60a5fa">PCR(Vol)</span>
-            <span style="color:#60a5fa">${point.pcr_volume != null ? point.pcr_volume.toFixed(4) : '—'}</span>
-          </div>
-          ${point.synthetic_future != null ? `<div style="display:flex;justify-content:space-between;gap:16px">
-            <span style="color:#a78bfa">Syn Fut</span>
-            <span style="color:#a78bfa">${point.synthetic_future.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-          </div>` : ''}
-          <div style="display:flex;justify-content:space-between;gap:16px">
-            <span style="color:${cl.tooltipMuted}">Spot</span>
-            <span>${point.spot.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;gap:16px;margin-top:4px;border-top:1px solid ${cl.tooltipBorder};padding-top:4px">
-            <span style="color:${cl.tooltipMuted}">${date}</span>
-            <span style="color:${cl.tooltipMuted}">${timeStr}</span>
-          </div>
-        `
-        const tooltipW = tt.offsetWidth
-        const tooltipH = tt.offsetHeight
-        const x = param.point.x
-        const y = param.point.y
-        const margin = 16
-        let left = x + margin
-        if (left + tooltipW > container.offsetWidth) left = x - tooltipW - margin
-        let top = y - tooltipH / 2
-        if (top < 0) top = 0
-        if (top + tooltipH > container.offsetHeight) top = container.offsetHeight - tooltipH
-        tt.style.left = `${left}px`
-        tt.style.top = `${top}px`
-      })
-
-      pcrChartRef.current = c
-    }
-    // Apply series data
-    const series = pcrData?.data?.series ?? []
-    const sorted = [...series].sort((a, b) => a.time - b.time)
-
-    // Build data map for crosshair tooltip lookup
+    const sorted = [...(pcrData?.data?.series ?? [])].sort((a, b) => a.time - b.time)
+    pcrSortedDataRef.current = sorted
     const dataMap = new Map<number, import('../api/buyerEdge').PcrDataPoint>()
     for (const p of sorted) dataMap.set(p.time, p)
     pcrDataMapRef.current = dataMap
-
-
     pcrOiSeriesRef.current?.setData(
       sorted.filter((p) => p.pcr_oi != null).map((p) => ({
         time: p.time as import('lightweight-charts').UTCTimestamp,
@@ -1119,65 +1724,10 @@ export default function BuyerEdge() {
         value: p.pcr_volume as number,
       }))
     )
-    pcrSpotSeriesRef.current?.setData(
-      sorted.map((p) => ({ time: p.time as import('lightweight-charts').UTCTimestamp, value: p.spot }))
-    )
-    pcrSyntheticSeriesRef.current?.setData(
-      sorted.filter((p) => p.synthetic_future != null).map((p) => ({
-        time: p.time as import('lightweight-charts').UTCTimestamp,
-        value: p.synthetic_future as number,
-      }))
-    )
-    pcrOiSeriesRef.current?.applyOptions({ visible: showPcrOi })
-    pcrVolSeriesRef.current?.applyOptions({ visible: showPcrVolume })
-    pcrSpotSeriesRef.current?.applyOptions({ visible: showPcrSpot })
-    pcrSyntheticSeriesRef.current?.applyOptions({ visible: showPcrSynthetic })
+  }, [pcrData])
 
-    // Update timeScale formatter whenever pcrDays changes (chart is persistent, not rebuilt)
-    pcrChartRef.current?.applyOptions({
-      timeScale: {
-        tickMarkFormatter: (time: number) => {
-          const d = new Date(time * 1000)
-          const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000)
-          const hh = ist.getUTCHours().toString().padStart(2, '0')
-          const mm = ist.getUTCMinutes().toString().padStart(2, '0')
-          if (parseInt(pcrDays) > 1) {
-            const dd = ist.getUTCDate().toString().padStart(2, '0')
-            const mo = (ist.getUTCMonth() + 1).toString().padStart(2, '0')
-            return `${dd}/${mo} ${hh}:${mm}`
-          }
-          return `${hh}:${mm}`
-        },
-      },
-    })
-
-    // Only fit content when at least spot data is present (PCR may be null in live-only mode)
-    if (sorted.length > 0) pcrChartRef.current?.timeScale().fitContent()
-  }, [pcrData, pcrDays, showPcrOi, showPcrVolume, showPcrSpot, showPcrSynthetic, chartColors])
-
-  // PCR chart resize — set up once on mount (container is always in DOM)
-  useEffect(() => {
-    if (!pcrChartContainerRef.current) return
-    const ro = new ResizeObserver(() => {
-      if (pcrChartContainerRef.current && pcrChartRef.current) {
-        pcrChartRef.current.applyOptions({ width: pcrChartContainerRef.current.offsetWidth || pcrChartContainerRef.current.clientWidth })
-      }
-    })
-    ro.observe(pcrChartContainerRef.current)
-    return () => ro.disconnect()
-  }, [])
-
-  // Destroy PCR chart on unmount
-  useEffect(() => {
-    return () => {
-      pcrChartRef.current?.remove()
-      pcrChartRef.current = null
-      pcrOiSeriesRef.current = null
-      pcrVolSeriesRef.current = null
-      pcrSpotSeriesRef.current = null
-      pcrSyntheticSeriesRef.current = null
-    }
-  }, [])
+  useEffect(() => { pcrOiSeriesRef.current?.applyOptions({ visible: showPcrOi }) }, [showPcrOi])
+  useEffect(() => { pcrVolSeriesRef.current?.applyOptions({ visible: showPcrVolume }) }, [showPcrVolume])
 
   // ── OI Change line chart ───────────────────────────────────────
   useEffect(() => {
@@ -1192,15 +1742,20 @@ export default function BuyerEdge() {
       const c = createChart(container, {
         layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: cl.text },
         grid: { vertLines: { color: cl.grid }, horzLines: { color: cl.grid } },
-        crosshair: { mode: CrosshairMode.Normal },
+        crosshair: {
+          mode: CrosshairMode.Normal,
+          vertLine: { width: 1 as const, color: chartColors.crosshair, style: 2 as const, labelVisible: false },
+          horzLine: { width: 1 as const, color: chartColors.crosshair, style: 2 as const, labelBackgroundColor: chartColors.crosshairLabel },
+        },
         rightPriceScale: { borderColor: cl.border },
-        timeScale: { borderColor: cl.border, timeVisible: true, secondsVisible: false,
+        timeScale: {
+          borderColor: cl.border, timeVisible: true, secondsVisible: false,
           tickMarkFormatter: (t: number) => {
             const d = new Date(t * 1000)
             const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000)
             const hh = ist.getUTCHours().toString().padStart(2, '0')
             const mm = ist.getUTCMinutes().toString().padStart(2, '0')
-            if (parseInt(pcrDays) > 1) {
+            if (parseInt(straddleDays) > 1) {
               const dd = ist.getUTCDate().toString().padStart(2, '0')
               const mo = (ist.getUTCMonth() + 1).toString().padStart(2, '0')
               return `${dd}/${mo} ${hh}:${mm}`
@@ -1213,11 +1768,11 @@ export default function BuyerEdge() {
       })
 
       oiChgCeSeriesRef.current = c.addSeries(LineSeries, {
-        color: '#ef4444', lineWidth: 2, title: 'Call OI Chg',
+        color: '#22c55e', lineWidth: 2, title: 'Call OI Chg',
         priceScaleId: 'right', lastValueVisible: true, priceLineVisible: false,
       })
       oiChgPeSeriesRef.current = c.addSeries(LineSeries, {
-        color: '#22c55e', lineWidth: 2, title: 'Put OI Chg',
+        color: '#ef4444', lineWidth: 2, title: 'Put OI Chg',
         priceScaleId: 'right', lastValueVisible: true, priceLineVisible: false,
       })
 
@@ -1250,12 +1805,12 @@ export default function BuyerEdge() {
         tt.style.color = cl.tooltipText
         tt.innerHTML = `
           <div style="display:flex;justify-content:space-between;gap:16px">
-            <span style="color:#ef4444">Call OI Chg</span>
-            <span style="color:#ef4444">${formatOiLakh(pt.ce_oi_chg)}</span>
+            <span style="color:#22c55e">Call OI Chg</span>
+            <span style="color:#22c55e">${formatOiLakh(pt.ce_oi_chg)}</span>
           </div>
           <div style="display:flex;justify-content:space-between;gap:16px">
-            <span style="color:#22c55e">Put OI Chg</span>
-            <span style="color:#22c55e">${formatOiLakh(pt.pe_oi_chg)}</span>
+            <span style="color:#ef4444">Put OI Chg</span>
+            <span style="color:#ef4444">${formatOiLakh(pt.pe_oi_chg)}</span>
           </div>
           <div style="display:flex;justify-content:space-between;gap:16px;margin-top:4px;border-top:1px solid ${cl.tooltipBorder};padding-top:4px">
             <span style="color:${cl.tooltipMuted}">${date}</span>
@@ -1298,7 +1853,7 @@ export default function BuyerEdge() {
           const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000)
           const hh = ist.getUTCHours().toString().padStart(2, '0')
           const mm = ist.getUTCMinutes().toString().padStart(2, '0')
-          if (parseInt(pcrDays) > 1) {
+          if (parseInt(straddleDays) > 1) {
             const dd = ist.getUTCDate().toString().padStart(2, '0')
             const mo = (ist.getUTCMonth() + 1).toString().padStart(2, '0')
             return `${dd}/${mo} ${hh}:${mm}`
@@ -1308,7 +1863,7 @@ export default function BuyerEdge() {
       },
     })
     if (sorted.length > 0) oiChgChartRef.current?.timeScale().fitContent()
-  }, [pcrData, oiChgViewMode, pcrDays, chartColors])
+  }, [pcrData, oiChgViewMode, straddleDays, chartColors])
 
   // OI Change chart resize
   useEffect(() => {
@@ -1343,8 +1898,26 @@ export default function BuyerEdge() {
     return vwapDataMapRef.current.get(latestStraddlePoint.time) ?? null
   }, [latestStraddlePoint])
 
+  // Live spot price: prefer WebSocket-delivered underlying LTP, fall back to engine result
+  const liveSpot = liveChainData?.underlying_ltp ?? data?.spot ?? null
+
   const signal = data?.signal_engine?.signal ?? null
   const signalCfg = signal ? SIGNAL_CONFIG[signal] : null
+
+  // ── Directional Conviction Score ────────────────────────────────────────
+  const directionalScore = useMemo<DirectionalScoreResult | null>(() => {
+    // Require at least the PCR series to have 2+ points for meaningful signals
+    const series = pcrSortedDataRef.current.length >= 2 ? pcrSortedDataRef.current : null
+    if (!series) return null
+    return computeDirectionalScore({
+      pcrSeries: series,
+      pcrOi: pcrData?.data?.current_pcr_oi ?? null,
+      pcrOiChg: pcrData?.data?.current_pcr_oi_chg ?? null,
+      deltaImbalance: data?.greeks_engine?.delta_imbalance ?? null,
+      trend: data?.market_state?.trend ?? null,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pcrData, data])
 
   return (
     <div className="py-6 space-y-6">
@@ -1484,7 +2057,7 @@ export default function BuyerEdge() {
 
             {/* Fetch button */}
             <Button
-              onClick={fetchData}
+              onClick={() => { fetchData(); loadGexData(); if (liveEnabled) refetchLive() }}
               disabled={isLoading || !selectedExpiry}
               className="h-9"
             >
@@ -1504,6 +2077,30 @@ export default function BuyerEdge() {
             >
               Auto {autoRefresh ? 'ON' : 'OFF'}
             </Button>
+
+            {/* Market + streaming status */}
+            <div className="flex items-center gap-2 ml-auto">
+              <Badge variant={marketOpen ? 'default' : 'secondary'} className="text-xs">
+                {marketOpen ? '● Market Open' : '○ Market Closed'}
+              </Badge>
+              {autoRefresh && (
+                <div className="flex items-center gap-1.5">
+                  {isStreaming ? (
+                    <Wifi className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <WifiOff className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <Badge variant={isStreaming ? 'default' : isLiveConnected ? 'secondary' : 'outline'} className="text-xs">
+                    {isLivePaused ? 'Paused' : isStreaming ? `Live · ${streamingSymbols}` : marketOpen ? 'Polling' : 'Offline'}
+                  </Badge>
+                  {liveLastUpdate && (
+                    <span className="text-xs text-muted-foreground hidden sm:inline">
+                      {liveLastUpdate.toLocaleTimeString()}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -1522,6 +2119,31 @@ export default function BuyerEdge() {
                 <Badge className={signalCfg.badgeClass}>
                   {data.signal_engine.confidence}/4
                 </Badge>
+                {data.signal_engine.data_mode && data.signal_engine.data_mode !== 'realtime' && (
+                  <Badge
+                    variant="outline"
+                    className={
+                      data.signal_engine.data_mode === 'last_day_fallback'
+                        ? 'border-amber-500 text-amber-600 dark:text-amber-400 text-xs'
+                        : data.signal_engine.data_mode === 'spot_only'
+                          ? 'border-red-500 text-red-600 dark:text-red-400 text-xs'
+                          : 'border-blue-500 text-blue-600 dark:text-blue-400 text-xs'
+                    }
+                    title={
+                      data.signal_engine.data_mode === 'last_day_fallback'
+                        ? 'Market State computed from last session data (market closed or broker unavailable)'
+                        : data.signal_engine.data_mode === 'spot_only'
+                          ? 'No history available — structure analysis degraded (spot-only fallback)'
+                          : 'Using live snapshot data'
+                    }
+                  >
+                    {data.signal_engine.data_mode === 'last_day_fallback'
+                      ? '⚠ Last Session'
+                      : data.signal_engine.data_mode === 'spot_only'
+                        ? '⚠ Spot Only'
+                        : '◉ Snapshot'}
+                  </Badge>
+                )}
               </div>
               <div className="flex flex-wrap gap-2">
                 {data.signal_engine.reasons.map((r, i) => (
@@ -1537,12 +2159,20 @@ export default function BuyerEdge() {
             <div className="mt-2 flex flex-wrap gap-4 text-sm text-muted-foreground">
               <span>
                 <span className="font-medium">{data.underlying}</span> · Spot{' '}
-                <span className="font-medium">{data.spot?.toFixed(2)}</span>
+                <span className="font-medium">{liveSpot != null ? liveSpot.toFixed(2) : (data.spot?.toFixed(2) ?? 'N/A')}</span>
+                {liveChainData?.underlying_ltp && isStreaming && (
+                  <span className="ml-1 text-xs text-green-500">● live</span>
+                )}
               </span>
               {data.timestamp && <span>{data.timestamp}</span>}
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Directional Conviction Score */}
+      {directionalScore && (
+        <DirectionalScoreGauge result={directionalScore} />
       )}
 
       {/* Module cards */}
@@ -1576,7 +2206,9 @@ export default function BuyerEdge() {
                   ? '⚡ Structure break — primary signal active'
                   : data.market_state.regime === 'Compression'
                     ? '🔒 Sellers in control — compression phase'
-                    : '👁 Expansion detected — watch for transitions'}
+                    : data.market_state.regime === 'Neutral'
+                      ? '⚖ Transition zone — ambiguous regime, watch for direction'
+                      : '👁 Expansion detected — watch for transitions'}
               </p>
             </CardContent>
           </Card>
@@ -1721,162 +2353,764 @@ export default function BuyerEdge() {
         </Card>
       )}
 
-
-      {/* Straddle Chart — always rendered so chartContainerRef is always mounted */}
-      <Card>
-        <CardHeader className="pb-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <CardTitle className="text-base">Straddle Chart</CardTitle>
-              <div className="flex flex-wrap items-center gap-2">
-                {/* Interval selector */}
-                <Select value={straddleInterval} onValueChange={setStraddleInterval}>
-                  <SelectTrigger className="w-[90px] h-8 text-xs">
-                    <SelectValue placeholder="Interval" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {straddleIntervals.map((intv) => (
-                      <SelectItem key={intv} value={intv}>
-                        {intv}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {/* Days selector */}
-                <Select value={straddleDays} onValueChange={setStraddleDays}>
-                  <SelectTrigger className="w-[90px] h-8 text-xs">
-                    <SelectValue placeholder="Days" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {['1', '3', '5'].map((d) => (
-                      <SelectItem key={d} value={d}>
-                        {d} {d === '1' ? 'Day' : 'Days'}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {/* Refresh chart */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs"
-                  onClick={loadStraddleData}
-                  disabled={isChartLoading}
-                >
-                  {isChartLoading ? (
-                    <RefreshCw className="h-3 w-3 animate-spin mr-1" />
-                  ) : (
-                    <RefreshCw className="h-3 w-3 mr-1" />
-                  )}
-                  Refresh
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {/* Latest info bar */}
-            {latestStraddlePoint && (
-              <div className="flex flex-wrap items-center gap-x-6 gap-y-1 mb-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Straddle </span>
-                  <span className="font-semibold" style={{ color: chartColors.straddle }}>
-                    {latestStraddlePoint.straddle.toFixed(2)}
-                  </span>
-                </div>
-                {latestVwap != null && (
-                  <div>
-                    <span className="text-muted-foreground">VWAP(D) </span>
-                    <span className="font-semibold" style={{ color: chartColors.vwap }}>
-                      {latestVwap.toFixed(2)}
-                    </span>
-                  </div>
-                )}
-                <div>
-                  <span className="text-muted-foreground">Spot </span>
-                  <span className="font-medium">{latestStraddlePoint.spot.toFixed(2)}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Strike </span>
-                  <span className="font-medium">{latestStraddlePoint.atm_strike}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">{latestStraddlePoint.atm_strike} CE </span>
-                  <span className="font-medium">{latestStraddlePoint.ce_price.toFixed(2)}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">{latestStraddlePoint.atm_strike} PE </span>
-                  <span className="font-medium">{latestStraddlePoint.pe_price.toFixed(2)}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Chart container */}
-            <div className="relative">
-              <div
-                ref={chartContainerRef}
-                className="relative w-full rounded-lg border border-border/50"
-                style={{ height: STRADDLE_CHART_HEIGHT }}
-              />
-              {isChartLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-lg">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    Loading straddle data…
-                  </div>
-                </div>
-              )}
-              {!selectedExpiry && !isChartLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/70 rounded-lg">
-                  <p className="text-sm text-muted-foreground">Select an underlying and expiry to load the straddle chart</p>
-                </div>
-              )}
-            </div>
-
-            {/* Legend toggles */}
-            <div className="flex items-center justify-center gap-4 mt-3">
-              <button
-                type="button"
-                onClick={() => setShowStraddle((v) => !v)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showStraddle ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
-              >
-                <span className="inline-block h-0.5 w-5 rounded" style={{ backgroundColor: chartColors.straddle }} />
-                Straddle
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowVwap((v) => !v)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showVwap ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
-              >
-                <span className="inline-block h-0.5 w-5 rounded border-dashed border-t-2" style={{ borderColor: chartColors.vwap, backgroundColor: 'transparent' }} />
-                VWAP(D)
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowSpot((v) => !v)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showSpot ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
-              >
-                <span className="inline-block h-0.5 w-5 rounded" style={{ backgroundColor: chartColors.spot }} />
-                Spot
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowSynthetic((v) => !v)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showSynthetic ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
-              >
-                <span className="inline-block h-0.5 w-5 rounded border-dashed border-t-2" style={{ borderColor: chartColors.synthetic, backgroundColor: 'transparent' }} />
-                Synthetic Fut
-              </button>
-            </div>
-          </CardContent>
-        </Card>
-
       {/* Loading state */}
       {isLoading && !data && (
         <Card>
           <CardContent className="py-16 text-center text-muted-foreground">
             <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-3" />
             <p>Computing buyer edge signal…</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Options Premium Monitor — always rendered so chartContainerRef is always mounted */}
+      <Card>
+        <CardHeader className="pb-3 cursor-pointer" onClick={() => setStraddleSectionOpen((v) => !v)}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-base">Options Premium Monitor</CardTitle>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setShowStraddleInfo((v) => !v) }}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                title="How to interpret"
+              >
+                <Info className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              {/* Interval selector */}
+              <Select value={straddleInterval} onValueChange={setStraddleInterval}>
+                <SelectTrigger className="w-[90px] h-8 text-xs">
+                  <SelectValue placeholder="Interval" />
+                </SelectTrigger>
+                <SelectContent>
+                  {straddleIntervals.map((intv) => (
+                    <SelectItem key={intv} value={intv}>
+                      {intv}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Days selector */}
+              <Select value={straddleDays} onValueChange={setStraddleDays}>
+                <SelectTrigger className="w-[90px] h-8 text-xs">
+                  <SelectValue placeholder="Days" />
+                </SelectTrigger>
+                <SelectContent>
+                  {['1', '3', '5'].map((d) => (
+                    <SelectItem key={d} value={d}>
+                      {d} {d === '1' ? 'Day' : 'Days'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* PCR Window (dynamic) */}
+              <Select value={pcrStrikeWindow} onValueChange={setPcrStrikeWindow}>
+                <SelectTrigger className="w-[100px] h-8 text-xs">
+                  <SelectValue placeholder="PCR Window" />
+                </SelectTrigger>
+                <SelectContent>
+                  {['1', '3', '5', '10', '15', '20'].map((w) => (
+                    <SelectItem key={w} value={w}>±{w} PCR Window</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* PCR Range (max snapshots) */}
+              <Select value={maxSnapshotStrikes} onValueChange={setMaxSnapshotStrikes}>
+                <SelectTrigger className="w-[110px] h-8 text-xs">
+                  <SelectValue placeholder="PCR Range" />
+                </SelectTrigger>
+                <SelectContent>
+                  {['20', '30', '40', '50', '100', '150'].map((r) => (
+                    <SelectItem key={r} value={r}>{r} PCR Strikes</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Refresh chart */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={refreshMonitorData}
+                disabled={isChartLoading || isPcrLoading}
+              >
+                {(isChartLoading || isPcrLoading) ? (
+                  <RefreshCw className="h-3 w-3 animate-spin mr-1" />
+                ) : (
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                )}
+                Refresh
+              </Button>
+              {straddleSectionOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </div>
+          </div>
+
+          {/* Interpretation guide — toggles on info icon click */}
+          {showStraddleInfo && (
+            <div className="mt-3 p-3 rounded-lg bg-muted/50 border border-border/50 text-xs space-y-2" onClick={(e) => e.stopPropagation()}>
+              <p className="font-semibold uppercase tracking-wide text-muted-foreground text-[10px]">How to Interpret — Options Premium Monitor</p>
+              <p className="text-muted-foreground leading-relaxed">
+                The <strong className="text-foreground">Straddle Price</strong> (ATM CE + ATM PE) measures total premium at the closest strike to spot.
+                A <strong className="text-foreground">rising straddle</strong> indicates premium <em>expansion</em> — market is paying up for hedges and expects a large move.
+                A <strong className="text-foreground">falling straddle</strong> indicates premium <em>compression</em> — sellers dominate and range-bound conditions are expected.
+              </p>
+              <p className="text-muted-foreground leading-relaxed">
+                <strong className="text-foreground">VWAP(D)</strong> is the intraday volume-weighted average of the straddle price.
+                Straddle trading <em>above</em> VWAP → buyers expanding premium; trading <em>below</em> VWAP → sellers compressing it.
+              </p>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <div className="p-2 rounded bg-green-500/10 border border-green-500/20">
+                  <p className="font-medium text-green-600 dark:text-green-400">PCR &gt; 1.2 — Bullish</p>
+                  <p className="text-muted-foreground mt-0.5">More open puts than calls. Put writers (sellers) are creating a floor — market expects support.</p>
+                </div>
+                <div className="p-2 rounded bg-red-500/10 border border-red-500/20">
+                  <p className="font-medium text-red-600 dark:text-red-400">PCR &lt; 0.8 — Bearish</p>
+                  <p className="text-muted-foreground mt-0.5">More open calls than puts. Call writers (sellers) are creating a ceiling — market expects resistance.</p>
+                </div>
+                <div className="p-2 rounded bg-blue-500/10 border border-blue-500/20">
+                  <p className="font-medium text-blue-500">Straddle ↑ + PCR ↑ — Buy premium</p>
+                  <p className="text-muted-foreground mt-0.5">Premium expanding while puts build up → directional move expected (long straddle setup).</p>
+                </div>
+                <div className="p-2 rounded bg-amber-500/10 border border-amber-500/20">
+                  <p className="font-medium text-amber-500">Straddle ↓ + PCR ≈ 1.0 — Sell premium</p>
+                  <p className="text-muted-foreground mt-0.5">Premium compressing in balanced conditions → range-bound day (short straddle / iron condor setup).</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardHeader>
+        <CardContent className="pt-0" style={{ display: straddleSectionOpen ? undefined : 'none' }}>
+          {/* Latest info bar */}
+          {(latestStraddlePoint || pcrData?.data) && (
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-1 mb-4 text-sm">
+              {latestStraddlePoint && (
+                <>
+                  <div>
+                    <span className="text-muted-foreground">Straddle </span>
+                    <span className="font-semibold" style={{ color: chartColors.straddle }}>
+                      {latestStraddlePoint.straddle.toFixed(2)}
+                    </span>
+                  </div>
+                  {latestVwap != null && (
+                    <div>
+                      <span className="text-muted-foreground">VWAP(D) </span>
+                      <span className="font-semibold" style={{ color: chartColors.vwap }}>
+                        {latestVwap.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-muted-foreground">Spot </span>
+                    <span className="font-medium">{latestStraddlePoint.spot.toFixed(2)}</span>
+                  </div>
+                </>
+              )}
+              {pcrData?.data && (
+                <>
+                  <div>
+                    <span className="text-muted-foreground">PCR(OI) </span>
+                    <span className="font-semibold text-amber-500">
+                      {pcrData.data.current_pcr_oi?.toFixed(2) ?? 'N/A'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">PCR(Vol) </span>
+                    <span className="font-semibold text-blue-500">
+                      {pcrData.data.current_pcr_volume?.toFixed(2) ?? 'N/A'}
+                    </span>
+                  </div>
+                </>
+              )}
+              {latestStraddlePoint && (
+                <>
+                  <div>
+                    <span className="text-muted-foreground">Strike </span>
+                    <span className="font-medium">{latestStraddlePoint.atm_strike}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">{latestStraddlePoint.atm_strike} CE </span>
+                    <span className="font-medium">{latestStraddlePoint.ce_price.toFixed(2)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">{latestStraddlePoint.atm_strike} PE </span>
+                    <span className="font-medium">{latestStraddlePoint.pe_price.toFixed(2)}</span>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Chart container */}
+          <div className="relative">
+            <div
+              ref={chartContainerRef}
+              className="relative w-full rounded-lg border border-border/50"
+              style={{ height: STRADDLE_CHART_HEIGHT }}
+            />
+            {(isChartLoading || isPcrLoading) && (
+              <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-lg">
+                <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  <div className="flex flex-col items-center">
+                    {(showStraddle || showSpot || showSynthetic) && isChartLoading && <span>Loading Straddle & Spot data…</span>}
+                    {(showPcrOi || showPcrVolume) && isPcrLoading && <span>Loading PCR data…</span>}
+                    {(!showStraddle && !showSpot && !showSynthetic && !showPcrOi && !showPcrVolume) && <span>Loading Monitor data…</span>}
+                  </div>
+                </div>
+              </div>
+            )}
+            {!selectedExpiry && !isChartLoading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-background/70 rounded-lg">
+                <p className="text-sm text-muted-foreground">Select an underlying and expiry to load the straddle chart</p>
+              </div>
+            )}
+          </div>
+
+          {/* Legend toggles — Straddle controls VWAP(D) together; PCR lines on by default */}
+          <div className="flex items-center justify-center gap-4 mt-3 flex-wrap">
+            <button
+              type="button"
+              onClick={() => { const next = !showStraddle; setShowStraddle(next); setShowVwap(next) }}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showStraddle ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
+            >
+              <span className="inline-block h-0.5 w-5 rounded" style={{ backgroundColor: chartColors.straddle }} />
+              Straddle + VWAP(D)
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPcrOi((v) => !v)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showPcrOi ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
+            >
+              <span className="inline-block h-0.5 w-5 rounded bg-amber-400" />
+              PCR(OI)
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPcrVolume((v) => !v)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showPcrVolume ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
+            >
+              <span className="inline-block h-0.5 w-5 rounded bg-blue-400" />
+              PCR(Vol)
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowSpot((v) => !v)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showSpot ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
+            >
+              <span className="inline-block h-0.5 w-5 rounded" style={{ backgroundColor: chartColors.spot }} />
+              Spot
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowSynthetic((v) => !v)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showSynthetic ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
+            >
+              <span className="inline-block h-0.5 w-5 rounded border-dashed border-t-2" style={{ borderColor: chartColors.synthetic, backgroundColor: 'transparent' }} />
+              Synthetic Fut
+            </button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ================================================================
+          Section B.6 — Intraday OI Change & Market Breadth
+          ================================================================ */}
+      {pcrData?.data && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="inline-block w-1 h-5 rounded-full bg-amber-400 mr-1" />
+                <CardTitle
+                  className="text-base cursor-pointer"
+                  onClick={() => setOiChgSectionOpen((v) => !v)}
+                >
+                  Intraday OI Change &amp; Market Breadth
+                </CardTitle>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setShowOiChgInfo((v) => !v) }}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  title="How to interpret"
+                >
+                  <Info className="h-3.5 w-3.5" />
+                </button>
+                {pcrData.data.current_pcr_oi_chg != null && (
+                  <Badge
+                    variant="outline"
+                    className="text-xs font-bold"
+                    style={{
+                      color: (pcrData.data.current_pcr_oi_chg ?? 0) >= 0 ? '#22c55e' : '#ef4444',
+                      borderColor: (pcrData.data.current_pcr_oi_chg ?? 0) >= 0 ? '#22c55e' : '#ef4444',
+                    }}
+                  >
+                    PCR (OI CHG):&nbsp;
+                    {pcrData.data.current_pcr_oi_chg >= 0 ? '+' : ''}
+                    {pcrData.data.current_pcr_oi_chg.toFixed(2)}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {/* Line / Bar toggle */}
+                <div className="flex rounded-md overflow-hidden border border-border text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setOiChgViewMode('line')}
+                    className={`px-3 py-1 transition-colors ${oiChgViewMode === 'line' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                  >
+                    Line
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOiChgViewMode('bar')}
+                    className={`px-3 py-1 transition-colors border-l border-border ${oiChgViewMode === 'bar' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+                  >
+                    Bar
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOiChgSectionOpen((v) => !v)}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  {oiChgSectionOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Interpretation guide for OI Change & Breadth — Premium + OI matrix (elite classification) */}
+            {showOiChgInfo && (
+              <div className="mt-3 p-3 rounded-lg bg-muted/50 border border-border/50 text-xs space-y-2.5">
+                <p className="font-semibold uppercase tracking-wide text-muted-foreground text-[10px]">Premium + OI Matrix — Correct Flow Classification</p>
+                {/* CE matrix */}
+                <p className="text-[10px] font-semibold text-foreground/70">CE Leg (Calls)</p>
+                <div className="grid grid-cols-3 gap-px bg-border/50 rounded overflow-hidden text-[10px]">
+                  <div className="bg-muted/80 px-2 py-1 font-semibold text-muted-foreground">ATM CE Prem</div>
+                  <div className="bg-muted/80 px-2 py-1 font-semibold text-muted-foreground">CE OI</div>
+                  <div className="bg-muted/80 px-2 py-1 font-semibold text-muted-foreground">Classification</div>
+                  <div className="bg-background/60 px-2 py-1 text-green-500">↑ Rising</div>
+                  <div className="bg-background/60 px-2 py-1 text-green-500">↑ Rising</div>
+                  <div className="bg-background/60 px-2 py-1 text-green-400 font-medium">Call Buying (Bullish demand)</div>
+                  <div className="bg-background/60 px-2 py-1 text-red-500">↓ Falling</div>
+                  <div className="bg-background/60 px-2 py-1 text-red-500">↑ Rising</div>
+                  <div className="bg-background/60 px-2 py-1 text-red-400 font-medium">Call Writing (Bearish ceiling)</div>
+                  <div className="bg-background/60 px-2 py-1 text-green-500">↑ Rising</div>
+                  <div className="bg-background/60 px-2 py-1 text-orange-400">↓ Falling</div>
+                  <div className="bg-background/60 px-2 py-1 text-lime-400 font-medium">CE Short Covering (Mild Bullish)</div>
+                  <div className="bg-background/60 px-2 py-1 text-orange-400">↓ Falling</div>
+                  <div className="bg-background/60 px-2 py-1 text-orange-400">↓ Falling</div>
+                  <div className="bg-background/60 px-2 py-1 text-orange-400 font-medium">CE Long Unwinding (Bearish)</div>
+                </div>
+                {/* PE matrix */}
+                <p className="text-[10px] font-semibold text-foreground/70 pt-1">PE Leg (Puts)</p>
+                <div className="grid grid-cols-3 gap-px bg-border/50 rounded overflow-hidden text-[10px]">
+                  <div className="bg-muted/80 px-2 py-1 font-semibold text-muted-foreground">ATM PE Prem</div>
+                  <div className="bg-muted/80 px-2 py-1 font-semibold text-muted-foreground">PE OI</div>
+                  <div className="bg-muted/80 px-2 py-1 font-semibold text-muted-foreground">Classification</div>
+                  <div className="bg-background/60 px-2 py-1 text-red-500">↑ Rising</div>
+                  <div className="bg-background/60 px-2 py-1 text-red-500">↑ Rising</div>
+                  <div className="bg-background/60 px-2 py-1 text-red-400 font-medium">Put Buying (Bearish hedge)</div>
+                  <div className="bg-background/60 px-2 py-1 text-green-500">↓ Falling</div>
+                  <div className="bg-background/60 px-2 py-1 text-green-500">↑ Rising</div>
+                  <div className="bg-background/60 px-2 py-1 text-green-400 font-medium">Put Writing (Bullish support floor)</div>
+                  <div className="bg-background/60 px-2 py-1 text-orange-400">↑ Rising</div>
+                  <div className="bg-background/60 px-2 py-1 text-orange-400">↓ Falling</div>
+                  <div className="bg-background/60 px-2 py-1 text-orange-400 font-medium">PE Short Covering (Mildly Bearish)</div>
+                  <div className="bg-background/60 px-2 py-1 text-lime-400">↓ Falling</div>
+                  <div className="bg-background/60 px-2 py-1 text-lime-400">↓ Falling</div>
+                  <div className="bg-background/60 px-2 py-1 text-lime-400 font-medium">PE Long Unwinding (Bullish)</div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                  <div className="space-y-1.5">
+                    <p className="text-muted-foreground leading-relaxed">
+                      <strong className="text-foreground">Premium direction is more accurate than spot:</strong> Spot↑ but CE Prem↓ (IV crush) → writers dominate. Always cross-check ATM CE/PE premium direction with OI for the correct classification.
+                    </p>
+                    <p className="text-muted-foreground leading-relaxed">
+                      <strong className="text-foreground">PCR(OI CHG) &gt; 1 ≠ auto-Bullish:</strong> Put OI↑ from Put Writing = bullish floor. Put OI↑ from Put Buying = bearish hedge. Check PE Premium direction — PE Prem↓ + PE OI↑ = Put Writing (bullish).
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className="text-muted-foreground leading-relaxed">
+                      <strong className="text-foreground">Breadth Bias = PE Advancers / CE Advancers:</strong> Splits advancing strikes by leg. &gt;1.2 → more PE strikes adding OI (bearish pressure). &lt;0.83 → more CE strikes adding OI (bullish pressure). Neutral near 1.0.
+                    </p>
+                    <p className="text-muted-foreground leading-relaxed">
+                      <strong className="text-foreground">OI Velocity (5-bar avg):</strong> Contracts added per bar over the last 5 candles. Accelerating CE OI↑ → call building pace increasing. Positive for directional conviction, not just cumulative snapshot.
+                    </p>
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground border-t border-border/50 pt-1.5">
+                  <strong className="text-foreground">Dual OI Expansion</strong> (CE↑ + PE↑): Both legs adding OI — ambiguous: could be straddle writing (IV compression) or event-driven buying. Add ATM premium direction to disambiguate. &nbsp;
+                  <strong className="text-foreground">OI Convergence</strong> (CE↓ + PE↓): Positions unwinding on both sides — short covering, expiry liquidation, or volatility collapse.
+                </p>
+              </div>
+            )}
+          </CardHeader>
+          <CardContent className="pt-0" style={{ display: oiChgSectionOpen ? undefined : 'none' }}>
+            {(() => {
+              const lastPt = [...(pcrData.data.series ?? [])].reverse().find(
+                (p) => p.advances !== undefined
+              )
+              const adv = lastPt?.advances ?? 0
+              const dec = lastPt?.declines ?? 0
+              const neu = lastPt?.neutral ?? 0
+              const total = adv + dec + neu || 1
+              const adr = pcrData.data.current_adr
+              const adrMeta = adr != null ? getAdrMeta(adr) : null
+
+              // ── Smart Flow Classification (Premium + OI matrix) ─────────────
+              const seriesSorted = [...(pcrData.data.series ?? [])].sort((a, b) => a.time - b.time)
+              const firstSeriesPt = seriesSorted[0]
+              const lastSeriesPt = seriesSorted[seriesSorted.length - 1]
+              // Require at least 2 data points to compute a meaningful delta
+              const hasEnoughData = seriesSorted.length >= 2
+              const spotNow = pcrData.data.underlying_ltp
+              const rawPriceChg = hasEnoughData && firstSeriesPt?.spot
+                ? ((spotNow - firstSeriesPt.spot) / firstSeriesPt.spot) * 100
+                : null
+              const ceDelta = hasEnoughData
+                ? (lastSeriesPt?.ce_oi ?? 0) - (firstSeriesPt?.ce_oi ?? 0)
+                : 0
+              const peDelta = hasEnoughData
+                ? (lastSeriesPt?.pe_oi ?? 0) - (firstSeriesPt?.pe_oi ?? 0)
+                : 0
+              // ATM premium deltas (session open → now): primary basis for flow classification
+              const hasPremiumData = hasEnoughData
+                && (firstSeriesPt?.atm_ce_ltp ?? 0) > 0
+                && (firstSeriesPt?.atm_pe_ltp ?? 0) > 0
+              const cePremiumDelta = hasPremiumData
+                ? (lastSeriesPt?.atm_ce_ltp ?? 0) - (firstSeriesPt?.atm_ce_ltp ?? 0)
+                : null
+              const pePremiumDelta = hasPremiumData
+                ? (lastSeriesPt?.atm_pe_ltp ?? 0) - (firstSeriesPt?.atm_pe_ltp ?? 0)
+                : null
+              const ceFlowMeta = getOiFlowMeta('CE', ceDelta, cePremiumDelta)
+              const peFlowMeta = getOiFlowMeta('PE', peDelta, pePremiumDelta)
+              const oiRegimeMeta = getOiRegimeMeta(ceDelta, peDelta)
+              // 5-bar OI velocity (contracts/bar) for acceleration context
+              const last6 = seriesSorted.slice(-6)
+              const vel5BarCe = last6.length >= 2
+                ? ((last6[last6.length - 1]?.ce_oi ?? 0) - (last6[0]?.ce_oi ?? 0)) / (last6.length - 1)
+                : null
+              const vel5BarPe = last6.length >= 2
+                ? ((last6[last6.length - 1]?.pe_oi ?? 0) - (last6[0]?.pe_oi ?? 0)) / (last6.length - 1)
+                : null
+              // Directional Breadth Bias from per-leg strike advancers
+              const lastBreadthPt = [...seriesSorted].reverse().find(
+                (p) => (p.ce_advances ?? 0) + (p.pe_advances ?? 0) > 0
+              )
+              const breadthBiasMeta = lastBreadthPt
+                ? getBreadthBias(lastBreadthPt.ce_advances ?? 0, lastBreadthPt.pe_advances ?? 0)
+                : null
+
+              return (
+                <div className="mb-4 space-y-2">
+                  {/* Smart Flow Classification */}
+                  {(ceDelta !== 0 || peDelta !== 0) && (
+                    <div className="flex flex-wrap items-center gap-2 pb-2 border-b border-border/40 text-xs">
+                      {/* Spot direction (context) */}
+                      {rawPriceChg != null && (
+                        <span
+                          className="font-semibold"
+                          style={{ color: rawPriceChg > 0.05 ? '#22c55e' : rawPriceChg < -0.05 ? '#ef4444' : '#fbbf24' }}
+                        >
+                          {rawPriceChg > 0.05 ? '↑' : rawPriceChg < -0.05 ? '↓' : '→'} Spot{' '}
+                          {rawPriceChg >= 0 ? '+' : ''}{rawPriceChg.toFixed(2)}%
+                        </span>
+                      )}
+                      {/* ATM CE premium direction */}
+                      {hasPremiumData && cePremiumDelta !== null && Math.abs(cePremiumDelta) >= 0.5 && (
+                        <span className="text-[10px] text-muted-foreground">
+                          ATM CE:{' '}
+                          <span style={{ color: cePremiumDelta > 0 ? '#22c55e' : '#ef4444' }}>
+                            {cePremiumDelta > 0 ? '↑' : '↓'} ₹{Math.abs(cePremiumDelta).toFixed(1)}
+                          </span>
+                        </span>
+                      )}
+                      {/* ATM PE premium direction */}
+                      {hasPremiumData && pePremiumDelta !== null && Math.abs(pePremiumDelta) >= 0.5 && (
+                        <span className="text-[10px] text-muted-foreground">
+                          ATM PE:{' '}
+                          <span style={{ color: pePremiumDelta > 0 ? '#ef4444' : '#22c55e' }}>
+                            {pePremiumDelta > 0 ? '↑' : '↓'} ₹{Math.abs(pePremiumDelta).toFixed(1)}
+                          </span>
+                        </span>
+                      )}
+                      {/* CE Flow (premium-classified) */}
+                      {ceFlowMeta && (
+                        <span
+                          className="px-1.5 py-0.5 rounded text-[10px] font-medium border"
+                          style={{ color: ceFlowMeta.color, borderColor: ceFlowMeta.color + '60' }}
+                          title={ceFlowMeta.note}
+                        >
+                          CE: {ceFlowMeta.label}
+                        </span>
+                      )}
+                      {/* PE Flow (premium-classified) */}
+                      {peFlowMeta && (
+                        <span
+                          className="px-1.5 py-0.5 rounded text-[10px] font-medium border"
+                          style={{ color: peFlowMeta.color, borderColor: peFlowMeta.color + '60' }}
+                          title={peFlowMeta.note}
+                        >
+                          PE: {peFlowMeta.label}
+                        </span>
+                      )}
+                      {/* OI Regime */}
+                      <span
+                        className="px-1.5 py-0.5 rounded text-[10px] font-medium border ml-auto"
+                        style={{ color: oiRegimeMeta.color, borderColor: oiRegimeMeta.color + '60' }}
+                      >
+                        {oiRegimeMeta.label}
+                      </span>
+                    </div>
+                  )}
+                  {/* 5-bar OI velocity row */}
+                  {(vel5BarCe !== null || vel5BarPe !== null) && (vel5BarCe !== 0 || vel5BarPe !== 0) && (
+                    <div className="flex flex-wrap items-center gap-3 text-[10px] text-muted-foreground pb-1.5 border-b border-border/30">
+                      <span className="font-medium">OI Velocity (5‑bar avg):</span>
+                      {vel5BarCe !== null && vel5BarCe !== 0 && (
+                        <span style={{ color: vel5BarCe > 0 ? '#ef4444' : '#22c55e' }}>
+                          CE {vel5BarCe > 0 ? '+' : ''}{Math.round(vel5BarCe).toLocaleString('en-IN')}/bar
+                        </span>
+                      )}
+                      {vel5BarPe !== null && vel5BarPe !== 0 && (
+                        <span style={{ color: vel5BarPe > 0 ? '#22c55e' : '#ef4444' }}>
+                          PE {vel5BarPe > 0 ? '+' : ''}{Math.round(vel5BarPe).toLocaleString('en-IN')}/bar
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Advancing / Declining / Neutral bars */}
+                  <div className="flex items-center gap-3">
+                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shrink-0" />
+                    <span className="text-sm text-muted-foreground w-20 shrink-0">Advancing</span>
+                    <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                        style={{ width: `${(adv / total) * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-sm font-semibold text-emerald-500 w-8 text-right">{adv}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="h-2.5 w-2.5 rounded-full bg-red-500 shrink-0" />
+                    <span className="text-sm text-muted-foreground w-20 shrink-0">Declining</span>
+                    <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-red-500 transition-all duration-500"
+                        style={{ width: `${(dec / total) * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-sm font-semibold text-red-500 w-8 text-right">{dec}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground shrink-0" />
+                    <span className="text-sm text-muted-foreground w-20 shrink-0">Neutral</span>
+                    <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-muted-foreground transition-all duration-500"
+                        style={{ width: `${(neu / total) * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-sm font-semibold text-muted-foreground w-8 text-right">{neu}</span>
+                  </div>
+                  {/* ADR + Directional Breadth Bias row */}
+                  <div className="pt-1 text-xs text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span>
+                      ADR:{' '}
+                      <strong style={{ color: adrMeta?.color ?? 'currentColor' }}>
+                        {adr != null ? adr.toFixed(2) : '—'}
+                      </strong>
+                      {adrMeta && (
+                        <span className="ml-1.5" style={{ color: adrMeta.color }}>
+                          • {adrMeta.label}
+                        </span>
+                      )}
+                    </span>
+                    {breadthBiasMeta && (
+                      <span
+                        className="px-1.5 py-0.5 rounded text-[10px] font-medium border"
+                        style={{ color: breadthBiasMeta.color, borderColor: breadthBiasMeta.color + '50' }}
+                        title={`Directional Breadth Bias = PE Advancers / CE Advancers = ${breadthBiasMeta.bias >= 99 ? 'n/a' : breadthBiasMeta.bias.toFixed(2)}`}
+                      >
+                        {breadthBiasMeta.label}
+                      </span>
+                    )}
+                    <span className="text-[10px] opacity-60">(combined strike OI — deep OTM noise may apply)</span>
+                  </div>
+                </div>
+              )
+            })()}
+            {/* ── LINE MODE ─────────────────────────────────── */}
+            <div
+              ref={oiChgChartContainerRef}
+              className="relative w-full"
+              style={{ display: oiChgViewMode === 'line' ? 'block' : 'none', height: OI_CHANGE_CHART_HEIGHT }}
+            />
+            {/* ── BAR MODE ─────────────────────────────────── */}
+            {oiChgViewMode === 'bar' && (() => {
+              const strikes = pcrData.data.strike_oi_changes ?? []
+              if (!strikes.length) {
+                return (
+                  <p className="text-center text-sm text-muted-foreground py-8">
+                    No strike OI data available
+                  </p>
+                )
+              }
+              const sorted = [...strikes].sort((a, b) => a.strike - b.strike)
+              const maxAbsOi = Math.max(
+                ...sorted.map((s) => Math.max(Math.abs(s.ce_oi_chg), Math.abs(s.pe_oi_chg))),
+                1,
+              )
+              const spot = pcrData.data.underlying_ltp
+              // ── Butterfly horizontal bar chart: CE bars ← left, PE bars → right ──
+              const rowH = 20
+              const rowGap = 4
+              const strikeColW = 60   // center column width for strike labels
+              const maxBarW = 220     // max bar width on each side
+              const padTop = 8
+              const padBot = 20       // room for axis labels
+              const totalW = maxBarW + strikeColW + maxBarW
+              const centerX = maxBarW + strikeColW / 2
+              const chartH = padTop + sorted.length * (rowH + rowGap) + padBot
+
+              return (
+                <div className="overflow-x-auto">
+                  {/* Tooltip */}
+                  <div
+                    className="mb-2 text-xs text-center text-foreground min-h-[1.25rem]"
+                    aria-live="polite"
+                    aria-atomic="true"
+                    role="status"
+                  >
+                    {oiChgBarHover ? (
+                      <>
+                        <span className="font-bold">Strike: {oiChgBarHover.strike}</span>
+                        &nbsp;
+                        <span className="text-amber-400 text-[10px]">
+                          ({getMoneyness(oiChgBarHover.strike, pcrData.data.underlying_ltp)})
+                        </span>
+                        &nbsp;&nbsp;
+                        <span className="text-red-400">Call OI Chg: {formatOiLakh(oiChgBarHover.ce_oi_chg)}</span>
+                        &nbsp;&nbsp;
+                        <span className="text-green-400">Put OI Chg: {formatOiLakh(oiChgBarHover.pe_oi_chg)}</span>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">Hover a row to see strike details</span>
+                    )}
+                  </div>
+                  <svg
+                    viewBox={`0 0 ${totalW} ${chartH}`}
+                    className="w-full mx-auto"
+                    style={{ maxHeight: chartH + 10, minHeight: 200 }}
+                    onMouseLeave={() => setOiChgBarHover(null)}
+                  >
+                    {/* Center column dividers */}
+                    <line x1={maxBarW} y1={0} x2={maxBarW} y2={chartH - padBot}
+                      stroke="currentColor" strokeOpacity={0.15} strokeWidth={1} />
+                    <line x1={maxBarW + strikeColW} y1={0} x2={maxBarW + strikeColW} y2={chartH - padBot}
+                      stroke="currentColor" strokeOpacity={0.15} strokeWidth={1} />
+
+                    {/* X-axis scale labels at bottom */}
+                    <text x={4} y={chartH - 4} textAnchor="start" fontSize={8} fill="#ef4444" opacity={0.7}>
+                      CE ←{formatOiLakh(maxAbsOi)}
+                    </text>
+                    <text x={centerX} y={chartH - 4} textAnchor="middle" fontSize={8} fill="currentColor" opacity={0.5}>
+                      0
+                    </text>
+                    <text x={totalW - 4} y={chartH - 4} textAnchor="end" fontSize={8} fill="#22c55e" opacity={0.7}>
+                      PE {formatOiLakh(maxAbsOi)}→
+                    </text>
+
+                    {/* Spot horizontal marker */}
+                    {spot && (() => {
+                      const spotIdx = sorted.findIndex((s) => s.strike >= spot)
+                      if (spotIdx < 0) return null
+                      const sy = padTop + spotIdx * (rowH + rowGap) + rowH / 2
+                      return (
+                        <line x1={0} y1={sy} x2={totalW} y2={sy}
+                          stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4,3" />
+                      )
+                    })()}
+
+                    {sorted.map((s, i) => {
+                      const y = padTop + i * (rowH + rowGap)
+                      const ceW = (Math.abs(s.ce_oi_chg) / maxAbsOi) * maxBarW
+                      const peW = (Math.abs(s.pe_oi_chg) / maxAbsOi) * maxBarW
+                      // CE bar: extends LEFT from left edge of strike col
+                      const ceX = maxBarW - ceW
+                      // PE bar: extends RIGHT from right edge of strike col
+                      const peX = maxBarW + strikeColW
+                      const isAtm = spot && Math.abs(s.strike - spot) < STRIKE_PROXIMITY_THRESHOLD
+                      return (
+                        <g
+                          key={s.strike}
+                          onMouseEnter={() => setOiChgBarHover(s)}
+                          style={{ cursor: 'crosshair' }}
+                        >
+                          {/* CE bar (red) — extends left */}
+                          <rect
+                            x={ceX} y={y + 2}
+                            width={Math.max(ceW, 1)} height={rowH - 4}
+                            fill="#ef4444"
+                            fillOpacity={s.ce_oi_chg >= 0 ? 0.75 : 0.35}
+                            rx={2}
+                          />
+                          {/* PE bar (green) — extends right */}
+                          <rect
+                            x={peX} y={y + 2}
+                            width={Math.max(peW, 1)} height={rowH - 4}
+                            fill="#22c55e"
+                            fillOpacity={s.pe_oi_chg >= 0 ? 0.75 : 0.35}
+                            rx={2}
+                          />
+                          {/* Strike label (centered) */}
+                          <text
+                            x={centerX} y={y + rowH / 2 + 4}
+                            textAnchor="middle"
+                            fontSize={9}
+                            fill={isAtm ? '#f59e0b' : 'currentColor'}
+                            fontWeight={isAtm ? 'bold' : 'normal'}
+                          >
+                            {s.strike}
+                          </text>
+                        </g>
+                      )
+                    })}
+                  </svg>
+                  {/* Legend */}
+                  <div className="flex justify-center gap-6 mt-1 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block h-3 w-8 rounded-sm bg-red-400 opacity-75" />
+                      Call OI Change (→ right = adding, ← shorter = removing)
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block h-3 w-8 rounded-sm bg-green-400 opacity-75" />
+                      Put OI Change
+                    </span>
+                  </div>
+                </div>
+              )
+            })()}
+            {/* Line chart legend */}
+            {oiChgViewMode === 'line' && (
+              <div className="flex justify-center gap-6 mt-2 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block h-0.5 w-5 rounded bg-red-400" />
+                  Call OI Change
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block h-0.5 w-5 rounded bg-green-400" />
+                  Put OI Change
+                </span>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -1890,9 +3124,16 @@ export default function BuyerEdge() {
             <div className="flex items-center gap-2">
               <CardTitle className="text-base">Advanced GEX Levels</CardTitle>
               {gexData?.levels && (
-                <Badge variant="outline" className="text-xs">
-                  {gexData.mode === 'cumulative' ? '∑ Cumulative' : '⊙ Selected'}
-                </Badge>
+                <div className="flex items-center gap-1">
+                  <Badge variant="outline" className="text-xs">
+                    {gexData.mode === 'cumulative' ? '∑ Cumulative' : '⊙ Selected'}
+                  </Badge>
+                  {gexData.data_mode === 'last_day_fallback' && (
+                    <Badge variant="secondary" className="text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800">
+                      Last Day Fallback
+                    </Badge>
+                  )}
+                </div>
               )}
             </div>
             <div className="flex items-center gap-2">
@@ -2321,429 +3562,121 @@ export default function BuyerEdge() {
       </Card>
 
       {/* ================================================================
-          Section B — PCR Chart
+          Section A.1 — GEX Levels Spot Chart
+          Multi-Expiry Gamma Exposure overlaid on OHLCV candle chart.
           ================================================================ */}
       <Card>
-        <CardHeader className="pb-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        <CardHeader
+          className="pb-3 cursor-pointer"
+          onClick={() => setSpotChartSectionOpen((v) => !v)}
+        >
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <CardTitle
-                className="text-base cursor-pointer"
-                onClick={() => setPcrSectionOpen((v) => !v)}
-              >
-                PCR Chart
-              </CardTitle>
-              {pcrData?.data?.live_only && (
-                <Badge variant="secondary" className="text-xs">Live PCR only</Badge>
-              )}
-              {pcrData?.data && (
-                <div className="flex gap-3 text-xs text-muted-foreground">
-                  <span>PCR(OI): <strong className="text-foreground">{pcrData.data.current_pcr_oi?.toFixed(2) ?? 'N/A'}</strong></span>
-                  <span>PCR(Vol): <strong className="text-foreground">{pcrData.data.current_pcr_volume?.toFixed(2) ?? 'N/A'}</strong></span>
-                </div>
+              <CardTitle className="text-base">GEX Levels — Spot Chart</CardTitle>
+              {gexData?.levels && (
+                <Badge variant="outline" className="text-xs">
+                  {gexData.mode === 'cumulative' ? '∑ Multi-Expiry' : '⊙ Single Expiry'}
+                </Badge>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Select value={pcrInterval} onValueChange={setPcrInterval}>
-                <SelectTrigger className="w-[80px] h-8 text-xs">
+            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              {/* Interval selector */}
+              <Select value={spotChartInterval} onValueChange={setSpotChartInterval}>
+                <SelectTrigger className="w-[82px] h-8 text-xs">
                   <SelectValue placeholder="Interval" />
                 </SelectTrigger>
                 <SelectContent>
-                  {['1m', '3m', '5m', '15m', '30m', '1h', '1d'].map((i) => (
-                    <SelectItem key={i} value={i}>{i}</SelectItem>
+                  {['1m', '3m', '5m', '10m', '15m', '30m', '1h', '1d'].map((intv) => (
+                    <SelectItem key={intv} value={intv}>{intv}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={pcrDays} onValueChange={setPcrDays}>
-                <SelectTrigger className="w-[80px] h-8 text-xs">
+              {/* Days selector */}
+              <Select value={spotChartDays} onValueChange={setSpotChartDays}>
+                <SelectTrigger className="w-[82px] h-8 text-xs">
                   <SelectValue placeholder="Days" />
                 </SelectTrigger>
                 <SelectContent>
-                  {['1', '2', '3', '5'].map((d) => (
-                    <SelectItem key={d} value={d}>{d} {d === '1' ? 'Day' : 'Days'}</SelectItem>
+                  {[['1', '1 Day'], ['3', '3 Days'], ['5', '5 Days'], ['10', '10 Days'], ['20', '20 Days'], ['30', '30 Days']].map(([v, l]) => (
+                    <SelectItem key={v} value={v}>{l}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <Button
-                variant="outline" size="sm" className="h-8 text-xs"
-                onClick={loadPcrData}
-                disabled={isPcrLoading || !selectedExpiry}
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => loadSpotCandleData()}
+                disabled={isSpotCandleLoading || !selectedUnderlying}
               >
-                {isPcrLoading ? <RefreshCw className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+                {isSpotCandleLoading
+                  ? <RefreshCw className="h-3 w-3 animate-spin mr-1" />
+                  : <RefreshCw className="h-3 w-3 mr-1" />}
                 Refresh
               </Button>
-              <button
-                type="button"
-                onClick={() => setPcrSectionOpen((v) => !v)}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                {pcrSectionOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </button>
+              {spotChartSectionOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </div>
           </div>
         </CardHeader>
-        {/* CardContent is always rendered so the chart container stays in the DOM and
-            offsetWidth is valid when the chart is first created. Collapse only
-            hides it via CSS (matching the straddle chart pattern). */}
-        <CardContent className="pt-0" style={{ display: pcrSectionOpen ? undefined : 'none' }}>
+        {spotChartSectionOpen && (
+          <CardContent className="pt-0">
             <div className="relative">
+              {isSpotCandleLoading && (
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/70 rounded-lg">
+                  <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">Loading spot candles…</p>
+                </div>
+              )}
               <div
-                ref={pcrChartContainerRef}
+                ref={spotChartContainerRef}
                 className="relative w-full rounded-lg border border-border/50"
-                style={{ height: PCR_CHART_HEIGHT }}
+                style={{ height: 380 }}
               />
-              {isPcrLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/60 rounded-lg">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    Loading PCR data…
-                  </div>
-                </div>
-              )}
-              {!selectedExpiry && !isPcrLoading && (
+              {(!spotCandleData?.candles?.length) && !isSpotCandleLoading && (
                 <div className="absolute inset-0 flex items-center justify-center bg-background/70 rounded-lg">
-                  <p className="text-sm text-muted-foreground">Select an underlying and expiry to load PCR chart</p>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedUnderlying ? 'No candle data available' : 'Select an underlying first'}
+                  </p>
                 </div>
               )}
             </div>
-            {/* Legend toggles */}
-            <div className="flex items-center justify-center gap-4 mt-3 flex-wrap">
-              <button
-                type="button"
-                onClick={() => setShowPcrOi((v) => !v)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showPcrOi ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
-              >
-                <span className="inline-block h-0.5 w-5 rounded bg-amber-400" />
-                PCR(OI)
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowPcrVolume((v) => !v)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showPcrVolume ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
-              >
-                <span className="inline-block h-0.5 w-5 rounded bg-blue-400" />
-                PCR(Vol)
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowPcrSpot((v) => !v)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showPcrSpot ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
-              >
-                <span className="inline-block h-0.5 w-5 rounded" style={{ backgroundColor: chartColors.spot }} />
-                Spot
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowPcrSynthetic((v) => !v)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${showPcrSynthetic ? 'bg-muted font-medium' : 'opacity-50 hover:opacity-75'}`}
-              >
-                <span className="inline-block h-0.5 w-5 rounded border-dashed border-t-2 border-purple-400" style={{ backgroundColor: 'transparent' }} />
-                Syn Fut
-              </button>
-            </div>
-            <p className="text-xs text-muted-foreground text-center mt-1">
-              PCR &gt; 1.2 = Bearish / PCR &lt; 0.8 = Bullish / PCR ≈ 1.0 = Neutral
-            </p>
-          </CardContent>
-      </Card>
-
-      {/* ================================================================
-          Section B.5 — Market Breadth
-          ================================================================ */}
-      {pcrData?.data && (() => {
-        const lastPt = [...(pcrData.data.series ?? [])].reverse().find(
-          (p) => p.advances !== undefined
-        )
-        const adv = lastPt?.advances ?? 0
-        const dec = lastPt?.declines ?? 0
-        const neu = lastPt?.neutral ?? 0
-        const total = adv + dec + neu || 1
-        const adr = pcrData.data.current_adr
-        const adrMeta = adr != null ? getAdrMeta(adr) : null
-        return (
-          <Card>
-            <CardHeader className="pb-2 pt-4 px-4">
-              <div className="flex items-center gap-2">
-                <span className="inline-block w-1 h-5 rounded-full bg-pink-500 mr-1" />
-                <CardTitle className="text-sm tracking-widest uppercase text-muted-foreground font-semibold">Market Breadth</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="pt-0 px-4 pb-4 space-y-2">
-              {/* Advancing */}
-              <div className="flex items-center gap-3">
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shrink-0" />
-                <span className="text-sm text-muted-foreground w-20 shrink-0">Advancing</span>
-                <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-emerald-500 transition-all duration-500"
-                    style={{ width: `${(adv / total) * 100}%` }}
-                  />
-                </div>
-                <span className="text-sm font-semibold text-emerald-500 w-8 text-right">{adv}</span>
-              </div>
-              {/* Declining */}
-              <div className="flex items-center gap-3">
-                <span className="h-2.5 w-2.5 rounded-full bg-red-500 shrink-0" />
-                <span className="text-sm text-muted-foreground w-20 shrink-0">Declining</span>
-                <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-red-500 transition-all duration-500"
-                    style={{ width: `${(dec / total) * 100}%` }}
-                  />
-                </div>
-                <span className="text-sm font-semibold text-red-500 w-8 text-right">{dec}</span>
-              </div>
-              {/* Neutral */}
-              <div className="flex items-center gap-3">
-                <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground shrink-0" />
-                <span className="text-sm text-muted-foreground w-20 shrink-0">Neutral</span>
-                <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-muted-foreground transition-all duration-500"
-                    style={{ width: `${(neu / total) * 100}%` }}
-                  />
-                </div>
-                <span className="text-sm font-semibold text-muted-foreground w-8 text-right">{neu}</span>
-              </div>
-              {/* ADR label */}
-              <div className="pt-1 text-xs text-muted-foreground">
-                ADR:{' '}
-                <strong style={{ color: adrMeta?.color ?? 'currentColor' }}>
-                  {adr != null ? adr.toFixed(2) : '—'}
-                </strong>
-                {adrMeta && (
-                  <span className="ml-1.5" style={{ color: adrMeta.color }}>
-                    • {adrMeta.label}
+            {/* GEX Level Legend */}
+            {gexData?.levels && (
+              <div className="flex flex-wrap justify-center gap-x-6 gap-y-1 mt-3 text-xs text-muted-foreground">
+                {gexData.levels.call_gamma_wall != null && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block h-0.5 w-5 rounded bg-green-500" />
+                    Call Wall {gexData.levels.call_gamma_wall.toFixed(0)}
+                  </span>
+                )}
+                {gexData.levels.put_gamma_wall != null && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block h-0.5 w-5 rounded bg-red-500" />
+                    Put Wall {gexData.levels.put_gamma_wall.toFixed(0)}
+                  </span>
+                )}
+                {gexData.levels.gamma_flip != null && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block h-0.5 w-5 rounded border-dashed border-t-2 border-amber-400" style={{ backgroundColor: 'transparent' }} />
+                    HVL / Γ Flip {gexData.levels.gamma_flip.toFixed(0)}
+                  </span>
+                )}
+                {gexData.levels.absolute_wall != null && (
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block h-0.5 w-5 rounded bg-violet-400" />
+                    Abs Wall {gexData.levels.absolute_wall.toFixed(0)}
+                  </span>
+                )}
+                {gexData.per_expiry && gexData.per_expiry.length > 1 && (
+                  <span className="text-muted-foreground italic">
+                    + {gexData.per_expiry.length} expiry overlays (dashed)
                   </span>
                 )}
               </div>
-            </CardContent>
-          </Card>
-        )
-      })()}
-
-      {/* ================================================================
-          Section B.6 — OI Change Chart (Line / Bar)
-          ================================================================ */}
-      {pcrData?.data && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span className="inline-block w-1 h-5 rounded-full bg-amber-400 mr-1" />
-                <CardTitle
-                  className="text-base cursor-pointer"
-                  onClick={() => setOiChgSectionOpen((v) => !v)}
-                >
-                  Total Change in OI — Intraday
-                </CardTitle>
-                {pcrData.data.current_pcr_oi_chg != null && (
-                  <Badge
-                    variant="outline"
-                    className="text-xs font-bold"
-                    style={{
-                      color: (pcrData.data.current_pcr_oi_chg ?? 0) >= 0 ? '#22c55e' : '#ef4444',
-                      borderColor: (pcrData.data.current_pcr_oi_chg ?? 0) >= 0 ? '#22c55e' : '#ef4444',
-                    }}
-                  >
-                    PCR (OI CHG):&nbsp;
-                    {pcrData.data.current_pcr_oi_chg >= 0 ? '+' : ''}
-                    {pcrData.data.current_pcr_oi_chg.toFixed(2)}
-                  </Badge>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {/* Line / Bar toggle */}
-                <div className="flex rounded-md overflow-hidden border border-border text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setOiChgViewMode('line')}
-                    className={`px-3 py-1 transition-colors ${oiChgViewMode === 'line' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
-                  >
-                    Line
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setOiChgViewMode('bar')}
-                    className={`px-3 py-1 transition-colors border-l border-border ${oiChgViewMode === 'bar' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
-                  >
-                    Bar
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setOiChgSectionOpen((v) => !v)}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  {oiChgSectionOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0" style={{ display: oiChgSectionOpen ? undefined : 'none' }}>
-            {/* ── LINE MODE ─────────────────────────────────── */}
-            <div
-              ref={oiChgChartContainerRef}
-              className="relative w-full"
-              style={{ display: oiChgViewMode === 'line' ? 'block' : 'none', height: OI_CHANGE_CHART_HEIGHT }}
-            />
-            {/* ── BAR MODE ─────────────────────────────────── */}
-            {oiChgViewMode === 'bar' && (() => {
-              const strikes = pcrData.data.strike_oi_changes ?? []
-              if (!strikes.length) {
-                return (
-                  <p className="text-center text-sm text-muted-foreground py-8">
-                    No strike OI data available
-                  </p>
-                )
-              }
-              const sorted = [...strikes].sort((a, b) => a.strike - b.strike)
-              const maxAbsOi = Math.max(
-                ...sorted.map((s) => Math.max(Math.abs(s.ce_oi_chg), Math.abs(s.pe_oi_chg))),
-                1,
-              )
-              const spot = pcrData.data.underlying_ltp
-              // ── Butterfly horizontal bar chart: CE bars ← left, PE bars → right ──
-              const rowH = 20
-              const rowGap = 4
-              const strikeColW = 60   // center column width for strike labels
-              const maxBarW = 220     // max bar width on each side
-              const padTop = 8
-              const padBot = 20       // room for axis labels
-              const totalW = maxBarW + strikeColW + maxBarW
-              const centerX = maxBarW + strikeColW / 2
-              const chartH = padTop + sorted.length * (rowH + rowGap) + padBot
-
-              return (
-                <div className="overflow-x-auto">
-                  {/* Tooltip */}
-                  <div
-                    className="mb-2 text-xs text-center text-foreground min-h-[1.25rem]"
-                    aria-live="polite"
-                    aria-atomic="true"
-                    role="status"
-                  >
-                    {oiChgBarHover ? (
-                      <>
-                        <span className="font-bold">Strike: {oiChgBarHover.strike}</span>
-                        &nbsp;&nbsp;
-                        <span className="text-red-400">Call OI Chg: {formatOiLakh(oiChgBarHover.ce_oi_chg)}</span>
-                        &nbsp;&nbsp;
-                        <span className="text-green-400">Put OI Chg: {formatOiLakh(oiChgBarHover.pe_oi_chg)}</span>
-                      </>
-                    ) : (
-                      <span className="text-muted-foreground">Hover a row to see strike details</span>
-                    )}
-                  </div>
-                  <svg
-                    viewBox={`0 0 ${totalW} ${chartH}`}
-                    className="w-full mx-auto"
-                    style={{ maxHeight: chartH + 10, minHeight: 200 }}
-                    onMouseLeave={() => setOiChgBarHover(null)}
-                  >
-                    {/* Center column dividers */}
-                    <line x1={maxBarW} y1={0} x2={maxBarW} y2={chartH - padBot}
-                      stroke="currentColor" strokeOpacity={0.15} strokeWidth={1} />
-                    <line x1={maxBarW + strikeColW} y1={0} x2={maxBarW + strikeColW} y2={chartH - padBot}
-                      stroke="currentColor" strokeOpacity={0.15} strokeWidth={1} />
-
-                    {/* X-axis scale labels at bottom */}
-                    <text x={4} y={chartH - 4} textAnchor="start" fontSize={8} fill="#ef4444" opacity={0.7}>
-                      CE ←{formatOiLakh(maxAbsOi)}
-                    </text>
-                    <text x={centerX} y={chartH - 4} textAnchor="middle" fontSize={8} fill="currentColor" opacity={0.5}>
-                      0
-                    </text>
-                    <text x={totalW - 4} y={chartH - 4} textAnchor="end" fontSize={8} fill="#22c55e" opacity={0.7}>
-                      PE {formatOiLakh(maxAbsOi)}→
-                    </text>
-
-                    {/* Spot horizontal marker */}
-                    {spot && (() => {
-                      const spotIdx = sorted.findIndex((s) => s.strike >= spot)
-                      if (spotIdx < 0) return null
-                      const sy = padTop + spotIdx * (rowH + rowGap) + rowH / 2
-                      return (
-                        <line x1={0} y1={sy} x2={totalW} y2={sy}
-                          stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4,3" />
-                      )
-                    })()}
-
-                    {sorted.map((s, i) => {
-                      const y = padTop + i * (rowH + rowGap)
-                      const ceW = (Math.abs(s.ce_oi_chg) / maxAbsOi) * maxBarW
-                      const peW = (Math.abs(s.pe_oi_chg) / maxAbsOi) * maxBarW
-                      // CE bar: extends LEFT from left edge of strike col
-                      const ceX = maxBarW - ceW
-                      // PE bar: extends RIGHT from right edge of strike col
-                      const peX = maxBarW + strikeColW
-                      const isAtm = spot && Math.abs(s.strike - spot) < STRIKE_PROXIMITY_THRESHOLD
-                      return (
-                        <g
-                          key={s.strike}
-                          onMouseEnter={() => setOiChgBarHover(s)}
-                          style={{ cursor: 'crosshair' }}
-                        >
-                          {/* CE bar (red) — extends left */}
-                          <rect
-                            x={ceX} y={y + 2}
-                            width={Math.max(ceW, 1)} height={rowH - 4}
-                            fill="#ef4444"
-                            fillOpacity={s.ce_oi_chg >= 0 ? 0.75 : 0.35}
-                            rx={2}
-                          />
-                          {/* PE bar (green) — extends right */}
-                          <rect
-                            x={peX} y={y + 2}
-                            width={Math.max(peW, 1)} height={rowH - 4}
-                            fill="#22c55e"
-                            fillOpacity={s.pe_oi_chg >= 0 ? 0.75 : 0.35}
-                            rx={2}
-                          />
-                          {/* Strike label (centered) */}
-                          <text
-                            x={centerX} y={y + rowH / 2 + 4}
-                            textAnchor="middle"
-                            fontSize={9}
-                            fill={isAtm ? '#f59e0b' : 'currentColor'}
-                            fontWeight={isAtm ? 'bold' : 'normal'}
-                          >
-                            {s.strike}
-                          </text>
-                        </g>
-                      )
-                    })}
-                  </svg>
-                  {/* Legend */}
-                  <div className="flex justify-center gap-6 mt-1 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1.5">
-                      <span className="inline-block h-3 w-8 rounded-sm bg-red-400 opacity-75" />
-                      Call OI Change (→ right = adding, ← shorter = removing)
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="inline-block h-3 w-8 rounded-sm bg-green-400 opacity-75" />
-                      Put OI Change
-                    </span>
-                  </div>
-                </div>
-              )
-            })()}
-            {/* Line chart legend */}
-            {oiChgViewMode === 'line' && (
-              <div className="flex justify-center gap-6 mt-2 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block h-0.5 w-5 rounded bg-red-400" />
-                  Call OI Change
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block h-0.5 w-5 rounded bg-green-400" />
-                  Put OI Change
-                </span>
-              </div>
             )}
           </CardContent>
-        </Card>
-      )}
+        )}
+      </Card>
 
       {/* ================================================================
           Section C — IVR & Skew Dashboard
@@ -2932,6 +3865,199 @@ export default function BuyerEdge() {
             {!isIvLoading && !ivData && selectedExpiry && (
               <p className="text-center text-sm text-muted-foreground py-6">
                 Click Analyse to load IV dashboard
+              </p>
+            )}
+            {!selectedExpiry && (
+              <p className="text-center text-sm text-muted-foreground py-6">
+                Select an underlying and expiry first
+              </p>
+            )}
+          </CardContent>
+        )}
+      </Card>
+
+      {/* ================================================================
+          Section D — Intraday ATM IV Chart (ivChartApi)
+          ================================================================ */}
+      <Card>
+        <CardHeader
+          className="pb-3 cursor-pointer"
+          onClick={() => setIvChartSectionOpen((v) => !v)}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-base">Intraday ATM IV Chart</CardTitle>
+              {ivChartData && (
+                <Badge variant="outline" className="text-xs">
+                  ATM {ivChartData.atm_strike}
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              {/* Interval selector */}
+              <Select value={ivChartInterval} onValueChange={setIvChartInterval}>
+                <SelectTrigger className="w-[82px] h-8 text-xs">
+                  <SelectValue placeholder="Interval" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ivChartIntervals.map((intv) => (
+                    <SelectItem key={intv} value={intv}>{intv}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {/* Days selector */}
+              <Select value={ivChartDays} onValueChange={setIvChartDays}>
+                <SelectTrigger className="w-[82px] h-8 text-xs">
+                  <SelectValue placeholder="Days" />
+                </SelectTrigger>
+                <SelectContent>
+                  {['1', '3', '5'].map((d) => (
+                    <SelectItem key={d} value={d}>{d} {d === '1' ? 'Day' : 'Days'}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => loadIvChartData()}
+                disabled={isIvChartLoading || !selectedExpiry}
+              >
+                {isIvChartLoading ? (
+                  <RefreshCw className="h-3 w-3 animate-spin mr-1" />
+                ) : (
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                )}
+                Refresh
+              </Button>
+              {ivChartSectionOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </div>
+          </div>
+        </CardHeader>
+        {ivChartSectionOpen && (
+          <CardContent className="pt-0">
+            {isIvChartLoading && (
+              <div className="py-8 text-center text-muted-foreground">
+                <RefreshCw className="h-5 w-5 animate-spin mx-auto mb-2" />
+                <p className="text-sm">Loading IV chart data…</p>
+              </div>
+            )}
+            {!isIvChartLoading && ivChartData && ivChartData.series.length > 0 && (() => {
+              // Show CE IV and PE IV as a simple SVG sparkline for each series
+              const ceIvSeries = ivChartData.series.find((s) => s.option_type === 'CE')
+              const peIvSeries = ivChartData.series.find((s) => s.option_type === 'PE')
+
+              const allIvPoints = [
+                ...(ceIvSeries?.iv_data.filter((p) => p.iv != null) ?? []),
+                ...(peIvSeries?.iv_data.filter((p) => p.iv != null) ?? []),
+              ]
+              if (!allIvPoints.length) return (
+                <p className="text-center text-sm text-muted-foreground py-6">No IV data available</p>
+              )
+
+              const minIv = Math.min(...allIvPoints.map((p) => p.iv as number))
+              const maxIv = Math.max(...allIvPoints.map((p) => p.iv as number))
+              const ivRange = maxIv - minIv || 1
+
+              const svgH = 140
+              const padT = 12; const padB = 24; const padL = 44; const padR = 12
+              const plotH = svgH - padT - padB
+
+              const buildPoints = (pts: typeof allIvPoints) => {
+                if (!pts.length) return null
+                const sorted = [...pts].sort((a, b) => a.time - b.time)
+                const minT = sorted[0].time
+                const maxT = sorted[sorted.length - 1].time
+                const tRange = maxT - minT || 1
+                const plotW = 600 - padL - padR
+
+                const coords = sorted.map((p) => {
+                  const x = padL + ((p.time - minT) / tRange) * plotW
+                  const y = padT + plotH - ((((p.iv as number) - minIv) / ivRange) * plotH)
+                  return `${x.toFixed(1)},${y.toFixed(1)}`
+                })
+
+                // Time axis tick labels (4 evenly spaced)
+                const ticks = [0, 1, 2, 3].map((i) => {
+                  const t = sorted[Math.round((i / 3) * (sorted.length - 1))]
+                  const x = padL + ((t.time - minT) / tRange) * plotW
+                  const ist = new Date(t.time * 1000 + 5.5 * 3600000)
+                  const hh = ist.getUTCHours().toString().padStart(2, '0')
+                  const mm = ist.getUTCMinutes().toString().padStart(2, '0')
+                  return { x, label: `${hh}:${mm}` }
+                })
+
+                return { coords, ticks, plotW }
+              }
+
+              const ceBuilt = ceIvSeries ? buildPoints(ceIvSeries.iv_data.filter((p) => p.iv != null)) : null
+              const peBuilt = peIvSeries ? buildPoints(peIvSeries.iv_data.filter((p) => p.iv != null)) : null
+              const ticks = (ceBuilt ?? peBuilt)?.ticks ?? []
+
+              return (
+                <div>
+                  {/* Legend + meta */}
+                  <div className="flex flex-wrap items-center gap-4 mb-3 text-xs text-muted-foreground">
+                    {ceIvSeries && (
+                      <span className="flex items-center gap-1">
+                        <span className="inline-block h-0.5 w-5 rounded bg-green-500" />
+                        CE IV ({ceIvSeries.symbol})
+                      </span>
+                    )}
+                    {peIvSeries && (
+                      <span className="flex items-center gap-1">
+                        <span className="inline-block h-0.5 w-5 rounded bg-red-500" />
+                        PE IV ({peIvSeries.symbol})
+                      </span>
+                    )}
+                    <span>ATM {ivChartData.atm_strike}</span>
+                    <span>Spot {ivChartData.underlying_ltp.toFixed(2)}</span>
+                  </div>
+                  <svg
+                    viewBox={`0 0 600 ${svgH}`}
+                    className="w-full"
+                    style={{ minHeight: svgH }}
+                    preserveAspectRatio="none"
+                  >
+                    {/* Y-axis labels */}
+                    {[0, 0.5, 1].map((frac) => {
+                      const iv = minIv + frac * ivRange
+                      const y = padT + plotH - frac * plotH
+                      return (
+                        <text key={frac} x={padL - 4} y={y + 4} textAnchor="end" fontSize={8} fill="currentColor" opacity={0.55}>
+                          {iv.toFixed(1)}%
+                        </text>
+                      )
+                    })}
+                    {/* Grid lines */}
+                    {[0, 0.5, 1].map((frac) => {
+                      const y = padT + plotH - frac * plotH
+                      return (
+                        <line key={frac} x1={padL} y1={y} x2={600 - padR} y2={y}
+                          stroke="currentColor" strokeOpacity={0.1} strokeWidth={1} />
+                      )
+                    })}
+                    {/* CE IV polyline */}
+                    {ceBuilt && (
+                      <polyline points={ceBuilt.coords.join(' ')} fill="none" stroke="#22c55e" strokeWidth={1.5} />
+                    )}
+                    {/* PE IV polyline */}
+                    {peBuilt && (
+                      <polyline points={peBuilt.coords.join(' ')} fill="none" stroke="#ef4444" strokeWidth={1.5} />
+                    )}
+                    {/* X-axis time labels */}
+                    {ticks.map((t, i) => (
+                      <text key={i} x={t.x} y={svgH - 6} textAnchor="middle" fontSize={8} fill="currentColor" opacity={0.55}>
+                        {t.label}
+                      </text>
+                    ))}
+                  </svg>
+                </div>
+              )
+            })()}
+            {!isIvChartLoading && !ivChartData && selectedExpiry && (
+              <p className="text-center text-sm text-muted-foreground py-6">
+                Click Refresh to load the intraday ATM IV chart
               </p>
             )}
             {!selectedExpiry && (

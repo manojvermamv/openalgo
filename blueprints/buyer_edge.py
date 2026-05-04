@@ -30,8 +30,9 @@ from flask_cors import cross_origin
 from database.auth_db import get_api_key_for_tradingview
 from services.buyer_edge_service import get_buyer_edge_data
 from services.buyer_edge_gex_service import get_gex_levels, get_gex_levels_cumulative
-from services.buyer_edge_pcr_service import get_pcr_chart_data
+from services.buyer_edge_pcr_service import get_pcr_chart_data, get_spot_candles
 from services.buyer_edge_ivr_service import get_iv_dashboard
+from services.straddle_chart_service import get_straddle_chart_data
 from utils.logging import get_logger
 from utils.session import check_session_validity
 
@@ -248,6 +249,13 @@ def buyer_edge_pcr_chart():
         except (TypeError, ValueError):
             return jsonify({"status": "error", "message": "days must be an integer 1–5"}), 400
 
+        try:
+            pcr_strike_window = max(1, min(int(data.get("pcr_strike_window", 10)), 15))
+            max_snapshot_strikes = max(5, min(int(data.get("max_snapshot_strikes", 40)), 100))
+        except (TypeError, ValueError):
+            pcr_strike_window = 10
+            max_snapshot_strikes = 40
+
         success, response, status_code = get_pcr_chart_data(
             underlying=underlying.upper(),
             exchange=exchange.upper(),
@@ -255,11 +263,78 @@ def buyer_edge_pcr_chart():
             interval=interval,
             api_key=api_key,
             days=days,
+            pcr_strike_window=pcr_strike_window,
+            max_snapshot_strikes=max_snapshot_strikes,
         )
         return jsonify(response), status_code
 
     except Exception as exc:
         logger.exception(f"Error in buyer_edge_pcr_chart: {exc}")
+        return jsonify({"status": "error", "message": "An error occurred processing your request"}), 500
+
+
+# ---------------------------------------------------------------------------
+# /buyeredge/api/unified_monitor (Request Batching)
+# ---------------------------------------------------------------------------
+
+@buyer_edge_bp.route("/buyeredge/api/unified_monitor", methods=["POST"])
+@cross_origin()
+@check_session_validity
+def buyer_edge_unified_monitor():
+    """Unified endpoint for parallel Straddle and PCR data loading."""
+    try:
+        from concurrent.futures import ThreadPoolExecutor
+
+        login_username = session.get("user")
+        if not login_username:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        api_key = get_api_key_for_tradingview(login_username)
+        if not api_key:
+            return jsonify({"status": "error", "message": "API key not configured"}), 401
+
+        data = request.get_json(silent=True) or {}
+        underlying = data.get("underlying", "").strip().upper()[:20]
+        exchange = data.get("exchange", "").strip().upper()[:20]
+        expiry_date = data.get("expiry_date", "").strip().upper()[:10]
+        interval = str(data.get("interval", "1m")).strip()
+        days = max(1, min(int(data.get("days", 1)), 5))
+        pcr_strike_window = max(1, min(int(data.get("pcr_strike_window", 10)), 15))
+        max_snapshot_strikes = max(5, min(int(data.get("max_snapshot_strikes", 40)), 100))
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_straddle = executor.submit(
+                get_straddle_chart_data,
+                underlying=underlying,
+                exchange=exchange,
+                expiry_date=expiry_date,
+                interval=interval,
+                api_key=api_key,
+                days=days,
+            )
+            future_pcr = executor.submit(
+                get_pcr_chart_data,
+                underlying=underlying,
+                exchange=exchange,
+                expiry_date=expiry_date,
+                interval=interval,
+                api_key=api_key,
+                days=days,
+                pcr_strike_window=pcr_strike_window,
+                max_snapshot_strikes=max_snapshot_strikes,
+            )
+
+            res_straddle = future_straddle.result()
+            res_pcr = future_pcr.result()
+
+        return jsonify({
+            "status": "success",
+            "straddle": res_straddle[1],
+            "pcr": res_pcr[1],
+        }), 200
+
+    except Exception as exc:
+        logger.exception(f"Error in buyer_edge_unified_monitor: {exc}")
         return jsonify({"status": "error", "message": "An error occurred processing your request"}), 500
 
 
@@ -322,4 +397,60 @@ def buyer_edge_iv_dashboard():
 
     except Exception as exc:
         logger.exception(f"Error in buyer_edge_iv_dashboard: {exc}")
+        return jsonify({"status": "error", "message": "An error occurred processing your request"}), 500
+
+
+# ---------------------------------------------------------------------------
+# /buyeredge/api/spot_candles
+# ---------------------------------------------------------------------------
+
+_VALID_SPOT_INTERVALS = {"1m", "3m", "5m", "10m", "15m", "30m", "1h", "1d"}
+
+
+@buyer_edge_bp.route("/buyeredge/api/spot_candles", methods=["POST"])
+@cross_origin()
+@check_session_validity
+def buyer_edge_spot_candles():
+    """OHLCV candle history for the underlying — used by the GEX spot chart."""
+    try:
+        login_username = session.get("user")
+        if not login_username:
+            return jsonify({"status": "error", "message": "Authentication required"}), 401
+
+        api_key = get_api_key_for_tradingview(login_username)
+        if not api_key:
+            return jsonify({"status": "error", "message": "API key not configured"}), 401
+
+        data = request.get_json(silent=True) or {}
+        underlying = data.get("underlying", "").strip()[:20]
+        exchange = data.get("exchange", "").strip()[:20]
+        interval = str(data.get("interval", "15m")).strip()
+
+        if not underlying or not exchange:
+            return jsonify({"status": "error", "message": "underlying and exchange are required"}), 400
+
+        if not re.match(r"^[A-Z0-9]+$", underlying.upper()) or not re.match(
+            r"^[A-Z0-9_]+$", exchange.upper()
+        ):
+            return jsonify({"status": "error", "message": "Invalid input format"}), 400
+
+        if interval not in _VALID_SPOT_INTERVALS:
+            return jsonify({"status": "error", "message": f"interval must be one of {sorted(_VALID_SPOT_INTERVALS)}"}), 400
+
+        try:
+            days = max(1, min(int(data.get("days", 5)), 30))
+        except (TypeError, ValueError):
+            return jsonify({"status": "error", "message": "days must be an integer 1–30"}), 400
+
+        success, response, status_code = get_spot_candles(
+            underlying=underlying.upper(),
+            exchange=exchange.upper(),
+            interval=interval,
+            api_key=api_key,
+            days=days,
+        )
+        return jsonify(response), status_code
+
+    except Exception as exc:
+        logger.exception(f"Error in buyer_edge_spot_candles: {exc}")
         return jsonify({"status": "error", "message": "An error occurred processing your request"}), 500

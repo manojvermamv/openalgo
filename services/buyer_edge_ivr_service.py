@@ -29,12 +29,15 @@ Graceful degradation:
 """
 
 import time
+from collections import OrderedDict
 from datetime import datetime, timedelta
 from typing import Any
 
 import pytz
 
+from services.buyer_edge_utils import get_buyer_edge_quote_exchange
 from services.history_service import get_history
+from services.iv_chart_service import calculate_time_to_expiry_at
 from services.option_chain_service import get_option_chain
 from services.option_greeks_service import (
     DEFAULT_INTEREST_RATES,
@@ -42,11 +45,7 @@ from services.option_greeks_service import (
     parse_option_symbol,
 )
 from services.option_symbol_service import (
-    construct_crypto_option_symbol,
-    construct_option_symbol,
     find_atm_strike_from_actual,
-    get_available_strikes,
-    get_option_exchange,
 )
 from database.token_db_enhanced import fno_search_symbols
 from utils.constants import CRYPTO_EXCHANGES, INSTRUMENT_PERPFUT
@@ -55,10 +54,12 @@ from utils.logging import get_logger
 logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
-# 52-week IV cache  (module-level, no DB)
+# 52-week IV cache  (LRU-bounded module-level dict, no DB)
 # TTL: 3600 s (1 hour) — daily IV series changes slowly intraday
+# Max 20 entries to prevent unbounded growth under eventlet single-worker.
 # ---------------------------------------------------------------------------
-_IV_HISTORY_CACHE: dict[tuple, dict] = {}
+_IV_HISTORY_MAX = 20
+_IV_HISTORY_CACHE: OrderedDict[tuple, dict] = OrderedDict()
 _IV_HISTORY_TTL = 3600  # seconds
 
 # Days of history to fetch for 52-week IV series
@@ -72,24 +73,6 @@ _SPOT_PRICE_MULTIPLIER = 0.005  # 0.5% of spot as ATM option price approximation
 
 # OTM distance for 25-delta proxy (vertical skew calculation)
 _VERTICAL_SKEW_OTM_PCT = 0.05  # 5% OTM from ATM ≈ 25-delta for typical index options
-
-NSE_INDEX_SYMBOLS = {
-    "NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY",
-    "NIFTYNXT50", "NIFTYIT", "NIFTYPHARMA", "NIFTYBANK",
-}
-BSE_INDEX_SYMBOLS = {"SENSEX", "BANKEX", "SENSEX50"}
-
-
-def _get_quote_exchange(base_symbol: str, exchange: str) -> str:
-    if base_symbol in NSE_INDEX_SYMBOLS:
-        return "NSE_INDEX"
-    if base_symbol in BSE_INDEX_SYMBOLS:
-        return "BSE_INDEX"
-    if exchange.upper() in ("NFO", "BFO"):
-        return "NSE" if exchange.upper() == "NFO" else "BSE"
-    if exchange.upper() in CRYPTO_EXCHANGES:
-        return exchange.upper()
-    return exchange.upper()
 
 
 def _parse_ddmmmyy_to_dte(expiry_str: str) -> float:
@@ -119,17 +102,32 @@ def _build_52w_iv_series(
 
     Fetches 1-year daily bars of the underlying.  For each daily close,
     finds the nearest ATM CE option (using today's available strikes as proxy)
-    and computes Black-76 IV.
+    and computes Black-76 IV using the correct time-to-expiry for that candle's
+    date — mirroring the approach in iv_chart_service._calculate_iv_series().
 
-    Returns list of IV values (as %) or [] on failure.
+    Option price is approximated as _SPOT_PRICE_MULTIPLIER × spot because
+    brokers rarely supply historical option OHLCV for a full 52-week lookback.
+
+    Returns list of IV values (as %) or [] on failure / py_vollib unavailable.
     """
     cache_key = (underlying.upper(), exchange.upper())
     cached = _IV_HISTORY_CACHE.get(cache_key)
     if cached and (time.monotonic() - cached["ts"]) < _IV_HISTORY_TTL:
+        _IV_HISTORY_CACHE.move_to_end(cache_key)
         return cached["data"]
 
+    # Lazy-import to avoid loading scipy/numba/llvmlite at startup
     try:
-        quote_exchange = _get_quote_exchange(underlying, exchange)
+        from py_vollib.black.implied_volatility import implied_volatility as _black_iv
+    except ImportError:
+        logger.error(
+            "py_vollib not installed — 52w IV series unavailable for IVRank. "
+            "Install with: pip install py_vollib"
+        )
+        return []
+
+    try:
+        quote_exchange = get_buyer_edge_quote_exchange(underlying, exchange)
         ist = pytz.timezone("Asia/Kolkata")
         today = datetime.now(ist).date()
         start_date = (today - timedelta(days=_IV_HISTORY_DAYS)).strftime("%Y-%m-%d")
@@ -160,39 +158,32 @@ def _build_52w_iv_series(
         if not rows:
             return []
 
-        # Get available strikes (near-term expiry, proxy for ATM)
-        # We'll use today's first available expiry to get strikes
-        available_strikes = None
-
-        # Build a nearest expiry symbol for each daily close:
-        # Approximate ATM from underlying close; compute IV using any
-        # near-expiry CE with available data.
-        # We grab a sample expiry from fno_search_symbols
+        # Get available strikes from today's nearest expiry (proxy for ATM resolution)
         _opts = fno_search_symbols(
             underlying=underlying.upper(),
             exchange=options_exchange,
             instrumenttype="CE",
             limit=5,
         )
-        if _opts:
-            available_strikes = sorted(
-                set(float(o.get("strike", 0)) for o in _opts if o.get("strike"))
-            )
+        if not _opts:
+            return []
 
+        available_strikes = sorted(
+            set(float(o.get("strike", 0)) for o in _opts if o.get("strike"))
+        )
         if not available_strikes:
             return []
 
-        _build_sym = (
-            construct_crypto_option_symbol
-            if exchange.upper() in CRYPTO_EXCHANGES
-            else construct_option_symbol
-        )
-
-        # Use the first symbol to extract an expiry for time-to-expiry calc
+        # Parse the sample option symbol ONCE to obtain the reference expiry datetime.
+        # All historical candles use this same expiry for TTE calculation — a known
+        # approximation, but unavoidable without per-day historical option data.
         try:
             _, sample_expiry, _, _ = parse_option_symbol(_opts[0]["symbol"], options_exchange)
         except Exception:
             return []
+
+        # Interest rate for Black-76 (same convention as iv_chart_service)
+        interest_rate = DEFAULT_INTEREST_RATES.get(options_exchange, 0) / 100.0
 
         iv_series: list[float] = []
 
@@ -206,28 +197,54 @@ def _build_52w_iv_series(
                 if atm is None:
                     continue
 
-                ce_sym = _build_sym(underlying, _opts[0].get("expiry", ""), atm, "CE")
-                # Approximate current option price as 0.5% of spot for IV estimation
-                # (we are building a historical IV proxy from underlying closes)
-                # This is a conservative estimate; actual IV series would need
-                # historical option OHLCV but that's often unavailable.
+                # Option price proxy: same approximation as before; documented limitation
                 approx_ltp = max(_MIN_OPTION_PRICE, close_price * _SPOT_PRICE_MULTIPLIER)
 
-                ok, greeks_resp, _ = calculate_greeks(
-                    option_symbol=ce_sym,
-                    exchange=options_exchange,
-                    spot_price=close_price,
-                    option_price=approx_ltp,
-                )
-                if ok and greeks_resp.get("status") == "success":
-                    iv = greeks_resp.get("implied_volatility")
-                    if iv and iv > 0:
-                        iv_series.append(float(iv))
+                # --- Resolve candle datetime for correct per-candle TTE ---
+                # This is the key fix: use the candle's own timestamp instead of
+                # datetime.now() (which is what calculate_greeks() would do).
+                ts_val = row.get("timestamp")
+                candle_dt: datetime | None = None
+                if isinstance(ts_val, (int, float)):
+                    candle_dt = datetime.fromtimestamp(float(ts_val))
+                elif ts_val:
+                    try:
+                        candle_dt = datetime.fromisoformat(str(ts_val))
+                    except Exception:
+                        logger.debug(f"_build_52w_iv_series: unparseable timestamp {ts_val!r}, skipping candle")
+                        pass
+                if candle_dt is None:
+                    continue
+                # calculate_time_to_expiry_at expects naive datetimes (no tzinfo)
+                if candle_dt.tzinfo is not None:
+                    candle_dt = candle_dt.replace(tzinfo=None)
+
+                years_to_expiry, _ = calculate_time_to_expiry_at(candle_dt, sample_expiry)
+                if years_to_expiry <= 0:
+                    continue
+
+                # Direct Black-76 IV (same call as iv_chart_service._calculate_iv_series)
+                try:
+                    iv_decimal = _black_iv(
+                        approx_ltp, close_price, atm, interest_rate, years_to_expiry, "c"
+                    )
+                    if iv_decimal and iv_decimal > 0:
+                        iv_series.append(round(float(iv_decimal) * 100, 2))
+                except Exception as _iv_err:
+                    logger.debug(
+                        f"_build_52w_iv_series: Black-76 failed for "
+                        f"spot={close_price}, strike={atm}, tte={years_to_expiry:.4f}: {_iv_err}"
+                    )
+                    continue
+
             except Exception:
                 continue
 
-        # Cache result
+        # Cache result (LRU: evict oldest when over capacity)
         _IV_HISTORY_CACHE[cache_key] = {"ts": time.monotonic(), "data": iv_series}
+        _IV_HISTORY_CACHE.move_to_end(cache_key)
+        while len(_IV_HISTORY_CACHE) > _IV_HISTORY_MAX:
+            _IV_HISTORY_CACHE.popitem(last=False)
         return iv_series
 
     except Exception as exc:

@@ -2,7 +2,7 @@ import { webClient } from './client'
 
 export interface MarketState {
   trend: 'Bullish' | 'Bearish' | 'Neutral'
-  regime: 'Expansion' | 'Compression'
+  regime: 'Expansion' | 'Compression' | 'Neutral'
   location: 'Range High' | 'Mid' | 'Range Low' | 'Breakout'
 }
 
@@ -36,11 +36,13 @@ export interface StraddleEngine {
 }
 
 export type SignalType = 'NO_TRADE' | 'WATCH' | 'EXECUTE'
+export type DataMode = 'realtime' | 'live_snapshot' | 'last_day_fallback' | 'spot_only'
 
 export interface SignalEngine {
   signal: SignalType
   confidence: number
   reasons: string[]
+  data_mode?: DataMode
 }
 
 export interface BuyerEdgeResponse {
@@ -107,6 +109,7 @@ export interface GexLevelsResponse {
   chain: GexStrike[]
   levels: GexLevels
   per_expiry?: GexPerExpiry[]
+  data_mode?: 'realtime' | 'last_day_fallback'
 }
 
 // ---------------------------------------------------------------------------
@@ -126,6 +129,12 @@ export interface PcrDataPoint {
   adr: number | null
   ce_oi: number
   pe_oi: number
+  atm_ce_ltp: number
+  atm_pe_ltp: number
+  ce_advances: number
+  ce_declines: number
+  pe_advances: number
+  pe_declines: number
 }
 
 export interface StrikeOiChange {
@@ -184,6 +193,27 @@ export interface IvDashboardResponse {
   avg_ivx?: number | null
   iv_change_pct?: number | null
   expiries?: IvExpiryMetrics[]
+}
+
+// ---------------------------------------------------------------------------
+// Spot Candles (for GEX Spot Chart)
+// ---------------------------------------------------------------------------
+
+export interface SpotCandle {
+  time: number
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+}
+
+export interface SpotCandleResponse {
+  status: 'success' | 'error'
+  message?: string
+  underlying?: string
+  exchange?: string
+  candles?: SpotCandle[]
 }
 
 // ---------------------------------------------------------------------------
@@ -247,6 +277,39 @@ export const buyerEdgeApi = {
     strike_count?: number
   }): Promise<IvDashboardResponse> => {
     const response = await webClient.post<IvDashboardResponse>('/buyeredge/api/iv_dashboard', params)
+    return response.data
+  },
+
+  getSpotCandles: async (params: {
+    underlying: string
+    exchange: string
+    interval: string
+    days?: number
+  }): Promise<SpotCandleResponse> => {
+    const response = await webClient.post<SpotCandleResponse>('/buyeredge/api/spot_candles', params)
+    return response.data
+  },
+
+  getUnifiedMonitor: async (params: {
+    underlying: string
+    exchange: string
+    expiry_date: string
+    interval: string
+    days?: number
+    pcr_strike_window?: number
+    max_snapshot_strikes?: number
+  }): Promise<{
+    status: 'success' | 'error'
+    message?: string
+    straddle: import('./straddle-chart').StraddleChartResponse
+    pcr: PcrChartResponse
+  }> => {
+    const response = await webClient.post<{
+      status: 'success' | 'error'
+      message?: string
+      straddle: import('./straddle-chart').StraddleChartResponse
+      pcr: PcrChartResponse
+    }>('/buyeredge/api/unified_monitor', params)
     return response.data
   },
 }
