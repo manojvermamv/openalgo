@@ -516,10 +516,18 @@ def get_pcr_chart_data(
                     first_pe = _sh["pe"].get(first_ts, {}).get("oi", 0) or 0
                     last_ce = _sh["ce"].get(last_ts, {}).get("oi", 0) or 0
                     last_pe = _sh["pe"].get(last_ts, {}).get("oi", 0) or 0
+                    
+                    first_ce_ltp = _sh["ce"].get(first_ts, {}).get("ltp", 0) or 0
+                    first_pe_ltp = _sh["pe"].get(first_ts, {}).get("ltp", 0) or 0
+                    last_ce_ltp = _sh["ce"].get(last_ts, {}).get("ltp", 0) or 0
+                    last_pe_ltp = _sh["pe"].get(last_ts, {}).get("ltp", 0) or 0
+
                     strike_oi_changes.append({
                         "strike": k_strike,
                         "ce_oi_chg": round(last_ce - first_ce),
                         "pe_oi_chg": round(last_pe - first_pe),
+                        "ce_ltp_chg": round(last_ce_ltp - first_ce_ltp, 2),
+                        "pe_ltp_chg": round(last_pe_ltp - first_pe_ltp, 2),
                     })
 
         # PCR based on OI change (delta-PCR): pe_oi_change_total / ce_oi_change_total
