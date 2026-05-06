@@ -11,7 +11,7 @@ import re
 from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
 
-from utils.constants import CRYPTO_EXCHANGES
+from utils.constants import CRYPTO_EXCHANGES, NSE_INDEX_SYMBOLS, BSE_INDEX_SYMBOLS
 from utils.logging import get_logger
 
 # py_vollib is lazy-loaded inside calculate_greeks() and check_pyvollib_availability()
@@ -19,19 +19,6 @@ from utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Exchange-specific symbol mappings
-NSE_INDEX_SYMBOLS = {
-    "NIFTY",
-    "BANKNIFTY",
-    "FINNIFTY",
-    "MIDCPNIFTY",
-    "NIFTYNXT50",
-    "NIFTYIT",
-    "NIFTYPHARMA",
-    "NIFTYBANK",
-}
-
-BSE_INDEX_SYMBOLS = {"SENSEX", "BANKEX", "SENSEX50"}
 
 CURRENCY_SYMBOLS = {"USDINR", "EURINR", "GBPINR", "JPYINR"}
 

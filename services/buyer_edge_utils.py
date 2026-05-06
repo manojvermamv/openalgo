@@ -5,16 +5,8 @@ Common helpers used across all buyer_edge_* service modules.
 Centralised here to eliminate duplicate definitions in each service file.
 """
 
-from utils.constants import CRYPTO_EXCHANGES
+from utils.constants import CRYPTO_EXCHANGES, NSE_INDEX_SYMBOLS, BSE_INDEX_SYMBOLS
 
-# NSE index underlyings that quote on NSE_INDEX (not NSE equity segment)
-NSE_INDEX_SYMBOLS: frozenset[str] = frozenset({
-    "NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY",
-    "NIFTYNXT50", "NIFTYIT", "NIFTYPHARMA", "NIFTYBANK",
-})
-
-# BSE index underlyings that quote on BSE_INDEX
-BSE_INDEX_SYMBOLS: frozenset[str] = frozenset({"SENSEX", "BANKEX", "SENSEX50"})
 
 
 def get_buyer_edge_quote_exchange(base_symbol: str, exchange: str) -> str:
