@@ -14,7 +14,6 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 
 import pandas as pd
-import pytz
 
 from services.history_service import get_history
 from services.option_symbol_service import (
@@ -25,13 +24,6 @@ from services.option_symbol_service import (
     get_option_exchange,
 )
 from services.quotes_service import get_quotes
-from services.straddle_chart_service import (
-    NSE_INDEX_SYMBOLS,
-    BSE_INDEX_SYMBOLS,
-    _get_quote_exchange,
-    _convert_timestamp_to_ist,
-    _calculate_days_to_expiry,
-)
 from services.strategy_chart_service import (
     _cap_last_n_trading_dates,
     _resolve_trading_window,
@@ -39,345 +31,157 @@ from services.strategy_chart_service import (
 from database.token_db_enhanced import fno_search_symbols
 from utils.constants import CRYPTO_EXCHANGES, INSTRUMENT_PERPFUT
 from utils.logging import get_logger
+from utils.datetime_utils import IST, to_ist_epoch, get_ist_now
 
 logger = get_logger(__name__)
 
+def _get_quote_exchange(base_symbol: str, underlying_exchange: str) -> str:
+    """Determine the exchange to use for fetching underlying quotes."""
+    from utils.constants import NSE_INDEX_SYMBOLS, BSE_INDEX_SYMBOLS
+    if base_symbol in NSE_INDEX_SYMBOLS: return "NSE_INDEX"
+    if base_symbol in BSE_INDEX_SYMBOLS: return "BSE_INDEX"
+    if underlying_exchange.upper() in ("NFO", "BFO"):
+        return "NSE" if underlying_exchange.upper() == "NFO" else "BSE"
+    return underlying_exchange.upper()
+
+def _calculate_days_to_expiry(expiry_date: str) -> int:
+    """Calculate days remaining to expiry."""
+    try:
+        exp_dt = datetime.strptime(expiry_date.upper(), "%d%b%y").replace(hour=15, minute=30)
+        exp_dt = IST.localize(exp_dt)
+        return max(0, (exp_dt - IST.localize(datetime.now())).days)
+    except Exception:
+        return 0
 
 def get_custom_straddle_simulation(
-    underlying,
-    exchange,
-    expiry_date,
-    interval,
-    api_key,
-    days=1,
-    adjustment_points=50,
-    lot_size=65,
-    lots=1,
+    underlying, exchange, expiry_date, interval, api_key,
+    days=1, adjustment_points=50, lot_size=65, lots=1,
 ):
-    """
-    Simulate an intraday short ATM straddle with N-point adjustments.
-
-    Returns:
-        Tuple of (success, response_dict, status_code)
-    """
+    """Simulate an intraday short ATM straddle with N-point adjustments."""
     try:
-        ist = pytz.timezone("Asia/Kolkata")
-        # Generous calendar window; pnl_series is post-filtered to the last
-        # N distinct trading dates that actually returned candles.
-        start_date_str, end_date_str = _resolve_trading_window(days, ist)
-
+        start_date_str, end_date_str = _resolve_trading_window(days, IST)
         quantity = lot_size * lots
         base_symbol = underlying.upper()
         quote_exchange = _get_quote_exchange(base_symbol, exchange)
         options_exchange = get_option_exchange(quote_exchange)
 
-        # Handle crypto perpetual symbol lookup (e.g. BTC → BTCUSDFUT)
+        # Handle crypto perpetual symbol lookup
+        underlying_quote_symbol = base_symbol
         if exchange.upper() in CRYPTO_EXCHANGES:
-            _perp = fno_search_symbols(
-                query=f"{base_symbol}USDFUT", exchange=exchange, instrumenttype=INSTRUMENT_PERPFUT, limit=1
-            )
-            if not _perp:
-                return False, {"status": "error", "message": f"No perpetual futures found for {base_symbol}"}, 404
+            _perp = fno_search_symbols(query=f"{base_symbol}USDFUT", exchange=exchange, instrumenttype=INSTRUMENT_PERPFUT, limit=1)
+            if not _perp: return False, {"status": "error", "message": "No perpetual futures found"}, 404
             underlying_quote_symbol = _perp[0]["symbol"]
-        else:
-            underlying_quote_symbol = base_symbol
 
-        # Get available strikes
-        available_strikes = get_available_strikes(
-            base_symbol, expiry_date.upper(), "CE", options_exchange
-        )
-        if not available_strikes:
-            return False, {
-                "status": "error",
-                "message": f"No strikes found for {base_symbol} {expiry_date} on {options_exchange}",
-            }, 404
+        # Available strikes
+        available_strikes = get_available_strikes(base_symbol, expiry_date.upper(), "CE", options_exchange)
+        if not available_strikes: return False, {"status": "error", "message": "No strikes found"}, 404
 
-        # Fetch underlying history
-        success_u, resp_u, _ = get_history(
-            symbol=underlying_quote_symbol, exchange=quote_exchange,
-            interval=interval, start_date=start_date_str,
-            end_date=end_date_str, api_key=api_key,
-        )
-        if not success_u:
-            return False, {
-                "status": "error",
-                "message": f"Failed to fetch underlying history: {resp_u.get('message', 'Unknown')}",
-            }, 400
+        # Underlying history
+        success_u, resp_u, _ = get_history(underlying_quote_symbol, quote_exchange, interval, start_date_str, end_date_str, api_key)
+        if not success_u or not resp_u.get("data"):
+            return False, {"status": "error", "message": "No underlying history"}, 404
 
-        df_underlying = pd.DataFrame(resp_u.get("data", []))
-        if df_underlying.empty:
-            return False, {"status": "error", "message": "No underlying history data"}, 404
-
-        df_underlying = _convert_timestamp_to_ist(df_underlying)
-        if df_underlying is None:
-            return False, {"status": "error", "message": "Failed to parse timestamps"}, 500
-
-        # Compute ATM per candle
-        atm_per_row = []
-        for _, row in df_underlying.iterrows():
-            atm = find_atm_strike_from_actual(float(row["close"]), available_strikes)
-            atm_per_row.append(atm)
-        df_underlying["atm_strike"] = atm_per_row
-
-        unique_strikes = set(s for s in atm_per_row if s is not None)
-        if not unique_strikes:
-            return False, {"status": "error", "message": "Could not determine ATM strikes"}, 400
+        df_u = pd.DataFrame(resp_u["data"])
+        df_u["timestamp_ist"] = df_u["timestamp"].apply(lambda x: IST.localize(datetime.fromtimestamp(to_ist_epoch(x))))
+        
+        # Determine ATM per row
+        df_u["atm_strike"] = df_u["close"].apply(lambda x: find_atm_strike_from_actual(float(x), available_strikes))
+        unique_strikes = set(df_u["atm_strike"].dropna().unique())
 
         # Fetch option history for all unique ATM strikes
-        _build_sym = (
-            construct_crypto_option_symbol
-            if exchange.upper() in CRYPTO_EXCHANGES
-            else construct_option_symbol
-        )
+        _build_sym = construct_crypto_option_symbol if exchange.upper() in CRYPTO_EXCHANGES else construct_option_symbol
         strike_data = {}
         for strike in sorted(unique_strikes):
-            ce_symbol = _build_sym(base_symbol, expiry_date.upper(), strike, "CE")
-            pe_symbol = _build_sym(base_symbol, expiry_date.upper(), strike, "PE")
+            ce_sym = _build_sym(base_symbol, expiry_date.upper(), strike, "CE")
+            pe_sym = _build_sym(base_symbol, expiry_date.upper(), strike, "PE")
+            
+            ce_map, pe_map = {}, {}
+            for sym, storage in [(ce_sym, ce_map), (pe_sym, pe_map)]:
+                s_l, r_l, _ = get_history(sym, options_exchange, interval, start_date_str, end_date_str, api_key)
+                if s_l:
+                    for c in r_l.get("data", []):
+                        storage[to_ist_epoch(c["timestamp"])] = float(c["close"])
+            strike_data[strike] = {"ce": ce_map, "pe": pe_map}
 
-            ce_lookup, pe_lookup = {}, {}
-
-            success_ce, resp_ce, _ = get_history(
-                symbol=ce_symbol, exchange=options_exchange,
-                interval=interval, start_date=start_date_str,
-                end_date=end_date_str, api_key=api_key,
-            )
-            if success_ce:
-                df_ce = pd.DataFrame(resp_ce.get("data", []))
-                if not df_ce.empty:
-                    df_ce = _convert_timestamp_to_ist(df_ce)
-                    if df_ce is not None:
-                        for ts, row in df_ce.iterrows():
-                            ce_lookup[ts] = float(row["close"])
-
-            success_pe, resp_pe, _ = get_history(
-                symbol=pe_symbol, exchange=options_exchange,
-                interval=interval, start_date=start_date_str,
-                end_date=end_date_str, api_key=api_key,
-            )
-            if success_pe:
-                df_pe = pd.DataFrame(resp_pe.get("data", []))
-                if not df_pe.empty:
-                    df_pe = _convert_timestamp_to_ist(df_pe)
-                    if df_pe is not None:
-                        for ts, row in df_pe.iterrows():
-                            pe_lookup[ts] = float(row["close"])
-
-            strike_data[strike] = {"ce": ce_lookup, "pe": pe_lookup}
-
-        # ── Simulation ──────────────────────────────────────────────
-        # Group candles by trading day
+        # Simulation
         daily_candles = defaultdict(list)
-        for ts, row in df_underlying.iterrows():
-            daily_candles[ts.date()].append((ts, row))
+        for _, row in df_u.iterrows():
+            ts_epoch = int(row["timestamp_ist"].timestamp())
+            daily_candles[row["timestamp_ist"].date()].append((ts_epoch, row))
 
-        cumulative_realized = 0.0
-        total_adjustments = 0
-        pnl_series = []
-        trades = []
-
-        # Simulate only the last N distinct trading days that actually have
-        # data. At 02:16 IST with today empty, "days=3" correctly yields the
-        # three most recent real trading days instead of 2 days + an empty
-        # today. Keeps cumulative P&L, trade log, and summary consistent
-        # with the chart range.
-        all_trading_days = sorted(daily_candles.keys())
-        trading_days = all_trading_days[-max(1, days):]
-        for day in trading_days:
+        cumulative_realized, total_adjustments = 0.0, 0
+        pnl_series, trades = [], []
+        
+        active_days = sorted(daily_candles.keys())[-max(1, days):]
+        for day in active_days:
             candles = daily_candles[day]
-
-            entry_strike = None
-            entry_ce = None
-            entry_pe = None
-            day_realized = 0.0
-            day_adjustments = 0
-            last_unrealized = 0.0
+            e_strike, e_ce, e_pe = None, None, None
+            day_realized, day_adjustments, last_unrealized = 0.0, 0, 0.0
 
             for i, (ts, row) in enumerate(candles):
-                spot = float(row["close"])
-                atm = row["atm_strike"]
-
-                if atm is None or atm not in strike_data:
-                    continue
-
+                spot, atm = float(row["close"]), row["atm_strike"]
+                if atm is None or atm not in strike_data: continue
+                
                 is_last = i == len(candles) - 1
 
-                # ── ENTRY (first valid candle of day) ──
-                if entry_strike is None:
-                    ce_at_atm = strike_data[atm]["ce"].get(ts)
-                    pe_at_atm = strike_data[atm]["pe"].get(ts)
-                    if ce_at_atm is None or pe_at_atm is None:
-                        continue
-
-                    entry_strike = atm
-                    entry_ce = ce_at_atm
-                    entry_pe = pe_at_atm
-
-                    trades.append({
-                        "time": int(ts.timestamp()),
-                        "type": "ENTRY",
-                        "strike": atm,
-                        "ce_price": round(ce_at_atm, 2),
-                        "pe_price": round(pe_at_atm, 2),
-                        "straddle": round(ce_at_atm + pe_at_atm, 2),
-                        "spot": round(spot, 2),
-                        "leg_pnl": 0.0,
-                        "cumulative_pnl": round(cumulative_realized, 2),
-                    })
+                # ENTRY
+                if e_strike is None:
+                    c_atm = strike_data[atm]["ce"].get(ts)
+                    p_atm = strike_data[atm]["pe"].get(ts)
+                    if c_atm is None or p_atm is None: continue
+                    e_strike, e_ce, e_pe = atm, c_atm, p_atm
+                    trades.append({"time": ts, "type": "ENTRY", "strike": atm, "ce_price": round(c_atm, 2), "pe_price": round(p_atm, 2), "spot": round(spot, 2), "cumulative_pnl": round(cumulative_realized, 2)})
                 else:
-                    # ── ADJUSTMENT check ──
-                    if abs(atm - entry_strike) >= adjustment_points:
-                        old_ce = strike_data.get(entry_strike, {}).get("ce", {}).get(ts)
-                        old_pe = strike_data.get(entry_strike, {}).get("pe", {}).get(ts)
-                        new_ce = strike_data[atm]["ce"].get(ts)
-                        new_pe = strike_data[atm]["pe"].get(ts)
-
-                        if (
-                            old_ce is not None
-                            and old_pe is not None
-                            and new_ce is not None
-                            and new_pe is not None
-                        ):
-                            leg_pnl = (
-                                (entry_ce - old_ce) + (entry_pe - old_pe)
-                            ) * quantity
+                    # ADJUSTMENT
+                    if abs(atm - e_strike) >= adjustment_points:
+                        old_c = strike_data[e_strike]["ce"].get(ts)
+                        old_p = strike_data[e_strike]["pe"].get(ts)
+                        new_c = strike_data[atm]["ce"].get(ts)
+                        new_p = strike_data[atm]["pe"].get(ts)
+                        if all(v is not None for v in [old_c, old_p, new_c, new_p]):
+                            leg_pnl = ((e_ce - old_c) + (e_pe - old_p)) * quantity
                             day_realized += leg_pnl
                             day_adjustments += 1
+                            trades.append({"time": ts, "type": "ADJUSTMENT", "old_strike": e_strike, "strike": atm, "exit_ce": round(old_c, 2), "exit_pe": round(old_p, 2), "ce_price": round(new_c, 2), "pe_price": round(new_p, 2), "spot": round(spot, 2), "leg_pnl": round(leg_pnl, 2), "cumulative_pnl": round(cumulative_realized + day_realized, 2)})
+                            e_strike, e_ce, e_pe = atm, new_c, new_p
 
-                            trades.append({
-                                "time": int(ts.timestamp()),
-                                "type": "ADJUSTMENT",
-                                "old_strike": entry_strike,
-                                "strike": atm,
-                                "exit_ce": round(old_ce, 2),
-                                "exit_pe": round(old_pe, 2),
-                                "exit_straddle": round(old_ce + old_pe, 2),
-                                "ce_price": round(new_ce, 2),
-                                "pe_price": round(new_pe, 2),
-                                "straddle": round(new_ce + new_pe, 2),
-                                "spot": round(spot, 2),
-                                "leg_pnl": round(leg_pnl, 2),
-                                "cumulative_pnl": round(
-                                    cumulative_realized + day_realized, 2
-                                ),
-                            })
-
-                            entry_strike = atm
-                            entry_ce = new_ce
-                            entry_pe = new_pe
-
-                # ── Compute current PnL ──
-                cur_ce = strike_data.get(entry_strike, {}).get("ce", {}).get(ts)
-                cur_pe = strike_data.get(entry_strike, {}).get("pe", {}).get(ts)
-
-                if cur_ce is not None and cur_pe is not None:
-                    unrealized = (
-                        (entry_ce - cur_ce) + (entry_pe - cur_pe)
-                    ) * quantity
-                    last_unrealized = unrealized
-                else:
-                    unrealized = last_unrealized
-
+                # Current PnL
+                cur_c = strike_data[e_strike]["ce"].get(ts)
+                cur_p = strike_data[e_strike]["pe"].get(ts)
+                unrealized = ((e_ce - cur_c) + (e_pe - cur_p)) * quantity if cur_c is not None and cur_p is not None else last_unrealized
+                last_unrealized = unrealized
                 total_pnl = cumulative_realized + day_realized + unrealized
 
-                # Current ATM straddle for display
                 atm_ce = strike_data[atm]["ce"].get(ts, 0) or 0
                 atm_pe = strike_data[atm]["pe"].get(ts, 0) or 0
-
-                synthetic_future = round(atm + atm_ce - atm_pe, 2) if atm_ce and atm_pe else round(spot, 2)
-
                 pnl_series.append({
-                    "time": int(ts.timestamp()),
-                    "pnl": round(total_pnl, 2),
-                    "spot": round(spot, 2),
-                    "atm_strike": atm,
-                    "entry_strike": entry_strike,
-                    "ce_price": round(atm_ce, 2),
-                    "pe_price": round(atm_pe, 2),
-                    "straddle": round(atm_ce + atm_pe, 2),
-                    "synthetic_future": synthetic_future,
-                    "adjustments": total_adjustments + day_adjustments,
+                    "time": ts, "pnl": round(total_pnl, 2), "spot": round(spot, 2), "atm_strike": atm,
+                    "ce_price": round(atm_ce, 2), "pe_price": round(atm_pe, 2), "straddle": round(atm_ce + atm_pe, 2),
+                    "adjustments": total_adjustments + day_adjustments
                 })
 
-                # ── EXIT at last candle ──
-                if is_last and entry_strike is not None:
-                    exit_ce = strike_data.get(entry_strike, {}).get("ce", {}).get(ts)
-                    exit_pe = strike_data.get(entry_strike, {}).get("pe", {}).get(ts)
-
-                    if exit_ce is not None and exit_pe is not None:
-                        leg_pnl = (
-                            (entry_ce - exit_ce) + (entry_pe - exit_pe)
-                        ) * quantity
-                    else:
-                        leg_pnl = last_unrealized
-
-                    trades.append({
-                        "time": int(ts.timestamp()),
-                        "type": "EXIT",
-                        "strike": entry_strike,
-                        "ce_price": round(exit_ce or 0, 2),
-                        "pe_price": round(exit_pe or 0, 2),
-                        "straddle": round((exit_ce or 0) + (exit_pe or 0), 2),
-                        "spot": round(spot, 2),
-                        "leg_pnl": round(leg_pnl, 2),
-                        "cumulative_pnl": round(
-                            cumulative_realized + day_realized + leg_pnl, 2
-                        ),
-                    })
-
-            # End of day — settle
-            if entry_strike is not None:
-                last_ts = candles[-1][0]
-                final_ce = strike_data.get(entry_strike, {}).get("ce", {}).get(last_ts)
-                final_pe = strike_data.get(entry_strike, {}).get("pe", {}).get(last_ts)
-
-                if final_ce is not None and final_pe is not None:
-                    final_leg = (
-                        (entry_ce - final_ce) + (entry_pe - final_pe)
-                    ) * quantity
-                else:
-                    final_leg = last_unrealized
-
-                cumulative_realized += day_realized + final_leg
+                # EXIT
+                if is_last and e_strike is not None:
+                    ex_c, ex_p = strike_data[e_strike]["ce"].get(ts), strike_data[e_strike]["pe"].get(ts)
+                    leg_pnl = ((e_ce - ex_c) + (e_pe - ex_p)) * quantity if ex_c is not None and ex_p is not None else last_unrealized
+                    trades.append({"time": ts, "type": "EXIT", "strike": e_strike, "ce_price": round(ex_c or 0, 2), "pe_price": round(ex_p or 0, 2), "spot": round(spot, 2), "leg_pnl": round(leg_pnl, 2), "cumulative_pnl": round(cumulative_realized + day_realized + leg_pnl, 2)})
+                    cumulative_realized += day_realized + leg_pnl
 
             total_adjustments += day_adjustments
 
-        if not pnl_series:
-            return False, {
-                "status": "error",
-                "message": "No simulation data (option history may be missing)",
-            }, 404
+        if not pnl_series: return False, {"status": "error", "message": "No simulation data"}, 404
 
-        # Current LTP
-        success_q, quote_resp, _ = get_quotes(
-            symbol=underlying_quote_symbol, exchange=quote_exchange, api_key=api_key,
-        )
-        underlying_ltp = (
-            quote_resp.get("data", {}).get("ltp", 0) if success_q else 0
-        )
-
-        pnl_values = [p["pnl"] for p in pnl_series]
+        success_q, q_resp, _ = get_quotes(underlying_quote_symbol, quote_exchange, api_key)
+        ltp = q_resp.get("data", {}).get("ltp", 0) if success_q else 0
 
         return True, {
             "status": "success",
             "data": {
-                "underlying": base_symbol,
-                "underlying_ltp": underlying_ltp,
-                "expiry_date": expiry_date.upper(),
-                "interval": interval,
-                "days_to_expiry": _calculate_days_to_expiry(expiry_date),
-                "adjustment_points": adjustment_points,
-                "lot_size": lot_size,
-                "lots": lots,
-                "quantity": quantity,
-                "pnl_series": pnl_series,
-                "trades": trades,
-                "summary": {
-                    "total_pnl": round(cumulative_realized, 2),
-                    "total_adjustments": total_adjustments,
-                    "max_pnl": round(max(pnl_values), 2),
-                    "min_pnl": round(min(pnl_values), 2),
-                },
-            },
+                "underlying": base_symbol, "underlying_ltp": ltp, "expiry_date": expiry_date.upper(),
+                "interval": interval, "days_to_expiry": _calculate_days_to_expiry(expiry_date),
+                "pnl_series": pnl_series, "trades": trades,
+                "summary": {"total_pnl": round(cumulative_realized, 2), "total_adjustments": total_adjustments}
+            }
         }, 200
 
     except Exception as e:

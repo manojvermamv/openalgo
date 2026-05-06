@@ -1,28 +1,10 @@
 """
 Buyer Edge Blueprint
-
 Serves the Options Buyer Edge state engine.
-
-Endpoints:
-    POST /buyeredge/api/data
-        Computes all 5 modules (Market State, OI Intelligence, Greeks,
-        Straddle, Signal) and returns a NO_TRADE / WATCH / EXECUTE signal.
-
-    POST /buyeredge/api/gex_levels
-        Advanced GEX Levels: per-strike Net GEX, Gamma Flip / HVL,
-        Call/Put Gamma Walls.  Supports single-expiry (mode=selected) and
-        cumulative multi-expiry (mode=cumulative) modes.
-
-    POST /buyeredge/api/pcr_chart
-        PCR(OI) and PCR(Volume) time series with spot and synthetic futures
-        price.  Same interval/days controls as the straddle chart.
-
-    POST /buyeredge/api/iv_dashboard
-        IVRank (TastyTrade formula), IVx, Vertical CALL/PUT Skew, Horizontal
-        IVx Skew, and per-expiry detail for Calendar/Diagonal analysis.
 """
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 from flask import Blueprint, jsonify, request, session
 from flask_cors import cross_origin
@@ -35,437 +17,196 @@ from services.buyer_edge_ivr_service import get_iv_dashboard
 from services.straddle_chart_service import get_straddle_chart_data
 from utils.logging import get_logger
 from utils.session import check_session_validity
+from limiter import limiter
 
 logger = get_logger(__name__)
 
 buyer_edge_bp = Blueprint("buyer_edge_bp", __name__, url_prefix="/")
 
+_VALID_LB_TF = {"1m", "3m", "5m", "10m", "15m", "30m", "1h"}
+_VALID_INTERVALS = {"1m", "3m", "5m", "10m", "15m", "30m", "1h", "1d"}
+
+def _normalize_expiry(expiry_raw: str) -> str:
+    """Normalize '06-FEB-26' -> '06FEB26' and validate."""
+    clean = str(expiry_raw or "").strip().upper()
+    if re.match(r"^\d{2}-[A-Z]{3}-\d{2}$", clean):
+        return clean.replace("-", "")
+    if re.match(r"^\d{2}[A-Z]{3}\d{2}$", clean):
+        return clean
+    return ""
+
+def _get_api_key():
+    username = session.get("user")
+    if not username: return None
+    return get_api_key_for_tradingview(username)
 
 @buyer_edge_bp.route("/buyeredge/api/data", methods=["POST"])
 @cross_origin()
+@limiter.limit("15 per minute")
 @check_session_validity
 def buyer_edge_data():
-    """Get Buyer Edge signal for the given underlying and expiry."""
+    """Get Buyer Edge signal."""
     try:
-        login_username = session.get("user")
-        if not login_username:
-            return jsonify({"status": "error", "message": "Authentication required"}), 401
-
-        api_key = get_api_key_for_tradingview(login_username)
-        if not api_key:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "API key not configured. Please generate an API key in /apikey",
-                }
-            ), 401
+        api_key = _get_api_key()
+        if not api_key: return jsonify({"status": "error", "message": "API key required"}), 401
 
         data = request.get_json(silent=True) or {}
-        underlying = data.get("underlying", "").strip()[:20]
-        exchange = data.get("exchange", "").strip()[:20]
-        expiry_date = data.get("expiry_date", "").strip()[:10]
-        try:
-            strike_count = int(data.get("strike_count", 10))
-        except (TypeError, ValueError):
-            return jsonify({"status": "error", "message": "strike_count must be a valid integer"}), 400
-
-        try:
-            lb_bars = int(data.get("lb_bars", 20))
-        except (TypeError, ValueError):
-            return jsonify({"status": "error", "message": "lb_bars must be a valid integer"}), 400
-
-        _VALID_LB_TF = {"1m", "3m", "5m", "10m", "15m", "30m", "1h"}
-        lb_tf = str(data.get("lb_tf", "3m")).strip()
-        if lb_tf not in _VALID_LB_TF:
-            return jsonify({"status": "error", "message": f"lb_tf must be one of {sorted(_VALID_LB_TF)}"}), 400
+        underlying = data.get("underlying", "").strip().upper()
+        exchange = data.get("exchange", "").strip().upper()
+        expiry_date = _normalize_expiry(data.get("expiry_date", ""))
 
         if not underlying or not exchange or not expiry_date:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "underlying, exchange, and expiry_date are required",
-                }
-            ), 400
+            return jsonify({"status": "error", "message": "Missing or invalid parameters"}), 400
 
-        if not re.match(r"^[A-Z0-9]+$", underlying.upper()) or not re.match(
-            r"^[A-Z0-9_]+$", exchange.upper()
-        ):
-            return jsonify({"status": "error", "message": "Invalid input format"}), 400
+        lb_bars = max(5, min(int(data.get("lb_bars", 20)), 100))
+        lb_tf = str(data.get("lb_tf", "3m")).strip()
+        if lb_tf not in _VALID_LB_TF: lb_tf = "3m"
 
-        if not re.match(r"^\d{2}[A-Z]{3}\d{2}$", expiry_date.upper()):
-            return jsonify(
-                {"status": "error", "message": "Invalid expiry_date format. Expected DDMMMYY"}
-            ), 400
+        atm_mode = str(data.get("atm_mode", "auto")).strip().lower()
+        manual_strike = data.get("manual_strike")
+        if manual_strike is not None: manual_strike = float(manual_strike)
 
-        # Clamp strike_count to a reasonable range
-        strike_count = max(2, min(strike_count, 30))
-        # Clamp lb_bars to a reasonable range
-        lb_bars = max(5, min(lb_bars, 100))
-
-        success, response, status_code = get_buyer_edge_data(
-            underlying=underlying.upper(),
-            exchange=exchange.upper(),
-            expiry_date=expiry_date.upper(),
-            strike_count=strike_count,
-            api_key=api_key,
-            lb_bars=lb_bars,
-            lb_tf=lb_tf,
+        success, response, status = get_buyer_edge_data(
+            underlying, exchange, expiry_date, 10, api_key, lb_bars, lb_tf, atm_mode, manual_strike
         )
-
-        return jsonify(response), status_code
-
-    except Exception as exc:
-        logger.exception(f"Error in buyer edge API: {exc}")
-        return (
-            jsonify({"status": "error", "message": "An error occurred processing your request"}),
-            500,
-        )
-
-
-# ---------------------------------------------------------------------------
-# /buyeredge/api/gex_levels
-# ---------------------------------------------------------------------------
-_VALID_GEX_MODES = {"selected", "cumulative"}
-_VALID_INTERVALS = {"1m", "3m", "5m", "10m", "15m", "30m", "1h", "1d"}
-
-
-@buyer_edge_bp.route("/buyeredge/api/gex_levels", methods=["POST"])
-@cross_origin()
-@check_session_validity
-def buyer_edge_gex_levels():
-    """Advanced GEX Levels — single or cumulative multi-expiry mode."""
-    try:
-        login_username = session.get("user")
-        if not login_username:
-            return jsonify({"status": "error", "message": "Authentication required"}), 401
-
-        api_key = get_api_key_for_tradingview(login_username)
-        if not api_key:
-            return jsonify({"status": "error", "message": "API key not configured"}), 401
-
-        data = request.get_json(silent=True) or {}
-        underlying = data.get("underlying", "").strip()[:20]
-        exchange = data.get("exchange", "").strip()[:20]
-        mode = str(data.get("mode", "selected")).strip().lower()
-
-        if not underlying or not exchange:
-            return jsonify({"status": "error", "message": "underlying and exchange are required"}), 400
-
-        if not re.match(r"^[A-Z0-9]+$", underlying.upper()) or not re.match(
-            r"^[A-Z0-9_]+$", exchange.upper()
-        ):
-            return jsonify({"status": "error", "message": "Invalid input format"}), 400
-
-        if mode not in _VALID_GEX_MODES:
-            return jsonify({"status": "error", "message": f"mode must be one of {sorted(_VALID_GEX_MODES)}"}), 400
-
-        try:
-            strike_count = max(2, min(int(data.get("strike_count", 20)), 45))
-        except (TypeError, ValueError):
-            return jsonify({"status": "error", "message": "strike_count must be an integer"}), 400
-
-        if mode == "selected":
-            expiry_date = data.get("expiry_date", "").strip()[:10]
-            if not re.match(r"^\d{2}[A-Z]{3}\d{2}$", expiry_date.upper()):
-                return jsonify({"status": "error", "message": "Invalid expiry_date format. Expected DDMMMYY"}), 400
-
-            success, response, status_code = get_gex_levels(
-                underlying=underlying.upper(),
-                exchange=exchange.upper(),
-                expiry_date=expiry_date.upper(),
-                strike_count=strike_count,
-                api_key=api_key,
-            )
-        else:
-            # cumulative mode
-            expiry_dates_raw = data.get("expiry_dates", [])
-            if not isinstance(expiry_dates_raw, list):
-                return jsonify({"status": "error", "message": "expiry_dates must be an array"}), 400
-
-            expiry_dates = []
-            for e in expiry_dates_raw[:4]:
-                e_clean = str(e).strip().upper()[:10]
-                if re.match(r"^\d{2}[A-Z]{3}\d{2}$", e_clean):
-                    expiry_dates.append(e_clean)
-
-            if not expiry_dates:
-                return jsonify({"status": "error", "message": "At least one valid expiry_date required"}), 400
-
-            success, response, status_code = get_gex_levels_cumulative(
-                underlying=underlying.upper(),
-                exchange=exchange.upper(),
-                expiry_dates=expiry_dates,
-                strike_count=strike_count,
-                api_key=api_key,
-            )
-
-        return jsonify(response), status_code
-
-    except Exception as exc:
-        logger.exception(f"Error in buyer_edge_gex_levels: {exc}")
-        return jsonify({"status": "error", "message": "An error occurred processing your request"}), 500
-
-
-# ---------------------------------------------------------------------------
-# /buyeredge/api/pcr_chart
-# ---------------------------------------------------------------------------
+        return jsonify(response), status
+    except Exception as e:
+        logger.exception(f"Error in buyer_edge_data: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @buyer_edge_bp.route("/buyeredge/api/pcr_chart", methods=["POST"])
 @cross_origin()
+@limiter.limit("15 per minute")
 @check_session_validity
 def buyer_edge_pcr_chart():
-    """PCR(OI) and PCR(Volume) time series chart data."""
+    """PCR chart data."""
     try:
-        login_username = session.get("user")
-        if not login_username:
-            return jsonify({"status": "error", "message": "Authentication required"}), 401
-
-        api_key = get_api_key_for_tradingview(login_username)
-        if not api_key:
-            return jsonify({"status": "error", "message": "API key not configured"}), 401
+        api_key = _get_api_key()
+        if not api_key: return jsonify({"status": "error", "message": "API key required"}), 401
 
         data = request.get_json(silent=True) or {}
-        underlying = data.get("underlying", "").strip()[:20]
-        exchange = data.get("exchange", "").strip()[:20]
-        expiry_date = data.get("expiry_date", "").strip()[:10]
-        interval = str(data.get("interval", "1d")).strip()
+        underlying = data.get("underlying", "").strip().upper()
+        exchange = data.get("exchange", "").strip().upper()
+        expiry_date = _normalize_expiry(data.get("expiry_date", ""))
+        interval = str(data.get("interval", "1m")).strip()
+        days = max(1, min(int(data.get("days", 1)), 5))
 
         if not underlying or not exchange or not expiry_date:
-            return jsonify({"status": "error", "message": "underlying, exchange, and expiry_date are required"}), 400
+            return jsonify({"status": "error", "message": "Missing or invalid parameters"}), 400
 
-        if not re.match(r"^[A-Z0-9]+$", underlying.upper()) or not re.match(
-            r"^[A-Z0-9_]+$", exchange.upper()
-        ):
-            return jsonify({"status": "error", "message": "Invalid input format"}), 400
-
-        if not re.match(r"^\d{2}[A-Z]{3}\d{2}$", expiry_date.upper()):
-            return jsonify({"status": "error", "message": "Invalid expiry_date format. Expected DDMMMYY"}), 400
-
-        if interval not in _VALID_INTERVALS:
-            return jsonify({"status": "error", "message": f"interval must be one of {sorted(_VALID_INTERVALS)}"}), 400
-
-        try:
-            days = max(1, min(int(data.get("days", 1)), 5))
-        except (TypeError, ValueError):
-            return jsonify({"status": "error", "message": "days must be an integer 1–5"}), 400
-
-        try:
-            pcr_strike_window = max(1, min(int(data.get("pcr_strike_window", 10)), 15))
-            max_snapshot_strikes = max(5, min(int(data.get("max_snapshot_strikes", 40)), 100))
-        except (TypeError, ValueError):
-            pcr_strike_window = 10
-            max_snapshot_strikes = 40
-
-        success, response, status_code = get_pcr_chart_data(
-            underlying=underlying.upper(),
-            exchange=exchange.upper(),
-            expiry_date=expiry_date.upper(),
-            interval=interval,
-            api_key=api_key,
-            days=days,
-            pcr_strike_window=pcr_strike_window,
-            max_snapshot_strikes=max_snapshot_strikes,
-        )
-        return jsonify(response), status_code
-
-    except Exception as exc:
-        logger.exception(f"Error in buyer_edge_pcr_chart: {exc}")
-        return jsonify({"status": "error", "message": "An error occurred processing your request"}), 500
-
-
-# ---------------------------------------------------------------------------
-# /buyeredge/api/unified_monitor (Request Batching)
-# ---------------------------------------------------------------------------
+        success, response, status = get_pcr_chart_data(underlying, exchange, expiry_date, interval, api_key, days)
+        return jsonify(response), status
+    except Exception as e:
+        logger.exception(f"Error in buyer_edge_pcr_chart: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @buyer_edge_bp.route("/buyeredge/api/unified_monitor", methods=["POST"])
 @cross_origin()
+@limiter.limit("20 per minute")
 @check_session_validity
 def buyer_edge_unified_monitor():
-    """Unified endpoint for parallel Straddle and PCR data loading."""
+    """Parallel PCR, Straddle, and Analysis fetching."""
     try:
-        from services.buyer_edge_service import get_buyer_edge_data
-        from concurrent.futures import ThreadPoolExecutor
-
-        login_username = session.get("user")
-        if not login_username:
-            return jsonify({"status": "error", "message": "Authentication required"}), 401
-
-        api_key = get_api_key_for_tradingview(login_username)
-        if not api_key:
-            return jsonify({"status": "error", "message": "API key not configured"}), 401
+        api_key = _get_api_key()
+        if not api_key: return jsonify({"status": "error", "message": "API key required"}), 401
 
         data = request.get_json(silent=True) or {}
-        underlying = data.get("underlying", "").strip().upper()[:20]
-        exchange = data.get("exchange", "").strip().upper()[:20]
-        expiry_date = data.get("expiry_date", "").strip().upper()[:10]
+        underlying = data.get("underlying", "").strip().upper()
+        exchange = data.get("exchange", "").strip().upper()
+        expiry_date = _normalize_expiry(data.get("expiry_date", ""))
         interval = str(data.get("interval", "1m")).strip()
-        days = max(1, min(int(data.get("days", 1)), 30)) # Allow up to 30 days for charts
-        lb_bars = max(5, min(int(data.get("lb_bars", 20)), 200))
-        lb_tf = str(data.get("lb_tf", interval)).strip()
-        pcr_strike_window = max(1, min(int(data.get("pcr_strike_window", 10)), 15))
-        max_snapshot_strikes = max(5, min(int(data.get("max_snapshot_strikes", 40)), 100))
+        days = max(1, min(int(data.get("days", 1)), 5))
 
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            future_straddle = executor.submit(
-                get_straddle_chart_data,
-                underlying=underlying,
-                exchange=exchange,
-                expiry_date=expiry_date,
-                interval=interval,
-                api_key=api_key,
-                days=days,
-            )
-            future_pcr = executor.submit(
-                get_pcr_chart_data,
-                underlying=underlying,
-                exchange=exchange,
-                expiry_date=expiry_date,
-                interval=interval,
-                api_key=api_key,
-                days=days,
-                pcr_strike_window=pcr_strike_window,
-                max_snapshot_strikes=max_snapshot_strikes,
-            )
-            future_analysis = executor.submit(
-                get_buyer_edge_data,
-                underlying=underlying,
-                exchange=exchange,
-                expiry_date=expiry_date,
-                strike_count=max_snapshot_strikes // 2,
-                api_key=api_key,
-                lb_bars=lb_bars,
-                lb_tf=lb_tf,
-            )
+        atm_mode = str(data.get("atm_mode", "auto")).strip().lower()
+        manual_strike = data.get("manual_strike")
+        if manual_strike is not None: manual_strike = float(manual_strike)
 
-            res_straddle = future_straddle.result()
-            res_pcr = future_pcr.result()
-            res_analysis = future_analysis.result()
+        if not underlying or not exchange or not expiry_date:
+            return jsonify({"status": "error", "message": "Missing or invalid parameters"}), 400
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            f_straddle = executor.submit(get_straddle_chart_data, underlying, exchange, expiry_date, interval, api_key, days)
+            f_pcr = executor.submit(get_pcr_chart_data, underlying, exchange, expiry_date, interval, api_key, days)
+
+            res_s = f_straddle.result()
+            res_p = f_pcr.result()
+            
+        pcr_series = []
+        if res_p[0] and "data" in res_p[1] and "series" in res_p[1]["data"]:
+            pcr_series = res_p[1]["data"]["series"]
+
+        res_a = get_buyer_edge_data(underlying, exchange, expiry_date, 20, api_key, 20, "3m", atm_mode, manual_strike, pcr_series=pcr_series)
 
         return jsonify({
             "status": "success",
-            "straddle": res_straddle[1],
-            "pcr": res_pcr[1],
-            "analysis": res_analysis[1] if res_analysis[0] else None
+            "straddle": res_s[1],
+            "pcr": res_p[1],
+            "analysis": res_a[1] if res_a[0] else {"status": "error", "message": res_a[1].get("message", "Analysis failed")}
         }), 200
+    except Exception as e:
+        logger.exception(f"Error in unified_monitor: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-    except Exception as exc:
-        logger.exception(f"Error in buyer_edge_unified_monitor: {exc}")
-        return jsonify({"status": "error", "message": "An error occurred processing your request"}), 500
+@buyer_edge_bp.route("/buyeredge/api/gex_levels", methods=["POST"])
+@cross_origin()
+@limiter.limit("15 per minute")
+@check_session_validity
+def buyer_edge_gex_levels():
+    """GEX levels."""
+    try:
+        api_key = _get_api_key()
+        if not api_key: return jsonify({"status": "error", "message": "API key required"}), 401
+        data = request.get_json(silent=True) or {}
+        underlying, exchange = data.get("underlying", "").upper(), data.get("exchange", "").upper()
+        mode = str(data.get("mode", "selected")).lower()
 
-
-# ---------------------------------------------------------------------------
-# /buyeredge/api/iv_dashboard
-# ---------------------------------------------------------------------------
+        if mode == "selected":
+            expiry = _normalize_expiry(data.get("expiry_date", ""))
+            success, resp, status = get_gex_levels(underlying, exchange, expiry, 20, api_key)
+        else:
+            expiries = [_normalize_expiry(e) for e in data.get("expiry_dates", []) if _normalize_expiry(e)][:4]
+            success, resp, status = get_gex_levels_cumulative(underlying, exchange, expiries, 20, api_key)
+        
+        return jsonify(resp), status
+    except Exception as e:
+        logger.exception(f"Error in gex_levels: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @buyer_edge_bp.route("/buyeredge/api/iv_dashboard", methods=["POST"])
 @cross_origin()
+@limiter.limit("15 per minute")
 @check_session_validity
 def buyer_edge_iv_dashboard():
-    """IVRank, IVx, Vertical/Horizontal Skew dashboard for 1–4 expiries."""
+    """IV dashboard."""
     try:
-        login_username = session.get("user")
-        if not login_username:
-            return jsonify({"status": "error", "message": "Authentication required"}), 401
-
-        api_key = get_api_key_for_tradingview(login_username)
-        if not api_key:
-            return jsonify({"status": "error", "message": "API key not configured"}), 401
-
+        api_key = _get_api_key()
+        if not api_key: return jsonify({"status": "error", "message": "API key required"}), 401
         data = request.get_json(silent=True) or {}
-        underlying = data.get("underlying", "").strip()[:20]
-        exchange = data.get("exchange", "").strip()[:20]
-
-        if not underlying or not exchange:
-            return jsonify({"status": "error", "message": "underlying and exchange are required"}), 400
-
-        if not re.match(r"^[A-Z0-9]+$", underlying.upper()) or not re.match(
-            r"^[A-Z0-9_]+$", exchange.upper()
-        ):
-            return jsonify({"status": "error", "message": "Invalid input format"}), 400
-
-        expiry_dates_raw = data.get("expiry_dates", [])
-        if not isinstance(expiry_dates_raw, list):
-            return jsonify({"status": "error", "message": "expiry_dates must be an array"}), 400
-
-        expiry_dates = []
-        for e in expiry_dates_raw[:4]:
-            e_clean = str(e).strip().upper()[:10]
-            if re.match(r"^\d{2}[A-Z]{3}\d{2}$", e_clean):
-                expiry_dates.append(e_clean)
-
-        if not expiry_dates:
-            return jsonify({"status": "error", "message": "At least one valid expiry_date required in expiry_dates"}), 400
-
-        try:
-            strike_count = max(2, min(int(data.get("strike_count", 15)), 30))
-        except (TypeError, ValueError):
-            return jsonify({"status": "error", "message": "strike_count must be an integer"}), 400
-
-        success, response, status_code = get_iv_dashboard(
-            underlying=underlying.upper(),
-            exchange=exchange.upper(),
-            expiry_dates=expiry_dates,
-            strike_count=strike_count,
-            api_key=api_key,
-        )
-        return jsonify(response), status_code
-
-    except Exception as exc:
-        logger.exception(f"Error in buyer_edge_iv_dashboard: {exc}")
-        return jsonify({"status": "error", "message": "An error occurred processing your request"}), 500
-
-
-# ---------------------------------------------------------------------------
-# /buyeredge/api/spot_candles
-# ---------------------------------------------------------------------------
-
-_VALID_SPOT_INTERVALS = {"1m", "3m", "5m", "10m", "15m", "30m", "1h", "1d"}
-
+        underlying, exchange = data.get("underlying", "").upper(), data.get("exchange", "").upper()
+        expiries = [_normalize_expiry(e) for e in data.get("expiry_dates", []) if _normalize_expiry(e)][:4]
+        
+        success, resp, status = get_iv_dashboard(underlying, exchange, expiries, 15, api_key)
+        return jsonify(resp), status
+    except Exception as e:
+        logger.exception(f"Error in iv_dashboard: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @buyer_edge_bp.route("/buyeredge/api/spot_candles", methods=["POST"])
 @cross_origin()
+@limiter.limit("20 per minute")
 @check_session_validity
 def buyer_edge_spot_candles():
-    """OHLCV candle history for the underlying — used by the GEX spot chart."""
+    """Spot candles."""
     try:
-        login_username = session.get("user")
-        if not login_username:
-            return jsonify({"status": "error", "message": "Authentication required"}), 401
-
-        api_key = get_api_key_for_tradingview(login_username)
-        if not api_key:
-            return jsonify({"status": "error", "message": "API key not configured"}), 401
-
+        api_key = _get_api_key()
+        if not api_key: return jsonify({"status": "error", "message": "API key required"}), 401
         data = request.get_json(silent=True) or {}
-        underlying = data.get("underlying", "").strip()[:20]
-        exchange = data.get("exchange", "").strip()[:20]
+        underlying, exchange = data.get("underlying", "").upper(), data.get("exchange", "").upper()
         interval = str(data.get("interval", "15m")).strip()
+        days = max(1, min(int(data.get("days", 5)), 30))
 
-        if not underlying or not exchange:
-            return jsonify({"status": "error", "message": "underlying and exchange are required"}), 400
-
-        if not re.match(r"^[A-Z0-9]+$", underlying.upper()) or not re.match(
-            r"^[A-Z0-9_]+$", exchange.upper()
-        ):
-            return jsonify({"status": "error", "message": "Invalid input format"}), 400
-
-        if interval not in _VALID_SPOT_INTERVALS:
-            return jsonify({"status": "error", "message": f"interval must be one of {sorted(_VALID_SPOT_INTERVALS)}"}), 400
-
-        try:
-            days = max(1, min(int(data.get("days", 5)), 30))
-        except (TypeError, ValueError):
-            return jsonify({"status": "error", "message": "days must be an integer 1–30"}), 400
-
-        success, response, status_code = get_spot_candles(
-            underlying=underlying.upper(),
-            exchange=exchange.upper(),
-            interval=interval,
-            api_key=api_key,
-            days=days,
-        )
-        return jsonify(response), status_code
-
-    except Exception as exc:
-        logger.exception(f"Error in buyer_edge_spot_candles: {exc}")
-        return jsonify({"status": "error", "message": "An error occurred processing your request"}), 500
+        success, resp, status = get_spot_candles(underlying, exchange, interval, api_key, days)
+        return jsonify(resp), status
+    except Exception as e:
+        logger.exception(f"Error in spot_candles: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500

@@ -1,7 +1,6 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import { useSupportedExchanges } from '@/hooks/useSupportedExchanges'
 import { useThemeStore } from '@/stores/themeStore'
-import { useAuthStore } from '@/stores/authStore'
 import { useMarketStatus } from '@/hooks/useMarketStatus'
 import {
   buyerEdgeApi,
@@ -24,12 +23,11 @@ const InterpretationGuide = lazy(() => import('./buyeredge/InterpretationGuide')
 // Logic and Utils
 import { AUTO_REFRESH_INTERVAL } from './buyeredge/types'
 import { convertExpiryForAPI } from './buyeredge/utils'
-import { computeDirectionalScore } from './buyeredge/logic'
+import { showToast } from '@/utils/toast'
 
 export default function BuyerEdge() {
   const { fnoExchanges, defaultFnoExchange, defaultUnderlyings } = useSupportedExchanges()
   const { mode } = useThemeStore()
-  const { apiKey } = useAuthStore()
   const { isMarketOpen } = useMarketStatus()
   const isDarkMode = mode === 'dark'
 
@@ -63,6 +61,8 @@ export default function BuyerEdge() {
   const [lbBars, setLbBars] = useState('20')
   const [lbTf, setLbTf] = useState('3m')
   const [strikeCount, setStrikeCount] = useState('10')
+  const [atmMode, setAtmMode] = useState<'auto' | 'manual'>('auto')
+  const [manualStrike, setManualStrike] = useState('')
 
   // ── GEX Levels state ──────────────────────────────────────────
   const [gexData, setGexData] = useState<GexLevelsResponse | null>(null)
@@ -115,47 +115,45 @@ export default function BuyerEdge() {
     loadExpiries()
   }, [selectedUnderlying, selectedExchange])
 
-  const convictionScore = useMemo(() => {
-    return computeDirectionalScore({
-      pcrSeries: data?.pcr?.data?.series || [],
-      pcrOi: data?.analysis?.oi_intelligence?.current_pcr_oi || data?.pcr?.data?.current_pcr_oi || null,
-      pcrOiChg: data?.analysis?.oi_intelligence?.current_pcr_oi_chg || data?.pcr?.data?.current_pcr_oi_chg || null,
-      deltaImbalance: data?.analysis?.greeks_engine?.delta_imbalance || null,
-      trend: data?.analysis?.market_state?.trend || null,
-    })
-  }, [data])
-
   // ── Data Loaders ──────────────────────────────────────────────
 
   const loadData = useCallback(async () => {
-    if (!selectedUnderlying || !selectedExpiry || !apiKey) return
+    if (!selectedUnderlying || !selectedExpiry) return
     setIsLoading(true)
     try {
+      const parsedManualStrike = (atmMode === 'manual' && manualStrike.trim() !== '')
+        ? parseFloat(manualStrike)
+        : undefined
+
       const res = await buyerEdgeApi.getUnifiedMonitor({
         underlying: selectedUnderlying,
         exchange: selectedExchange,
-        expiry_date: selectedExpiry,
+        expiry_date: convertExpiryForAPI(selectedExpiry),
         interval: straddleInterval,
         days: parseInt(straddleDays),
         lb_bars: parseInt(lbBars),
         lb_tf: lbTf,
         pcr_strike_window: 10,
         max_snapshot_strikes: parseInt(strikeCount),
+        atm_mode: atmMode,
+        manual_strike: isNaN(parsedManualStrike as any) ? undefined : parsedManualStrike,
       })
       if (res.status === 'success') {
         setData(res)
+      } else {
+        showToast.error(res.message || 'Failed to load data')
       }
-    } catch (err: any) {
-      console.error('PCR error:', err)
+    } catch {
+      showToast.error('Failed to load data')
     } finally {
-      setIsLoading(false) // shared loading for unified monitor
+      setIsLoading(false)
     }
-  }, [selectedUnderlying, selectedExpiry, selectedExchange, straddleInterval, straddleDays, lbBars, lbTf, strikeCount, apiKey])
+  }, [selectedUnderlying, selectedExpiry, selectedExchange, straddleInterval, straddleDays, lbBars, lbTf, strikeCount, atmMode, manualStrike])
 
 
 
   const loadGexData = useCallback(async () => {
-    if (!selectedUnderlying || !apiKey) return
+    if (!selectedUnderlying) return
     setIsGexLoading(true)
     try {
       const expiryForAPI = convertExpiryForAPI(selectedExpiry)
@@ -169,16 +167,18 @@ export default function BuyerEdge() {
       })
       if (res.status === 'success') {
         setGexData(res)
+      } else {
+        showToast.error(res.message || 'Failed to load GEX data')
       }
-    } catch (err: any) {
-      console.error('GEX error:', err)
+    } catch {
+      showToast.error('Failed to load GEX data')
     } finally {
       setIsGexLoading(false)
     }
-  }, [selectedUnderlying, selectedExpiry, selectedExchange, gexMode, expiries, apiKey])
+  }, [selectedUnderlying, selectedExpiry, selectedExchange, gexMode, expiries])
 
   const loadIvDashboardData = useCallback(async () => {
-    if (!selectedUnderlying || !apiKey || expiries.length === 0) return
+    if (!selectedUnderlying || expiries.length === 0) return
     setIsIvLoading(true)
     try {
       const res = await buyerEdgeApi.getIvDashboard({
@@ -189,16 +189,18 @@ export default function BuyerEdge() {
       })
       if (res.status === 'success') {
         setIvData(res)
+      } else {
+        showToast.error(res.message || 'Failed to load IV data')
       }
-    } catch (err: any) {
-      console.error('IVR error:', err)
+    } catch {
+      showToast.error('Failed to load IV data')
     } finally {
       setIsIvLoading(false)
     }
-  }, [selectedUnderlying, selectedExchange, expiries, apiKey])
+  }, [selectedUnderlying, selectedExchange, expiries])
 
   const loadSpotCandleData = useCallback(async () => {
-    if (!selectedUnderlying || !apiKey) return
+    if (!selectedUnderlying) return
     setIsSpotCandleLoading(true)
     try {
       const res = await buyerEdgeApi.getSpotCandles({
@@ -209,13 +211,15 @@ export default function BuyerEdge() {
       })
       if (res.status === 'success') {
         setSpotCandleData(res)
+      } else {
+        showToast.error(res.message || 'Failed to load spot candle data')
       }
-    } catch (err: any) {
-      console.error('Spot candle error:', err)
+    } catch {
+      showToast.error('Failed to load spot candle data')
     } finally {
       setIsSpotCandleLoading(false)
     }
-  }, [selectedUnderlying, selectedExchange, spotChartInterval, spotChartDays, apiKey])
+  }, [selectedUnderlying, selectedExchange, spotChartInterval, spotChartDays])
 
   const refreshAll = useCallback(() => {
     loadData()
@@ -263,6 +267,10 @@ export default function BuyerEdge() {
           setLbTf={setLbTf}
           strikeCount={strikeCount}
           setStrikeCount={setStrikeCount}
+          atmMode={atmMode}
+          setAtmMode={setAtmMode}
+          manualStrike={manualStrike}
+          setManualStrike={setManualStrike}
           isLoading={isLoading}
           onRefresh={refreshAll}
           autoRefresh={autoRefresh}
@@ -284,8 +292,6 @@ export default function BuyerEdge() {
             data={data?.analysis}
             pcrData={data?.pcr || null}
             straddleData={data?.straddle?.data || null}
-            convictionScore={convictionScore}
-            isLoading={isLoading}
             isPcrLoading={isLoading}
             isChartLoading={isLoading}
             interval={straddleInterval}
