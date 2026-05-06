@@ -8,7 +8,6 @@ import type { PcrChartResponse } from '@/api/buyerEdge'
 import type { StraddleChartData } from '@/api/straddle-chart'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { computeDayAnchoredVWAP } from './utils'
-import type { DirectionalScoreResult } from './types'
 import { STRADDLE_CHART_HEIGHT } from './types'
 import { ScoreGauge } from './ScoreGauge'
 import { BEBand, DeltaBar } from './CommonComponents'
@@ -17,8 +16,6 @@ interface PremiumMonitorProps {
   data: any // BuyerEdgeResponse is too complex and inconsistent
   pcrData: PcrChartResponse | null
   straddleData: StraddleChartData | null
-  convictionScore: DirectionalScoreResult
-  isLoading: boolean
   isPcrLoading: boolean
   isChartLoading: boolean
   interval: string
@@ -47,7 +44,6 @@ export function PremiumMonitor({
   data,
   pcrData,
   straddleData,
-  convictionScore,
   isPcrLoading,
   isChartLoading,
   interval,
@@ -73,7 +69,7 @@ export function PremiumMonitor({
 }: PremiumMonitorProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
-  
+
   // Series refs
   const straddleSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
   const spotSeriesRef = useRef<ISeriesApi<'Line'> | null>(null)
@@ -189,26 +185,26 @@ export function PremiumMonitor({
   // Sync Data
   useEffect(() => {
     if (!straddleData?.series || !straddleSeriesRef.current) return
-    
+
     const points = [...straddleData.series].sort((a, b) => a.time - b.time)
     straddleSeriesRef.current.setData(points.map(p => ({ time: p.time as any, value: p.straddle })))
     spotSeriesRef.current?.setData(points.map(p => ({ time: p.time as any, value: p.spot })))
-    
+
     // Compute and set VWAP
     const vwapPoints = computeDayAnchoredVWAP(points)
     vwapSeriesRef.current?.setData(vwapPoints.map(p => ({ time: p.time as any, value: p.value })))
-    
+
     chartRef.current?.timeScale().fitContent()
   }, [straddleData])
 
   useEffect(() => {
     if (!pcrData?.data?.series || !pcrOiSeriesRef.current || !pcrVolSeriesRef.current) return
-    
+
     const series = [...pcrData.data.series].sort((a, b) => a.time - b.time)
     pcrOiSeriesRef.current.setData(series.map(p => ({ time: p.time as any, value: p.pcr_oi || 0 })))
     pcrVolSeriesRef.current.setData(series.map(p => ({ time: p.time as any, value: p.pcr_volume || 0 })))
     syntheticSeriesRef.current?.setData(series.map(p => ({ time: p.time as any, value: p.synthetic_future || 0 })))
-    
+
     chartRef.current?.timeScale().fitContent()
   }, [pcrData])
 
@@ -221,8 +217,8 @@ export function PremiumMonitor({
           <div className="flex items-center gap-2">
             <CardTitle className="text-base font-bold flex items-center gap-2">
               Options Premium Monitor
-              <Info className="h-3.5 w-3.5 text-muted-foreground hover:text-primary transition-colors cursor-help" 
-                    onClick={(e) => { e.stopPropagation(); onShowInfo() }} />
+              <Info className="h-3.5 w-3.5 text-muted-foreground hover:text-primary transition-colors cursor-help"
+                onClick={(e) => { e.stopPropagation(); onShowInfo() }} />
             </CardTitle>
             <div className="flex items-center gap-1">
               <Select value={interval} onValueChange={setInterval}>
@@ -247,10 +243,10 @@ export function PremiumMonitor({
               </Select>
             </div>
             {latestPcr && (
-               <Badge variant="outline" className="text-[10px] ml-2">
-                 PCR(OI): {latestPcr.pcr_oi?.toFixed(2)} · 
-                 PCR(Vol): {latestPcr.pcr_volume?.toFixed(2)}
-               </Badge>
+              <Badge variant="outline" className="text-[10px] ml-2">
+                PCR(OI): {latestPcr.pcr_oi?.toFixed(2)} ·
+                PCR(Vol): {latestPcr.pcr_volume?.toFixed(2)}
+              </Badge>
             )}
           </div>
           {isOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
@@ -261,44 +257,44 @@ export function PremiumMonitor({
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             <div className="lg:col-span-3 space-y-4">
               <div className="flex flex-wrap items-center gap-3 mb-2">
-                 <button 
-                   onClick={() => setShowStraddle(!showStraddle)}
-                   className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors ${showStraddle ? 'bg-blue-500/10 border-blue-500 text-blue-500' : 'bg-muted border-border text-muted-foreground'}`}
-                 >
-                   STRADDLE
-                 </button>
-                 <button 
-                   onClick={() => setShowSpot(!showSpot)}
-                   className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors ${showSpot ? 'bg-slate-500/10 border-slate-500 text-slate-500' : 'bg-muted border-border text-muted-foreground'}`}
-                 >
-                   SPOT
-                 </button>
-                 <button 
-                   onClick={() => setShowSynthetic(!showSynthetic)}
-                   className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors ${showSynthetic ? 'bg-amber-500/10 border-amber-500 text-amber-500' : 'bg-muted border-border text-muted-foreground'}`}
-                 >
-                   SYNTHETIC
-                 </button>
-                 <button 
-                   onClick={() => setShowVwap(!showVwap)}
-                   className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors ${showVwap ? 'bg-violet-500/10 border-violet-500 text-violet-500' : 'bg-muted border-border text-muted-foreground'}`}
-                 >
-                   VWAP(D)
-                 </button>
-                 <button 
-                   onClick={() => setShowPcrOi(!showPcrOi)}
-                   className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors ${showPcrOi ? 'bg-emerald-500/10 border-emerald-500 text-emerald-500' : 'bg-muted border-border text-muted-foreground'}`}
-                 >
-                   PCR(OI)
-                 </button>
-                 <button 
-                   onClick={() => setShowPcrVol(!showPcrVol)}
-                   className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors ${showPcrVol ? 'bg-cyan-500/10 border-cyan-500 text-cyan-500' : 'bg-muted border-border text-muted-foreground'}`}
-                 >
-                   PCR(VOL)
-                 </button>
+                <button
+                  onClick={() => setShowStraddle(!showStraddle)}
+                  className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors ${showStraddle ? 'bg-blue-500/10 border-blue-500 text-blue-500' : 'bg-muted border-border text-muted-foreground'}`}
+                >
+                  STRADDLE
+                </button>
+                <button
+                  onClick={() => setShowSpot(!showSpot)}
+                  className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors ${showSpot ? 'bg-slate-500/10 border-slate-500 text-slate-500' : 'bg-muted border-border text-muted-foreground'}`}
+                >
+                  SPOT
+                </button>
+                <button
+                  onClick={() => setShowSynthetic(!showSynthetic)}
+                  className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors ${showSynthetic ? 'bg-amber-500/10 border-amber-500 text-amber-500' : 'bg-muted border-border text-muted-foreground'}`}
+                >
+                  SYNTHETIC
+                </button>
+                <button
+                  onClick={() => setShowVwap(!showVwap)}
+                  className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors ${showVwap ? 'bg-violet-500/10 border-violet-500 text-violet-500' : 'bg-muted border-border text-muted-foreground'}`}
+                >
+                  VWAP(D)
+                </button>
+                <button
+                  onClick={() => setShowPcrOi(!showPcrOi)}
+                  className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors ${showPcrOi ? 'bg-emerald-500/10 border-emerald-500 text-emerald-500' : 'bg-muted border-border text-muted-foreground'}`}
+                >
+                  PCR(OI)
+                </button>
+                <button
+                  onClick={() => setShowPcrVol(!showPcrVol)}
+                  className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors ${showPcrVol ? 'bg-cyan-500/10 border-cyan-500 text-cyan-500' : 'bg-muted border-border text-muted-foreground'}`}
+                >
+                  PCR(VOL)
+                </button>
               </div>
-              
+
               <div className="relative">
                 {(isChartLoading || isPcrLoading) && (
                   <div className="absolute inset-0 z-10 bg-background/50 backdrop-blur-[1px] flex items-center justify-center">
@@ -313,19 +309,22 @@ export function PremiumMonitor({
             </div>
 
             <div className="space-y-6">
-              <ScoreGauge result={convictionScore} />
-              
+              <ScoreGauge
+                signal={data?.status === 'success' ? data.signal_engine : null}
+                market={data?.status === 'success' ? data.market_state : null}
+              />
+
               {data?.straddle_engine && (
                 <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500">
                   <div className="p-4 rounded-xl border border-border/50 bg-muted/20 space-y-4">
-                    <BEBand 
-                      spot={data.straddle_engine.atm_strike || 0} 
-                      lower={data.straddle_engine.be_lower || 0} 
-                      upper={data.straddle_engine.be_upper || 0} 
+                    <BEBand
+                      spot={data.straddle_engine.atm_strike || 0}
+                      lower={data.straddle_engine.be_lower || 0}
+                      upper={data.straddle_engine.be_upper || 0}
                     />
-                    <DeltaBar 
-                      callDelta={data.greeks_engine?.ce_delta || 0} 
-                      putDelta={data.greeks_engine?.pe_delta || 0} 
+                    <DeltaBar
+                      callDelta={data.greeks_engine?.ce_delta || 0}
+                      putDelta={data.greeks_engine?.pe_delta || 0}
                     />
                   </div>
                 </div>
