@@ -30,8 +30,8 @@ export function MarketBreadth({
           <div className="flex items-center gap-2">
             <CardTitle className="text-base font-bold flex items-center gap-2">
               Market Breadth Profile
-              <Info className="h-3.5 w-3.5 text-muted-foreground hover:text-primary transition-colors cursor-help" 
-                    onClick={(e) => { e.stopPropagation(); onShowInfo() }} />
+              <Info className="h-3.5 w-3.5 text-muted-foreground hover:text-primary transition-colors cursor-help"
+                onClick={(e) => { e.stopPropagation(); onShowInfo() }} />
             </CardTitle>
           </div>
           {isOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}

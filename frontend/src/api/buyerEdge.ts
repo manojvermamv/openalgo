@@ -40,11 +40,27 @@ export interface StraddleEngine {
 export type SignalType = 'NO_TRADE' | 'WATCH' | 'EXECUTE'
 export type DataMode = 'realtime' | 'live_snapshot' | 'last_day_fallback' | 'spot_only'
 
+export interface ScoreComponent {
+  label: string
+  score: number
+  max: number
+  direction: 'bullish' | 'bearish' | 'neutral'
+  note: string
+}
+
 export interface SignalEngine {
   signal: SignalType
-  confidence: number
+  score: number
+  label: string
   reasons: string[]
   data_mode?: DataMode
+  components?: ScoreComponent[]
+  bias_scores?: {
+    market: number
+    oi: number
+    greeks: number
+    straddle: number
+  }
 }
 
 export interface BuyerEdgeResponse {
@@ -230,6 +246,8 @@ export const buyerEdgeApi = {
     strike_count?: number
     lb_bars?: number
     lb_tf?: string
+    atm_mode?: 'auto' | 'manual'
+    manual_strike?: number
   }): Promise<BuyerEdgeResponse> => {
     const response = await webClient.post<BuyerEdgeResponse>('/buyeredge/api/data', params)
     return response.data
@@ -300,6 +318,8 @@ export const buyerEdgeApi = {
     days?: number
     lb_bars?: number
     lb_tf?: string
+    atm_mode?: 'auto' | 'manual'
+    manual_strike?: number
     pcr_strike_window?: number
     max_snapshot_strikes?: number
   }): Promise<UnifiedMonitorResponse> => {

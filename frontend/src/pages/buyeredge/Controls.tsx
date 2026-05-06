@@ -43,6 +43,10 @@ interface ControlsProps {
   autoRefresh: boolean
   setAutoRefresh: (val: boolean) => void
   isMarketOpen: boolean
+  atmMode: 'auto' | 'manual'
+  setAtmMode: (val: 'auto' | 'manual') => void
+  manualStrike: string
+  setManualStrike: (val: string) => void
 }
 
 export function Controls({
@@ -68,6 +72,10 @@ export function Controls({
   autoRefresh,
   setAutoRefresh,
   isMarketOpen,
+  atmMode,
+  setAtmMode,
+  manualStrike,
+  setManualStrike,
 }: ControlsProps) {
   return (
     <Card className="border-none shadow-none bg-transparent">
@@ -143,6 +151,33 @@ export function Controls({
               </SelectContent>
             </Select>
 
+            {/* ATM Configuration */}
+            <div className="flex items-center gap-2 bg-background rounded-lg border border-input h-10 px-3">
+              <div className="flex items-center gap-1.5">
+                <Switch
+                  id="atm-mode"
+                  checked={atmMode === 'manual'}
+                  onCheckedChange={(checked) => setAtmMode(checked ? 'manual' : 'auto')}
+                  className="scale-75"
+                />
+                <Label htmlFor="atm-mode" className="text-[10px] uppercase font-black text-muted-foreground cursor-pointer">
+                  {atmMode === 'manual' ? 'Manual' : 'Auto'} ATM
+                </Label>
+              </div>
+
+              {atmMode === 'manual' && (
+                <div className="flex items-center gap-1 border-l pl-2 animate-in fade-in slide-in-from-left-2 duration-300">
+                  <Input
+                    type="number"
+                    placeholder="Strike"
+                    value={manualStrike}
+                    onChange={(e) => setManualStrike(e.target.value)}
+                    className="w-20 h-7 border-none bg-muted/50 p-1 text-center text-xs font-bold focus-visible:ring-0"
+                  />
+                </div>
+              )}
+            </div>
+
             {/* Lookback Settings */}
             <div className="flex items-center gap-1 bg-background rounded-lg border border-input h-10 px-2">
               <Input
@@ -182,8 +217,8 @@ export function Controls({
               <Label htmlFor="auto-refresh" className="text-[10px] font-black uppercase tracking-widest text-muted-foreground cursor-pointer">Auto</Label>
             </div>
 
-            <Button 
-              onClick={onRefresh} 
+            <Button
+              onClick={onRefresh}
               disabled={isLoading || !selectedUnderlying}
               className="h-10 px-6 font-bold shadow-lg shadow-primary/20"
             >
