@@ -1,17 +1,18 @@
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { TrendingUp, TrendingDown, Minus, Activity, Target, Compass, Info } from 'lucide-react'
+import { TrendingUp, TrendingDown, Minus, Activity, Target, Compass, Info, AlertTriangle } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import type { SignalEngine, MarketState } from '@/api/buyerEdge'
+import type { SignalEngine, MarketState, SyntheticEngine } from '@/api/buyerEdge'
 import { SIGNAL_CONFIG } from './types'
 import { cn } from '@/lib/utils'
 
 interface ScoreGaugeProps {
   signal: SignalEngine | null
   market: MarketState | null
+  synthetic?: SyntheticEngine | null
 }
 
-export function ScoreGauge({ signal, market }: ScoreGaugeProps) {
+export function ScoreGauge({ signal, market, synthetic }: ScoreGaugeProps) {
   if (!signal || !market) {
     return (
       <Card className="border-primary/10 bg-muted/5 shadow-none overflow-hidden h-full flex flex-col justify-center items-center text-center p-6 border-dashed">
@@ -105,6 +106,64 @@ export function ScoreGauge({ signal, market }: ScoreGaugeProps) {
                 </PopoverContent>
               </Popover>
             </div>
+
+            {/* Trap Score Warning Badge */}
+            {signal.trap_score !== undefined && signal.trap_score > 0 && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-bold text-[11px] transition-all duration-300 cursor-pointer",
+                      signal.trap_score > 75
+                        ? "bg-red-500/15 border-red-500/40 text-red-500 shadow-red-500/10 shadow-md"
+                        : signal.trap_score > 50
+                        ? "bg-orange-500/15 border-orange-500/40 text-orange-500 shadow-orange-500/10 shadow-sm"
+                        : "bg-yellow-500/10 border-yellow-500/30 text-yellow-600 dark:text-yellow-400"
+                    )}
+                  >
+                    <AlertTriangle className="h-3 w-3" />
+                    <span>Trap Risk {signal.trap_score}</span>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 p-4 bg-background/95 backdrop-blur-md border-border/50 shadow-2xl">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 border-b border-border/20 pb-2">
+                      <AlertTriangle className={cn("h-4 w-4",
+                        signal.trap_score > 75 ? "text-red-500" :
+                        signal.trap_score > 50 ? "text-orange-500" : "text-yellow-500"
+                      )} />
+                      <span className="text-xs font-black uppercase tracking-widest">
+                        {signal.trap_score > 75 ? 'High' : signal.trap_score > 50 ? 'Elevated' : 'Moderate'} Trap Risk
+                      </span>
+                      <Badge variant="outline" className={cn("ml-auto text-[9px]",
+                        signal.trap_score > 75 ? "border-red-500/50 text-red-500" :
+                        signal.trap_score > 50 ? "border-orange-500/50 text-orange-500" : ""
+                      )}>
+                        {signal.trap_score}/100
+                      </Badge>
+                    </div>
+                    <div className="space-y-2">
+                      {(signal.trap_reasons || []).length > 0
+                        ? signal.trap_reasons!.map((r, i) => (
+                            <div key={i} className="flex items-start gap-2 text-[11px] text-muted-foreground">
+                              <span className="mt-0.5 shrink-0">•</span>
+                              <span>{r}</span>
+                            </div>
+                          ))
+                        : <p className="text-[11px] text-muted-foreground">Active trap conditions detected.</p>
+                      }
+                    </div>
+                    <p className="text-[10px] text-muted-foreground/60 border-t border-border/10 pt-2">
+                      {signal.trap_score > 75
+                        ? 'Consider avoiding naked options. Use spreads or stand aside.'
+                        : signal.trap_score > 50
+                        ? 'Exercise caution. Consider reduced size or debit spreads.'
+                        : 'Monitor conditions. Keep stops tight.'}
+                    </p>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
           </div>
 
           {/* Gauge and Market State */}
@@ -207,6 +266,126 @@ export function ScoreGauge({ signal, market }: ScoreGaugeProps) {
                 </span>
               ))}
             </div>
+
+            {/* Compact Synthetic Future Block */}
+            {synthetic && synthetic.liquidity_status !== 'invalid' && (
+              <div className="pt-3 mt-1 border-t border-border/10">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+                    Synthetic Future
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "text-[9px] font-bold px-2 py-0.5",
+                      synthetic.liquidity_status === 'good'
+                        ? "border-green-500/30 text-green-500"
+                        : synthetic.liquidity_status === 'wide'
+                        ? "border-orange-500/30 text-orange-500"
+                        : "border-muted-foreground/30 text-muted-foreground"
+                    )}
+                  >
+                    {synthetic.liquidity_status === 'good' ? '● Liquid'
+                      : synthetic.liquidity_status === 'wide' ? '⚠ Wide Spread'
+                      : synthetic.liquidity_status === 'ltp_only' ? '~ LTP only'
+                      : 'Invalid'}
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[10px]">
+                  {synthetic.synthetic_mid != null && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Mid</span>
+                      <span className="font-bold">{synthetic.synthetic_mid.toFixed(1)}</span>
+                    </div>
+                  )}
+                  {synthetic.basis_mid != null ? (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Basis</span>
+                      <span className="flex items-center gap-1">
+                        <span className={cn("font-bold",
+                          synthetic.basis_mid > 0 ? "text-foreground/80" : synthetic.basis_mid < 0 ? "text-amber-400" : "text-muted-foreground"
+                        )}>
+                          {synthetic.basis_mid > 0 ? '+' : ''}{synthetic.basis_mid.toFixed(1)}
+                        </span>
+                        {synthetic.basis_state && (
+                          <span className={cn("text-[8px] px-1 rounded",
+                            synthetic.basis_state === 'backwardation'
+                              ? "bg-amber-500/10 text-amber-400"
+                              : "bg-muted/30 text-muted-foreground"
+                          )}>
+                            {synthetic.basis_state}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  ) : synthetic.basis_ltp != null && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Basis(LTP)</span>
+                      <span className="flex items-center gap-1">
+                        <span className={cn("font-bold",
+                          synthetic.basis_ltp > 0 ? "text-foreground/80" : synthetic.basis_ltp < 0 ? "text-amber-400" : "text-muted-foreground"
+                        )}>
+                          {synthetic.basis_ltp > 0 ? '+' : ''}{synthetic.basis_ltp.toFixed(1)}
+                        </span>
+                        {synthetic.basis_state && (
+                          <span className={cn("text-[8px] px-1 rounded",
+                            synthetic.basis_state === 'backwardation'
+                              ? "bg-amber-500/10 text-amber-400"
+                              : "bg-muted/30 text-muted-foreground"
+                          )}>
+                            {synthetic.basis_state}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  )}
+                  {synthetic.spread_pct != null && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Spread</span>
+                      <span className={cn("font-bold",
+                        synthetic.spread_pct > 0.5 ? "text-orange-400" : "text-foreground/70"
+                      )}>
+                        {synthetic.spread_pct.toFixed(2)}%
+                      </span>
+                    </div>
+                  )}
+                  {synthetic.ltp_inside_market != null && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">LTP in Mkt</span>
+                      <span className={cn("font-bold text-[9px]",
+                        synthetic.ltp_inside_market ? "text-green-400" : "text-orange-400"
+                      )}>
+                        {synthetic.ltp_inside_market ? '✓ Yes' : '⚠ Outside'}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Pressure</span>
+                    <span className={cn("font-bold capitalize",
+                      synthetic.pressure === 'bullish' ? "text-green-400"
+                      : synthetic.pressure === 'bearish' ? "text-red-400"
+                      : "text-muted-foreground"
+                    )}>
+                      {synthetic.pressure}
+                    </span>
+                  </div>
+                </div>
+                <div className={cn(
+                  "mt-2 text-[9px] px-2 py-1 rounded-md border",
+                  synthetic.confirmation === 'confirming'
+                    ? "bg-green-500/5 border-green-500/20 text-green-400"
+                    : synthetic.confirmation === 'diverging'
+                    ? "bg-red-500/5 border-red-500/20 text-red-400"
+                    : "bg-muted/20 border-border/20 text-muted-foreground"
+                )}>
+                  {synthetic.confirmation === 'confirming'
+                    ? `✓ Confirming ${synthetic.pressure}`
+                    : synthetic.confirmation === 'diverging'
+                    ? `⚠ ${synthetic.reason}`
+                    : synthetic.reason}
+                </div>
+              </div>
+            )}
           </div>
 
         </div>

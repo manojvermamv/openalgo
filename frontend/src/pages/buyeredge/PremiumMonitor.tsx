@@ -9,11 +9,8 @@ import type { StraddleChartData } from '@/api/straddle-chart'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { computeDayAnchoredVWAP } from './utils'
 import { STRADDLE_CHART_HEIGHT } from './types'
-import { ScoreGauge } from './ScoreGauge'
-import { BEBand, DeltaBar } from './CommonComponents'
 
 interface PremiumMonitorProps {
-  data: any // BuyerEdgeResponse is too complex and inconsistent
   pcrData: PcrChartResponse | null
   straddleData: StraddleChartData | null
   isPcrLoading: boolean
@@ -41,7 +38,6 @@ interface PremiumMonitorProps {
 }
 
 export function PremiumMonitor({
-  data,
   pcrData,
   straddleData,
   isPcrLoading,
@@ -254,9 +250,8 @@ export function PremiumMonitor({
       </CardHeader>
       {isOpen && (
         <CardContent>
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <div className="lg:col-span-3 space-y-4">
-              <div className="flex flex-wrap items-center gap-3 mb-2">
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-3 mb-2">
                 <button
                   onClick={() => setShowStraddle(!showStraddle)}
                   className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors ${showStraddle ? 'bg-blue-500/10 border-blue-500 text-blue-500' : 'bg-muted border-border text-muted-foreground'}`}
@@ -307,31 +302,7 @@ export function PremiumMonitor({
                 </div>
               </div>
             </div>
-
-            <div className="space-y-6">
-              <ScoreGauge
-                signal={data?.status === 'success' ? data.signal_engine : null}
-                market={data?.status === 'success' ? data.market_state : null}
-              />
-
-              {data?.straddle_engine && (
-                <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500">
-                  <div className="p-4 rounded-xl border border-border/50 bg-muted/20 space-y-4">
-                    <BEBand
-                      spot={data.straddle_engine.atm_strike || 0}
-                      lower={data.straddle_engine.be_lower || 0}
-                      upper={data.straddle_engine.be_upper || 0}
-                    />
-                    <DeltaBar
-                      callDelta={data.greeks_engine?.ce_delta || 0}
-                      putDelta={data.greeks_engine?.pe_delta || 0}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </CardContent>
+          </CardContent>
       )}
     </Card>
   )

@@ -19,6 +19,9 @@ const GexLevels = lazy(() => import('./buyeredge/GexLevels').then(m => ({ defaul
 const GexSpotChart = lazy(() => import('./buyeredge/GexSpotChart').then(m => ({ default: m.GexSpotChart })))
 const IvrDashboard = lazy(() => import('./buyeredge/IvrDashboard').then(m => ({ default: m.IvrDashboard })))
 const InterpretationGuide = lazy(() => import('./buyeredge/InterpretationGuide').then(m => ({ default: m.InterpretationGuide })))
+const ScoreGauge = lazy(() => import('./buyeredge/ScoreGauge').then(m => ({ default: m.ScoreGauge })))
+const BEBand = lazy(() => import('./buyeredge/CommonComponents').then(m => ({ default: m.BEBand })))
+const DeltaBar = lazy(() => import('./buyeredge/CommonComponents').then(m => ({ default: m.DeltaBar })))
 
 // Logic and Utils
 import { AUTO_REFRESH_INTERVAL } from './buyeredge/types'
@@ -81,7 +84,6 @@ export default function BuyerEdge() {
 
   // ── IVR Dashboard state ───────────────────────────────────────
   const [ivData, setIvData] = useState<IvDashboardResponse | null>(null)
-  const [isIvLoading, setIsIvLoading] = useState(false)
   const [ivSectionOpen, setIvSectionOpen] = useState(true)
 
   // ── GEX Spot Chart state ──────────────────────────────────────
@@ -140,6 +142,17 @@ export default function BuyerEdge() {
       })
       if (res.status === 'success') {
         setData(res)
+        // Reuse GEX and IVR data fetched in parallel by unified_monitor so the
+        // display components (GexLevels, IvrDashboard) don't need a separate call
+        // on every auto-refresh.  The separate loadGexData / loadIvDashboardData
+        // callbacks are still used when the user explicitly changes mode or
+        // triggers a manual refresh.
+        if (res.gex?.status === 'success' && gexMode === 'selected') {
+          setGexData(res.gex)
+        }
+        if (res.ivr?.status === 'success') {
+          setIvData(res.ivr)
+        }
       } else {
         showToast.error(res.message || 'Failed to load data')
       }
@@ -148,7 +161,7 @@ export default function BuyerEdge() {
     } finally {
       setIsLoading(false)
     }
-  }, [selectedUnderlying, selectedExpiry, selectedExchange, straddleInterval, straddleDays, lbBars, lbTf, strikeCount, atmMode, manualStrike])
+  }, [selectedUnderlying, selectedExpiry, selectedExchange, straddleInterval, straddleDays, lbBars, lbTf, strikeCount, atmMode, manualStrike, gexMode])
 
 
 
@@ -177,28 +190,6 @@ export default function BuyerEdge() {
     }
   }, [selectedUnderlying, selectedExpiry, selectedExchange, gexMode, expiries])
 
-  const loadIvDashboardData = useCallback(async () => {
-    if (!selectedUnderlying || expiries.length === 0) return
-    setIsIvLoading(true)
-    try {
-      const res = await buyerEdgeApi.getIvDashboard({
-        underlying: selectedUnderlying,
-        exchange: selectedExchange,
-        expiry_dates: expiries.slice(0, 4).map(convertExpiryForAPI),
-        strike_count: 10,
-      })
-      if (res.status === 'success') {
-        setIvData(res)
-      } else {
-        showToast.error(res.message || 'Failed to load IV data')
-      }
-    } catch {
-      showToast.error('Failed to load IV data')
-    } finally {
-      setIsIvLoading(false)
-    }
-  }, [selectedUnderlying, selectedExchange, expiries])
-
   const loadSpotCandleData = useCallback(async () => {
     if (!selectedUnderlying) return
     setIsSpotCandleLoading(true)
@@ -222,11 +213,15 @@ export default function BuyerEdge() {
   }, [selectedUnderlying, selectedExchange, spotChartInterval, spotChartDays])
 
   const refreshAll = useCallback(() => {
+    // loadData fetches GEX (selected mode) and IVR in parallel via unified_monitor
+    // and populates gexData / ivData from the response — no separate call needed
+    // unless the user is in cumulative GEX mode.
     loadData()
-    loadGexData()
-    loadIvDashboardData()
+    if (gexMode === 'cumulative') {
+      loadGexData()
+    }
     loadSpotCandleData()
-  }, [loadData, loadGexData, loadIvDashboardData, loadSpotCandleData])
+  }, [loadData, loadGexData, loadSpotCandleData, gexMode])
 
   // Initial load
   useEffect(() => {
@@ -286,10 +281,34 @@ export default function BuyerEdge() {
         />
       </Suspense>
 
+      <Suspense fallback={null}>
+        <div className="space-y-6">
+          <ScoreGauge
+            signal={(data?.analysis as any)?.status === 'success' ? (data?.analysis as any).signal_engine : null}
+            market={(data?.analysis as any)?.status === 'success' ? (data?.analysis as any).market_state : null}
+            synthetic={(data?.analysis as any)?.status === 'success' ? (data?.analysis as any).synthetic_engine : null}
+          />
+          {(data?.analysis as any)?.straddle_engine && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500">
+              <div className="p-4 rounded-xl border border-border/50 bg-muted/20 space-y-4">
+                <BEBand
+                  spot={(data?.analysis as any).straddle_engine.atm_strike || 0}
+                  lower={(data?.analysis as any).straddle_engine.lower_be || 0}
+                  upper={(data?.analysis as any).straddle_engine.upper_be || 0}
+                />
+                <DeltaBar
+                  callDelta={(data?.analysis as any).greeks_engine?.total_call_delta || 0}
+                  putDelta={(data?.analysis as any).greeks_engine?.total_put_delta || 0}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </Suspense>
+
       <div className="grid grid-cols-1 gap-6">
         <Suspense fallback={<div className="h-[400px] flex items-center justify-center border rounded-lg animate-pulse bg-muted/20">Loading Premium Monitor...</div>}>
           <PremiumMonitor
-            data={data?.analysis}
             pcrData={data?.pcr || null}
             straddleData={data?.straddle?.data || null}
             isPcrLoading={isLoading}
@@ -357,7 +376,7 @@ export default function BuyerEdge() {
           <Suspense fallback={<div className="h-[300px] flex items-center justify-center border rounded-lg animate-pulse bg-muted/20">Loading IVR...</div>}>
             <IvrDashboard
               ivData={ivData}
-              isLoading={isIvLoading}
+              isLoading={isLoading}
               isOpen={ivSectionOpen}
               onToggle={() => setIvSectionOpen(!ivSectionOpen)}
             />

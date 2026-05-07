@@ -54,8 +54,11 @@ export function getOiFlowMeta(
     if (premUp === false) return { label: 'Put Writing', color: '#22c55e', note: 'PE Prem↓ + OI↑ → writers building floor (Bullish support)' }
     return { label: 'PE OI Rising', color: '#f59e0b', note: 'PE OI↑ — confirm with ATM PE premium direction' }
   }
-  if (premUp === true) return { label: 'PE Short Covering', color: '#f59e0b', note: 'PE Prem↑ + OI↓ → put shorts uncertain (Mildly Bearish)' }
-  if (premUp === false) return { label: 'PE Long Unwinding', color: '#86efac', note: 'PE Prem↓ + OI↓ → hedgers exiting (Bullish)' }
+  // PE OI falling (OI↓):
+  // OI↓ + prem↑ → PE Short Covering: put shorts buying back → mildly bullish
+  // OI↓ + prem↓ → PE Long Unwinding: put longs closing positions → mildly bearish
+  if (premUp === true) return { label: 'PE Short Covering', color: '#86efac', note: 'PE Prem↑ + OI↓ → put shorts buying back (Mildly Bullish)' }
+  if (premUp === false) return { label: 'PE Long Unwinding', color: '#fb923c', note: 'PE Prem↓ + OI↓ → put longs exiting (Mildly Bearish)' }
   return { label: 'PE OI Falling', color: '#86efac', note: 'PE OI↓ — confirm with ATM PE premium direction' }
 }
 
