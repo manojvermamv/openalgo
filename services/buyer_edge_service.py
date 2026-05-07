@@ -23,6 +23,7 @@ from typing import Any
 
 import pandas as pd
 
+from services.buyer_edge_synthetic_service import _compute_synthetic_future_context
 from services.buyer_edge_utils import get_buyer_edge_quote_exchange
 from services.history_service import get_history
 from services.option_chain_service import get_option_chain
@@ -191,10 +192,12 @@ def _compute_greeks_engine(chain: list[dict], spot: float, exch: str, prev_snaps
     }
 
 
-def _compute_signal(market: dict, oi: dict, greeks: dict, straddle: dict, pcr_series: list[dict] = None) -> dict[str, Any]:
+
+
+def _compute_signal(market: dict, oi: dict, greeks: dict, straddle: dict, pcr_series: list[dict] = None, gex_levels: dict = None, ivr_data: dict = None, data_quality: dict = None, synthetic_engine: dict | None = None) -> dict[str, Any]:
     """
     OpenAlgo Signal Intelligence Engine.
-    Implements 10 granular components for high-conviction scoring.
+    Implements 15 granular components for institutional-grade scoring.
     """
     components = []
     reasons = []
@@ -259,15 +262,20 @@ def _compute_signal(market: dict, oi: dict, greeks: dict, straddle: dict, pcr_se
     components.append({"label": "Call Flow", "score": s6, "max": 2, "direction": dir_label(s6), "note": ce_note})
 
     # 7. PE Flow (2)
+    # Correct 4-state classification for puts:
+    #   OI↑ + premium↓ → Put Writing (sellers adding, bullish support)
+    #   OI↓ + premium↓ → PE Long Unwinding (longs closing, mildly bearish)
+    #   OI↑ + premium↑ → Put Buying (buyers adding, bearish pressure)
+    #   OI↓ + premium↑ → PE Short Covering (shorts buying back, mildly bullish)
     s7 = 0
     pe_note = "Neutral"
     if latest and first:
         pe_oi_delta = latest["pe_oi"] - first["pe_oi"]
         pe_prem_delta = latest["atm_pe_ltp"] - first["atm_pe_ltp"]
         if pe_oi_delta > 0 and pe_prem_delta < -0.5: s7 = 2; pe_note = "Put Writing"
-        elif pe_oi_delta < 0 and pe_prem_delta < -0.5: s7 = 1; pe_note = "Short Covering (PE)"
+        elif pe_oi_delta < 0 and pe_prem_delta < -0.5: s7 = -1; pe_note = "PE Long Unwinding"
         elif pe_oi_delta > 0 and pe_prem_delta > 0.5: s7 = -2; pe_note = "Put Buying"
-        elif pe_oi_delta < 0 and pe_prem_delta > 0.5: s7 = -1; pe_note = "Long Unwinding (PE)"
+        elif pe_oi_delta < 0 and pe_prem_delta > 0.5: s7 = 1; pe_note = "PE Short Covering"
     components.append({"label": "Put Flow", "score": s7, "max": 2, "direction": dir_label(s7), "note": pe_note})
 
     # 8. Breadth Bias (1)
@@ -299,31 +307,208 @@ def _compute_signal(market: dict, oi: dict, greeks: dict, straddle: dict, pcr_se
     elif trend == "Bearish": s10 = -1
     components.append({"label": "Engine Trend", "score": s10, "max": 1, "direction": dir_label(s10), "note": trend})
 
-    # Final Normalization (Total Max Raw = 13)
+    # ── Institutional Regime Components (11–15) ──────────────────────────────
+
+    # 11. Gamma Regime — regime context only, NOT a directional vote.
+    # Gamma regime amplifies or dampens dealer delta-hedging activity.
+    # Short-gamma (spot < flip): dealers amplify moves → buyers have edge.
+    # Long-gamma (spot > flip): dealers dampen moves → mean-reversion traps.
+    # We capture this as a confidence multiplier applied after normalization,
+    # NOT as a ±2 directional score (which would bias toward bullish regardless
+    # of direction and create spurious signal in sideways markets).
+    s11 = 0  # no directional contribution
+    gamma_flip = (gex_levels or {}).get("gamma_flip")
+    spot_val = latest["spot"] if latest else 0
+    _is_short_gamma = False
+    if gamma_flip is not None and spot_val:
+        _is_short_gamma = spot_val < gamma_flip
+        gamma_flip_note = (
+            f"Short-gamma (spot below flip {round(gamma_flip,0)}) — moves amplified, buyer edge"
+            if _is_short_gamma
+            else f"Long-gamma (spot above flip {round(gamma_flip,0)}) — mean-revert traps, buyer at risk"
+        )
+    else:
+        gamma_flip_note = "GEX data unavailable"
+    components.append({"label": "Gamma Regime", "score": s11, "max": 2, "direction": "neutral",
+                        "note": gamma_flip_note})
+
+    # 12. HVL Side (±1): call delta territory vs put delta territory
+    s12 = 0
+    hvl = (gex_levels or {}).get("hvl")
+    if hvl is not None and spot_val:
+        s12 = 1 if spot_val > hvl else -1  # above HVL = call-delta territory (bullish lean)
+    components.append({"label": "HVL Side", "score": s12, "max": 1, "direction": dir_label(s12),
+                        "note": (f"Spot {'above' if s12>0 else 'below'} HVL ({round(hvl,0)}) — "
+                                 f"{'call-delta' if s12>0 else 'put-delta'} territory")
+                        if hvl is not None else "GEX data unavailable"})
+
+    # 13. IV Regime (±1): cheap options favour buyers, expensive penalise
+    s13 = 0
+    iv_rank = (ivr_data or {}).get("iv_rank")
+    if iv_rank is not None:
+        if iv_rank < 20: s13 = 1    # cheap options — positive EV for buyers
+        elif iv_rank > 50: s13 = -1  # expensive options — structural disadvantage
+    components.append({"label": "IV Regime", "score": s13, "max": 1, "direction": dir_label(s13),
+                        "note": (f"IVR {round(iv_rank,1)}% — {'cheap, buyer edge' if s13>0 else 'expensive, buyer penalised' if s13<0 else 'moderate'}")
+                        if iv_rank is not None else "IVR data unavailable"})
+
+    # 14. Synthetic Futures (±1): spot-SF co-movement confirmation
+    # +1: both spot and SF rising (options pricing confirms spot bull)
+    # -1: both spot and SF falling (options pricing confirms spot bear)
+    #  0: neutral, illiquid, wide spread, diverging, spot-flat, or unavailable
+    s14 = 0
+    sf_note = "SF data unavailable"
+    if synthetic_engine:
+        _liq = synthetic_engine.get("liquidity_status", "invalid")
+        _pressure = synthetic_engine.get("pressure", "neutral")
+        _conf = synthetic_engine.get("confirmation", "unavailable")
+        if _liq == "invalid":
+            sf_note = "SF illiquid — insufficient bid/ask data"
+        elif _liq == "wide":
+            _sp = synthetic_engine.get("spread_pct")
+            sf_note = f"SF wide spread ({round(_sp, 2) if _sp else '?'}%) — executable cost too high"
+        elif _conf == "diverging":
+            sf_note = synthetic_engine.get("reason", "SF divergence trap detected")
+        elif _pressure == "bullish" and _conf == "confirming":
+            s14 = 1
+            sf_note = synthetic_engine.get("reason", "SF bullish confirmation")
+        elif _pressure == "bearish" and _conf == "confirming":
+            s14 = -1
+            sf_note = synthetic_engine.get("reason", "SF bearish confirmation")
+        else:
+            sf_note = synthetic_engine.get("reason", f"SF {_pressure} ({_conf})")
+    elif latest:
+        # Fallback: LTP-series synthetic when no live chain context.
+        # Raw basis sign is NOT directional (positive = normal carry). Only
+        # display the carry context; do not score.
+        sf = latest.get("synthetic_future")
+        if sf is not None and spot_val:
+            basis_carry = round(sf - spot_val, 1)
+            carry_sign = "+" if basis_carry >= 0 else ""
+            carry_state = "backwardation" if basis_carry < -(spot_val * 0.001) else "normal"
+            sf_note = f"SF carry {carry_sign}{basis_carry} ({carry_state}, LTP-only — no directional score)"
+        else:
+            sf_note = "SF data unavailable (LTP fallback)"
+    components.append({"label": "Synthetic Futures", "score": s14, "max": 1, "direction": dir_label(s14), "note": sf_note})
+
+    # 15. Straddle Velocity (±2): expanding straddle = real directional move;
+    #     contracting = IV crush = options buyer trap
+    s15 = 0
+    s_vel = straddle.get("straddle_velocity", "Flat")
+    if s_vel == "Expanding": s15 = 2
+    elif s_vel == "Contracting": s15 = -2
+    components.append({"label": "Straddle Velocity", "score": s15, "max": 2, "direction": dir_label(s15),
+                        "note": f"Straddle {s_vel} — {'real move supports buying' if s15>0 else 'IV crush, avoid naked buying' if s15<0 else 'flat premium'}"})
+
+    # ── Trap Score (0–100) ────────────────────────────────────────────────────
+    # A separate risk-of-trap metric; overrides the directional signal when high.
+    trap_score = 0
+    trap_reasons = []
+
+    # T1: Long-gamma regime — dealers dampen moves, option buyers bleed theta
+    if gamma_flip is not None and spot_val and not _is_short_gamma:
+        trap_score += 30
+        trap_reasons.append(f"Long-gamma regime (spot above flip {round(gamma_flip,0)})")
+
+    # T2: IV crush — straddle contracting while buying
+    if s_vel == "Contracting":
+        trap_score += 20
+        trap_reasons.append("IV contracting (straddle velocity negative)")
+
+    # T3: Expensive options (IVR > 60%)
+    if iv_rank is not None and iv_rank > 60:
+        trap_score += 20
+        trap_reasons.append(f"High IVR {round(iv_rank,1)}% — options structurally overpriced")
+
+    # T4: Synthetic spread or divergence trap
+    if synthetic_engine:
+        _liq_t = synthetic_engine.get("liquidity_status", "invalid")
+        _conf_t = synthetic_engine.get("confirmation", "unavailable")
+        _spread_pct_t = synthetic_engine.get("spread_pct")
+        if _liq_t == "wide" or (_spread_pct_t and _spread_pct_t > 0.5):
+            trap_score += 15
+            trap_reasons.append(
+                f"SF wide spread {round(_spread_pct_t, 2) if _spread_pct_t else '?'}% — executable cost degrades signal"
+            )
+        if _conf_t == "diverging":
+            trap_score += 15
+            trap_reasons.append(
+                f"SF divergence: {synthetic_engine.get('reason', 'spot/SF direction disagree')}"
+            )
+    elif latest and spot_val:
+        sf = latest.get("synthetic_future")
+        if sf is not None and abs(sf - spot_val) > 0.003 * spot_val:
+            trap_score += 15
+            trap_reasons.append(f"SF divergence {round(abs(sf - spot_val) / spot_val * 100, 2)}% — option mispricing detected")
+
+    # T5: Spot within 0.5× expected move of absolute gamma wall (pin risk)
+    abs_wall = (gex_levels or {}).get("absolute_wall")
+    if abs_wall is not None and spot_val:
+        exp_move = None
+        if ivr_data and ivr_data.get("expiries") and len(ivr_data["expiries"]) > 0:
+            exp_move = (ivr_data["expiries"][0] or {}).get("expected_move")
+        if exp_move is None:
+            exp_move = spot_val * 0.005 * 5  # fallback: ~1.1% (0.5% × √5)
+        wall_dist = abs(spot_val - abs_wall)
+        if exp_move > 0 and wall_dist < 0.5 * exp_move:
+            trap_score += 15
+            trap_reasons.append(f"Spot {round(wall_dist,0)} pts from abs gamma wall {round(abs_wall,0)} — pin risk")
+
+    trap_score = min(100, trap_score)
+
+    # ── Final Normalisation ──────────────────────────────────────────────────
+    # Max directional raw = 18 (components 1–10 = 12, plus 12/13/14/15 = 6;
+    # component 11 gamma regime contributes 0 to direction as it is a regime
+    # modifier, not a directional vote). Normalise by 18 so the scale stays
+    # anchored at ±100.
     raw_score = sum(c["score"] for c in components)
-    final_score = int(max(-100, min(100, (raw_score / 13) * 100)))
-    
+    base_score = (raw_score / 18) * 100
+
+    # Gamma regime confidence modifier: amplify abs conviction in short-gamma
+    # regime (+10%), dampen in long-gamma regime (−10%). Preserves direction.
+    if gamma_flip is not None and spot_val:
+        multiplier = 1.10 if _is_short_gamma else 0.90
+        base_score = base_score * multiplier
+
+    final_score = int(max(-100, min(100, base_score)))
+
     # Reasons from significant components
     for c in components:
         if abs(c["score"]) >= (c["max"] * 0.5):
             reasons.append(c["note"])
 
-    # Determine Signal
+    # Determine Signal (with trap_score override)
     abs_score = abs(final_score)
-    if abs_score >= 60: signal = "EXECUTE"
-    elif abs_score >= 30: signal = "WATCH"
-    else: signal = "NO_TRADE"
+    if trap_score > 75:
+        signal = "NO_TRADE"
+        if trap_reasons:
+            reasons.insert(0, f"⚠ High trap risk: {trap_reasons[0]}")
+    elif abs_score >= 60:
+        signal = "EXECUTE" if trap_score <= 50 else "WATCH"
+    elif abs_score >= 30:
+        signal = "WATCH"
+    else:
+        signal = "NO_TRADE"
 
     if final_score > 15: label = "Bullish"
     elif final_score < -15: label = "Bearish"
     else: label = "Neutral"
 
+    component_summary = ", ".join(f"{c['label']}={c['score']}" for c in components)
+    logger.debug(
+        f"Signal scoring: raw={raw_score:.2f}/18 → base={base_score:.1f} → score={final_score} "
+        f"({label}, {signal}, trap={trap_score}, short_gamma={_is_short_gamma}) | {component_summary}"
+    )
+
     return {
         "signal": signal,
         "score": final_score,
         "label": label,
+        "trap_score": trap_score,
+        "trap_reasons": trap_reasons,
         "reasons": list(set(reasons)),
         "components": components,
+        "data_quality": data_quality or {},
         "bias_scores": {
             "market": s10 * 40, # Map to legacy dashboard categories
             "oi": (s4+s5+s6+s7) * 2.5,
@@ -343,7 +528,9 @@ def get_buyer_edge_data(
     lb_tf: str = "3m",
     atm_mode: str = "auto",
     manual_strike: float | None = None,
-    pcr_series: list[dict] = None
+    pcr_series: list[dict] = None,
+    gex_levels: dict | None = None,
+    ivr_data: dict | None = None,
 ) -> tuple[bool, dict[str, Any], int]:
     """Main calculation engine."""
     try:
@@ -389,6 +576,13 @@ def get_buyer_edge_data(
         if s_u and r_u.get("data"):
             closes = [float(c["close"]) for c in r_u["data"]][-lb_bars:]
 
+        if not closes:
+            logger.warning(
+                f"No history candles for {underlying}@{exchange} [{lb_tf}] "
+                f"(window: {start_date}→{end_date}) — market may be closed; "
+                "using spot price as sole input for market state"
+            )
+
         market_state = _compute_market_state(closes or [spot])
         oi_result = _compute_oi_intelligence(chain, prev_snapshot)
         greeks_result = _compute_greeks_engine(chain, spot, opt_exch, prev_snapshot)
@@ -405,11 +599,41 @@ def get_buyer_edge_data(
             elif s_price < p_sp * 0.98: s_vel = "Contracting"
 
         straddle_result = {
+            "atm_strike": atm,
+            "atm_ce_ltp": round(atm_ce.get("ltp", 0) or 0, 2),
+            "atm_pe_ltp": round(atm_pe.get("ltp", 0) or 0, 2),
             "straddle_price": round(s_price, 2), "straddle_velocity": s_vel,
+            "upper_be": round(atm + s_price, 2),
+            "lower_be": round(atm - s_price, 2),
             "be_distance_pct": round(min(abs(spot - (atm + s_price)), abs(spot - (atm - s_price))) / spot * 100, 2) if spot > 0 else 99
         }
 
-        signal = _compute_signal(market_state, oi_result, greeks_result, straddle_result, pcr_series=pcr_series)
+        # Build data quality flags — surface availability of each enrichment
+        # source so the signal engine can reduce confidence when data is missing
+        # rather than silently omitting a scoring dimension.
+        greeks_ok = bool(greeks_result.get("delta_imbalance") != 0 or greeks_result.get("gamma_regime") == "Expansion")
+        iv_ok = bool(ivr_data and ivr_data.get("iv_rank") is not None)
+        gex_fresh = bool(gex_levels and gex_levels.get("gamma_flip") is not None)
+        pcr_bars = len(pcr_series) if pcr_series else 0
+        market_open = bool(closes)  # False if history returned nothing (market closed / holiday)
+
+        # Synthetic future context (bid/ask-aware, no extra API call)
+        syn_ctx = _compute_synthetic_future_context(chain, spot, atm, pcr_series)
+
+        data_quality = {
+            "greeks_available": greeks_ok,
+            "iv_available": iv_ok,
+            "gex_cache_fresh": gex_fresh,
+            "pcr_series_bars": pcr_bars,
+            "market_open": market_open,
+            "synthetic_available": syn_ctx.get("synthetic_ltp") is not None,
+            "synthetic_bidask_available": syn_ctx.get("synthetic_mid") is not None,
+            "synthetic_liquidity_status": syn_ctx.get("liquidity_status"),
+            "synthetic_spread_pct": syn_ctx.get("spread_pct"),
+            "synthetic_ltp_inside_market": syn_ctx.get("ltp_inside_market"),
+        }
+
+        signal = _compute_signal(market_state, oi_result, greeks_result, straddle_result, pcr_series=pcr_series, gex_levels=gex_levels, ivr_data=ivr_data, data_quality=data_quality, synthetic_engine=syn_ctx)
         
         # Save snapshot
         _set_snapshot(cache_key, {
@@ -422,7 +646,8 @@ def get_buyer_edge_data(
             "status": "success", "underlying": underlying.upper(), "spot": spot,
             "timestamp": get_ist_now().strftime("%Y-%m-%d %H:%M:%S IST"),
             "market_state": market_state, "oi_intelligence": oi_result,
-            "greeks_engine": greeks_result, "straddle_engine": straddle_result, "signal_engine": signal
+            "greeks_engine": greeks_result, "straddle_engine": straddle_result,
+            "synthetic_engine": syn_ctx, "signal_engine": signal
         }, 200
 
     except Exception as e:

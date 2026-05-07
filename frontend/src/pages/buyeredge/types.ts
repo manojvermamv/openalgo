@@ -1,25 +1,5 @@
 import type { SignalType } from '@/api/buyerEdge'
 
-export interface ScoreComponent {
-  label: string
-  score: number   // raw contribution (may be fractional)
-  max: number     // maximum absolute contribution for this component
-  note: string    // human-readable signal value
-  direction: 'bullish' | 'bearish' | 'neutral'
-}
-
-export interface DirectionalScoreResult {
-  /** Normalised score: -100 to +100 */
-  pct: number
-  /** Raw sum */
-  raw: number
-  /** Maximum possible absolute raw sum */
-  maxRaw: number
-  label: 'Strong Bullish' | 'Mild Bullish' | 'Neutral' | 'Mild Bearish' | 'Strong Bearish'
-  color: string
-  components: ScoreComponent[]
-}
-
 export interface StrikeOiChange {
   strike: number
   ce_oi_chg: number

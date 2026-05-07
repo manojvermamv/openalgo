@@ -195,8 +195,11 @@ export function IntradayOiChange({
             <div className="h-[300px] flex items-end gap-1 px-2 pb-8 pt-4 relative group">
               {data.pcr?.data?.strike_oi_changes && [...data.pcr.data.strike_oi_changes].sort((a: any, b: any) => a.strike - b.strike).map((s: any) => {
                 const maxVal = Math.max(...data.pcr.data.strike_oi_changes.map((x: any) => Math.max(Math.abs(x.ce_oi_chg), Math.abs(x.pe_oi_chg))))
-                const ceH = (Math.abs(s.ce_oi_chg) / maxVal) * 100
-                const peH = (Math.abs(s.pe_oi_chg) / maxVal) * 100
+                // When all OI changes are zero, use 1 to keep bar heights at 0% (avoid NaN)
+                const FALLBACK_MAX_OI_CHANGE = 1
+                const safeMax = maxVal > 0 ? maxVal : FALLBACK_MAX_OI_CHANGE
+                const ceH = (Math.abs(s.ce_oi_chg) / safeMax) * 100
+                const peH = (Math.abs(s.pe_oi_chg) / safeMax) * 100
                 return (
                   <div
                     key={s.strike}
@@ -204,12 +207,28 @@ export function IntradayOiChange({
                     onMouseEnter={() => setBarHover(s)}
                     onMouseLeave={() => setBarHover(null)}
                   >
-                    <div className="flex-1 flex flex-col justify-end">
-                      <div className="w-full bg-green-500/60 hover:bg-green-500 rounded-t-sm transition-all" style={{ height: `${ceH}%` }} />
-                    </div>
-                    <div className="flex-1 flex flex-col justify-start">
-                      <div className="w-full bg-red-500/60 hover:bg-red-500 rounded-b-sm transition-all" style={{ height: `${peH}%` }} />
-                    </div>
+                    {(() => {
+                      const ceMeta = getOiFlowMeta('CE', s.ce_oi_chg, s.ce_ltp_chg ?? null)
+                      const peMeta = getOiFlowMeta('PE', s.pe_oi_chg, s.pe_ltp_chg ?? null)
+                      const ceColor = ceMeta?.color ?? '#22c55e'
+                      const peColor = peMeta?.color ?? '#ef4444'
+                      return (
+                        <>
+                          <div className="flex-1 flex flex-col justify-end">
+                            <div
+                              className="w-full rounded-t-sm transition-all opacity-70 hover:opacity-100"
+                              style={{ height: `${ceH}%`, backgroundColor: ceColor }}
+                            />
+                          </div>
+                          <div className="flex-1 flex flex-col justify-start">
+                            <div
+                              className="w-full rounded-b-sm transition-all opacity-70 hover:opacity-100"
+                              style={{ height: `${peH}%`, backgroundColor: peColor }}
+                            />
+                          </div>
+                        </>
+                      )
+                    })()}
                     {barHover?.strike === s.strike && (() => {
                       const ceMeta = getOiFlowMeta('CE', s.ce_oi_chg, s.ce_ltp_chg)
                       const peMeta = getOiFlowMeta('PE', s.pe_oi_chg, s.pe_ltp_chg)

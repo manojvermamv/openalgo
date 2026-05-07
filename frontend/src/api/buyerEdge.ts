@@ -48,11 +48,54 @@ export interface ScoreComponent {
   note: string
 }
 
+export interface DataQuality {
+  greeks_available: boolean
+  iv_available: boolean
+  gex_cache_fresh: boolean
+  pcr_series_bars: number
+  market_open: boolean
+  synthetic_available?: boolean
+  synthetic_bidask_available?: boolean
+  synthetic_liquidity_status?: 'good' | 'wide' | 'ltp_only' | 'invalid' | null
+  synthetic_spread_pct?: number | null
+  synthetic_ltp_inside_market?: boolean | null
+}
+
+export type SyntheticPressure = 'bullish' | 'bearish' | 'neutral'
+export type SyntheticLiquidityStatus = 'good' | 'wide' | 'ltp_only' | 'invalid'
+export type SyntheticConfirmation = 'confirming' | 'diverging' | 'unavailable'
+export type SyntheticBasisState = 'normal' | 'backwardation' | 'neutral'
+
+export interface SyntheticEngine {
+  atm_strike: number
+  synthetic_ltp: number | null
+  synthetic_mid: number | null
+  synthetic_bid: number | null
+  synthetic_ask: number | null
+  synthetic_spread: number | null
+  basis_ltp: number | null
+  basis_mid: number | null
+  basis_pct: number | null
+  spread_pct: number | null
+  liquidity_status: SyntheticLiquidityStatus
+  basis_state: SyntheticBasisState
+  pressure: SyntheticPressure
+  confirmation: SyntheticConfirmation
+  reason: string
+  synthetic_velocity: number | null
+  basis_velocity: number | null
+  basis_session_change: number | null
+  ltp_inside_market: boolean | null
+}
+
 export interface SignalEngine {
   signal: SignalType
   score: number
   label: string
   reasons: string[]
+  trap_score?: number
+  trap_reasons?: string[]
+  data_quality?: DataQuality
   data_mode?: DataMode
   components?: ScoreComponent[]
   bias_scores?: {
@@ -74,6 +117,7 @@ export interface BuyerEdgeResponse {
   oi_intelligence?: OIIntelligence
   greeks_engine?: GreeksEngine
   straddle_engine?: StraddleEngine
+  synthetic_engine?: SyntheticEngine
   signal_engine?: SignalEngine
 }
 
@@ -108,6 +152,9 @@ export interface GexLevels {
   absolute_wall: number | null
   total_net_gex: number
   zero_gamma: number | null
+  upside_punch_target: number | null
+  downside_punch_target: number | null
+  punch_proximity_pct: number | null
 }
 
 export interface GexPerExpiry {
@@ -153,12 +200,17 @@ export interface PcrDataPoint {
   ce_declines: number
   pe_advances: number
   pe_declines: number
+  ce_oi_velocity: number
+  pe_oi_velocity: number
+  pcr_oi_velocity: number | null
 }
 
 export interface StrikeOiChange {
   strike: number
   ce_oi_chg: number
   pe_oi_chg: number
+  ce_ltp_chg: number
+  pe_ltp_chg: number
 }
 
 export interface PcrChartData {
@@ -334,4 +386,8 @@ export interface UnifiedMonitorResponse {
   straddle: import('./straddle-chart').StraddleChartResponse
   pcr: PcrChartResponse
   analysis: BuyerEdgeResponse | null
+  /** GEX levels fetched in parallel by unified_monitor (avoid separate call) */
+  gex?: GexLevelsResponse | null
+  /** IVR dashboard fetched in parallel by unified_monitor (avoid separate call) */
+  ivr?: IvDashboardResponse | null
 }

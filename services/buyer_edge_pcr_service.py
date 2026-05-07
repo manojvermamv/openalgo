@@ -134,6 +134,10 @@ def get_pcr_chart_data(
             api_key=api_key,
         )
         if not success_u or not resp_u.get("data"):
+            logger.warning(
+                f"PCR [{underlying}|{exchange}]: underlying history empty "
+                f"(window: {start_date_str}→{end_date_str}) — market may be closed"
+            )
             return False, {"status": "error", "message": "Failed to fetch underlying history"}, 400
 
         df_u = pd.DataFrame(resp_u["data"])
@@ -170,6 +174,12 @@ def get_pcr_chart_data(
             symbols_to_fetch.append({"symbol": _build_sym(base_symbol, expiry_date.upper(), strike, "CE"), "exchange": options_exchange})
             symbols_to_fetch.append({"symbol": _build_sym(base_symbol, expiry_date.upper(), strike, "PE"), "exchange": options_exchange})
 
+        logger.debug(
+            f"PCR [{underlying}|{expiry_date}]: {len(df_u)} underlying bars, "
+            f"{len(unique_atm_strikes)} unique ATM strikes, "
+            f"{len(symbols_to_fetch)} option symbols to batch-fetch"
+        )
+
         # Batch fetch option history
         history_map = _fetch_history_batch(symbols_to_fetch, interval, start_date_str, end_date_str, api_key)
 
@@ -187,6 +197,41 @@ def get_pcr_chart_data(
                         "volume": float(c.get("volume", 0) or 0),
                         "close": float(c.get("close", 0) or 0),
                     }
+
+        # Pre-compute per-strike intraday OI/LTP change (last candle − first candle).
+        # This powers the IntradayOiChange chart on the BuyerEdge dashboard.
+        strike_oi_changes = []
+        for strike in sorted(all_window_strikes):
+            ce_ts_map = lookup[strike]["CE"]
+            pe_ts_map = lookup[strike]["PE"]
+            ce_ts_sorted = sorted(ce_ts_map.keys())
+            pe_ts_sorted = sorted(pe_ts_map.keys())
+            if not ce_ts_sorted or not pe_ts_sorted:
+                missing = ("CE" if not ce_ts_sorted else "") + ("PE" if not pe_ts_sorted else "")
+                logger.debug(
+                    f"PCR [{underlying}|{expiry_date}]: strike {strike} skipped — "
+                    f"no candle data for {missing.strip()}"
+                )
+                continue
+            ce_oi_first = ce_ts_map[ce_ts_sorted[0]]["oi"]
+            ce_oi_last = ce_ts_map[ce_ts_sorted[-1]]["oi"]
+            pe_oi_first = pe_ts_map[pe_ts_sorted[0]]["oi"]
+            pe_oi_last = pe_ts_map[pe_ts_sorted[-1]]["oi"]
+            ce_ltp_first = ce_ts_map[ce_ts_sorted[0]]["close"]
+            ce_ltp_last = ce_ts_map[ce_ts_sorted[-1]]["close"]
+            pe_ltp_first = pe_ts_map[pe_ts_sorted[0]]["close"]
+            pe_ltp_last = pe_ts_map[pe_ts_sorted[-1]]["close"]
+            strike_oi_changes.append({
+                "strike": strike,
+                "ce_oi_chg": round(ce_oi_last - ce_oi_first),
+                "pe_oi_chg": round(pe_oi_last - pe_oi_first),
+                "ce_ltp_chg": round(ce_ltp_last - ce_ltp_first, 2),
+                "pe_ltp_chg": round(pe_ltp_last - pe_ltp_first, 2),
+            })
+
+        logger.debug(
+            f"PCR [{underlying}|{expiry_date}]: strike_oi_changes={len(strike_oi_changes)}/{len(all_window_strikes)} strikes computed"
+        )
 
         # 4. Align and compute PCR series
         series = []
@@ -262,9 +307,26 @@ def get_pcr_chart_data(
                 "pe_declines": pe_dec,
                 "atm_ce_ltp": round(atm_ce_ltp, 2),
                 "atm_pe_ltp": round(atm_pe_ltp, 2),
-                "synthetic_future": round(atm + atm_ce_ltp - atm_pe_ltp, 2) if atm_ce_ltp and atm_pe_ltp else None
+                "synthetic_future": round(atm + atm_ce_ltp - atm_pe_ltp, 2) if atm_ce_ltp and atm_pe_ltp else None,
+                # Velocity fields populated in a second pass below
+                "ce_oi_velocity": 0,
+                "pe_oi_velocity": 0,
+                "pcr_oi_velocity": 0.0,
             })
             first_candle = False
+
+        # Second pass: compute bar-by-bar OI velocity (first bar stays at 0)
+        for i in range(1, len(series)):
+            prev = series[i - 1]
+            curr = series[i]
+            curr["ce_oi_velocity"] = round(curr["ce_oi"] - prev["ce_oi"])
+            curr["pe_oi_velocity"] = round(curr["pe_oi"] - prev["pe_oi"])
+            curr_pcr = curr.get("pcr_oi")
+            prev_pcr = prev.get("pcr_oi")
+            if curr_pcr is not None and prev_pcr is not None:
+                curr["pcr_oi_velocity"] = round(curr_pcr - prev_pcr, _PCR_DECIMAL_PRECISION)
+            else:
+                curr["pcr_oi_velocity"] = None
 
         # 5. Live Snapshot
         live_pcr_oi, live_pcr_vol = None, None
@@ -276,6 +338,16 @@ def get_pcr_chart_data(
             pe_v_t = sum((i.get("pe") or {}).get("volume", 0) or 0 for i in oc_resp.get("chain", []))
             if ce_oi_t > 0: live_pcr_oi = round(pe_oi_t / ce_oi_t, _PCR_DECIMAL_PRECISION)
             if ce_v_t > 0: live_pcr_vol = round(pe_v_t / ce_v_t, _PCR_DECIMAL_PRECISION)
+        else:
+            logger.warning(
+                f"PCR [{underlying}|{expiry_date}]: live option chain snapshot failed — "
+                "market may be closed; live_pcr_oi/vol will be None"
+            )
+
+        logger.debug(
+            f"PCR [{underlying}|{expiry_date}]: series={len(series)} bars, "
+            f"live_pcr_oi={live_pcr_oi}, live_pcr_vol={live_pcr_vol}"
+        )
 
         # 6. Current Stats
         sq_ok, sq_resp, _ = get_quotes(underlying_quote_symbol, quote_exchange, api_key)
@@ -292,6 +364,7 @@ def get_pcr_chart_data(
                     "interval": interval,
                     "current_pcr_oi": live_pcr_oi,
                     "current_pcr_volume": live_pcr_vol,
+                    "strike_oi_changes": strike_oi_changes,
                     "series": _cap_last_n_trading_dates(series, days, IST),
                 },
             },
