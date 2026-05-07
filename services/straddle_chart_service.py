@@ -27,6 +27,11 @@ from services.option_symbol_service import (
     get_option_exchange,
 )
 from services.quotes_service import get_quotes
+from services.strategy_chart_service import (
+    _cap_last_n_trading_dates,
+    _resolve_trading_window,
+)
+from database.token_db_enhanced import fno_search_symbols
 from utils.constants import CRYPTO_EXCHANGES, INSTRUMENT_PERPFUT
 from utils.logging import get_logger
 from utils.datetime_utils import IST, to_ist_epoch
@@ -109,6 +114,10 @@ def get_straddle_chart_data(
         # 1. Fetch underlying history
         success_u, resp_u, _ = get_history(underlying_quote_symbol, quote_exchange, interval, start_date_str, end_date_str, api_key)
         if not success_u or not resp_u.get("data"):
+            logger.warning(
+                f"Straddle [{underlying}|{exchange}]: underlying history empty "
+                f"(window: {start_date_str}→{end_date_str}) — market may be closed"
+            )
             return False, {"status": "error", "message": "Failed to fetch underlying history"}, 400
 
         df_u = pd.DataFrame(resp_u["data"])
@@ -134,6 +143,12 @@ def get_straddle_chart_data(
         for strike in sorted(unique_atm_strikes):
             symbols_to_fetch.append({"symbol": _build_sym(base_symbol, expiry_date.upper(), strike, "CE"), "exchange": options_exchange})
             symbols_to_fetch.append({"symbol": _build_sym(base_symbol, expiry_date.upper(), strike, "PE"), "exchange": options_exchange})
+
+        logger.debug(
+            f"Straddle [{underlying}|{expiry_date}]: {len(df_u)} underlying bars, "
+            f"{len(unique_atm_strikes)} unique ATM strikes, "
+            f"{len(symbols_to_fetch)} option symbols to batch-fetch"
+        )
 
         history_map = _fetch_history_batch(symbols_to_fetch, interval, start_date_str, end_date_str, api_key)
 
@@ -170,6 +185,11 @@ def get_straddle_chart_data(
             })
 
         if not series:
+            logger.warning(
+                f"Straddle [{underlying}|{expiry_date}]: empty series after merge — "
+                f"underlying bars={len(df_u)}, unique_atm_strikes={len(unique_atm_strikes)}, "
+                "CE/PE lookups may be missing; market may be closed or strikes unavailable"
+            )
             return False, {"status": "error", "message": "No straddle data available"}, 404
 
         # 5. Metadata
@@ -183,6 +203,10 @@ def get_straddle_chart_data(
             exp_dt = IST.localize(exp_dt)
             dte = max(0, (exp_dt - IST.localize(datetime.now())).days)
         except Exception: pass
+
+        logger.debug(
+            f"Straddle [{underlying}|{expiry_date}]: series={len(series)} bars, DTE={dte}"
+        )
 
         return (
             True,

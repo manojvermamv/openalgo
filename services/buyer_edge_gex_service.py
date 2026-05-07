@@ -42,9 +42,13 @@ _GEX_CACHE_TTL = 12 * 3600  # 12 hours fallback for market-closed / holidays
 
 def _get_gex_cache(key: tuple) -> dict | None:
     entry = _GEX_CACHE.get(key)
-    if entry and (time.monotonic() - entry["ts"]) < _GEX_CACHE_TTL:
-        _GEX_CACHE.move_to_end(key)
-        return entry["data"]
+    if entry:
+        age_s = time.monotonic() - entry["ts"]
+        if age_s < _GEX_CACHE_TTL:
+            _GEX_CACHE.move_to_end(key)
+            logger.debug(f"GEX cache hit for {key}: age={age_s:.0f}s")
+            return entry["data"]
+        logger.debug(f"GEX cache expired for {key}: age={age_s:.0f}s > TTL={_GEX_CACHE_TTL}s")
     return None
 
 
@@ -256,6 +260,40 @@ def _derive_gex_levels(
         else None
     )
 
+    # ---------- Gamma Punch Targets (nearest negative net_gex strikes) ----------
+    # When spot crosses a strike with net_gex < 0, dealers must delta-hedge
+    # aggressively → momentum punch / acceleration zone.
+    above_neg = [x for x in sorted_chain if x["strike"] > spot_price and x["net_gex"] < 0]
+    below_neg = [x for x in sorted_chain if x["strike"] < spot_price and x["net_gex"] < 0]
+
+    upside_punch_target: float | None = (
+        min(above_neg, key=lambda x: x["strike"])["strike"] if above_neg else None
+    )
+    downside_punch_target: float | None = (
+        max(below_neg, key=lambda x: x["strike"])["strike"] if below_neg else None
+    )
+
+    # punch_proximity_pct: how close spot is to the nearest punch target expressed
+    # as a percentage of the expected move (fallback: 0.5% of spot as proxy).
+    # Use the NEAREST of upside and downside targets (not always upside-first).
+    punch_proximity_pct: float | None = None
+    if spot_price > 0:
+        expected_move_fallback = spot_price * 0.005  # 0.5% of spot
+        # Pick the closer punch target
+        up_dist = abs(upside_punch_target - spot_price) if upside_punch_target is not None else None
+        dn_dist = abs(downside_punch_target - spot_price) if downside_punch_target is not None else None
+        if up_dist is not None and dn_dist is not None:
+            punch_target = upside_punch_target if up_dist <= dn_dist else downside_punch_target
+        elif up_dist is not None:
+            punch_target = upside_punch_target
+        elif dn_dist is not None:
+            punch_target = downside_punch_target
+        else:
+            punch_target = None
+        if punch_target is not None and expected_move_fallback > 0:
+            punch_dist = abs(punch_target - spot_price)
+            punch_proximity_pct = round(punch_dist / expected_move_fallback * 100, 1)
+
     return {
         "gamma_flip": gamma_flip,
         "hvl": hvl,
@@ -264,6 +302,9 @@ def _derive_gex_levels(
         "absolute_wall": absolute_wall,
         "total_net_gex": round(total_net_gex, 2),
         "zero_gamma": gamma_flip,  # alias used by some charting libs
+        "upside_punch_target": upside_punch_target,
+        "downside_punch_target": downside_punch_target,
+        "punch_proximity_pct": punch_proximity_pct,
     }
 
 
@@ -304,7 +345,10 @@ def get_gex_levels(
             # Fallback to cache if live fetch fails (market closed / holiday)
             fallback = _get_gex_cache(cache_key)
             if fallback:
-                logger.info(f"Using GEX fallback cache for {cache_key}")
+                logger.info(
+                    f"GEX [{underlying}|{expiry_date}] live fetch failed — "
+                    "serving last-known data (market-closed / holiday / broker error)"
+                )
                 # Mark as fallback in response
                 fallback["data_mode"] = "last_day_fallback"
                 return True, fallback, 200
@@ -317,7 +361,11 @@ def get_gex_levels(
             # Fallback to cache if live data is empty (market closed but call succeeded)
             fallback = _get_gex_cache(cache_key)
             if fallback:
-                logger.info(f"Using GEX empty-chain fallback cache for {cache_key}")
+                logger.info(
+                    f"GEX [{underlying}|{expiry_date}] empty chain/spot "
+                    "(chain={len(chain)}, spot={spot_price}) — "
+                    "serving last-known data; market may be closed"
+                )
                 fallback["data_mode"] = "last_day_fallback"
                 return True, fallback, 200
             
@@ -327,6 +375,12 @@ def get_gex_levels(
 
         gex_chain = _compute_gex_from_chain(chain, spot_price, options_exchange)
         levels = _derive_gex_levels(gex_chain, spot_price)
+
+        logger.debug(
+            f"GEX [{underlying}|{expiry_date}] live: {len(gex_chain)} strikes, "
+            f"spot={spot_price}, gamma_flip={levels.get('gamma_flip')}, "
+            f"total_net_gex={levels.get('total_net_gex')}"
+        )
 
         response = {
             "status": "success",
@@ -426,7 +480,10 @@ def get_gex_levels_cumulative(
             # Fallback to cache
             fallback = _get_gex_cache(cache_key)
             if fallback:
-                logger.info(f"Using GEX cumulative fallback cache for {cache_key}")
+                logger.info(
+                    f"GEX cumulative [{underlying}] all expiries failed — "
+                    "serving last-known data (market-closed / holiday / broker error)"
+                )
                 fallback["data_mode"] = "last_day_fallback"
                 return True, fallback, 200
             return False, {"status": "error", "message": "No valid expiry data found"}, 404
