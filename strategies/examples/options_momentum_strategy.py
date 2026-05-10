@@ -110,7 +110,7 @@ MAX_CONSECUTIVE_LOSSES    = int(os.getenv("MAX_CONSECUTIVE_LOSSES",   "3"))   # 
 ENTRY_COOLDOWN_SECS       = int(os.getenv("ENTRY_COOLDOWN_SECS",      "300")) # seconds between entries; 0 = none
 MAX_DAILY_LOSS_PCT        = float(os.getenv("MAX_DAILY_LOSS_PCT",     "2.0")) # % of account capital; 0 = disabled
 MAX_DAILY_LOSS_AMOUNT     = float(os.getenv("MAX_DAILY_LOSS_AMOUNT",  "0.0")) # absolute ₹ amount; 0 = disabled
-ACCOUNT_CAPITAL           = float(os.getenv("ACCOUNT_CAPITAL",     "1000000"))# used only for MAX_DAILY_LOSS_PCT
+RISK_PERCENT              = float(os.getenv("RISK_PERCENT",        "1.0"))    # max premium-risk % per trade
 
 # Trailing Stop Loss — switchable between spot-price based and option-premium based.
 #
@@ -165,6 +165,11 @@ MIN_VOL_FILTER       = float(os.getenv("MIN_VOL_FILTER",       "10000"))  # mini
 # attractive enough to enter even if the directional signal is positive.
 ASYM_SCORE_THRESHOLD = float(os.getenv("ASYM_SCORE_THRESHOLD", "0.55"))
 
+# When false, a failed checkpoint strike selection skips the trade instead of
+# falling back to a simple OTM offset.  Safer for a long-options buyer because
+# thin OI / high IV / poor asymmetry usually means seller edge, not buyer edge.
+ALLOW_CHECKPOINT_FALLBACK = os.getenv("ALLOW_CHECKPOINT_FALLBACK", "false").lower() in ("1", "true", "yes")
+
 # Delta target range for strike selection.  Slightly OTM options for long buying
 # typically carry a delta of 0.25–0.45 (absolute value).
 DELTA_TARGET_LOW     = float(os.getenv("DELTA_TARGET_LOW",     "0.25"))
@@ -192,6 +197,8 @@ def _validate_config():
         errors.append(f"PREMIUM_STOP_PCT={PREMIUM_STOP_PCT} must be in range (0, 100)")
     if PREMIUM_TARGET_PCT <= 0:
         errors.append(f"PREMIUM_TARGET_PCT={PREMIUM_TARGET_PCT} must be > 0")
+    if RISK_PERCENT <= 0:
+        errors.append(f"RISK_PERCENT={RISK_PERCENT} must be > 0")
     if TRAIL_SL_MODE not in ("spot", "premium", "both"):
         errors.append(
             f"TRAIL_SL_MODE={TRAIL_SL_MODE!r} must be one of 'spot', 'premium', 'both'"
@@ -213,6 +220,10 @@ def _validate_config():
         errors.append(f"IV_RANK_MAX_ENTRY={IV_RANK_MAX_ENTRY} must be in range (0, 100]")
     if ASYM_SCORE_THRESHOLD <= 0 or ASYM_SCORE_THRESHOLD >= 1:
         errors.append(f"ASYM_SCORE_THRESHOLD={ASYM_SCORE_THRESHOLD} must be in range (0, 1)")
+    if ORDER_STATUS_MAX_RETRIES < 1:
+        errors.append(f"ORDER_STATUS_MAX_RETRIES={ORDER_STATUS_MAX_RETRIES} must be >= 1")
+    if ORDER_STATUS_POLL_INTERVAL < 0:
+        errors.append(f"ORDER_STATUS_POLL_INTERVAL={ORDER_STATUS_POLL_INTERVAL} must be >= 0")
 
     if errors:
         print("[CONFIG] Startup validation failed:")
@@ -251,11 +262,12 @@ def _macd(series: pd.Series, fast=12, slow=26, sig=9):
 
 
 def _vwap(df: pd.DataFrame) -> pd.Series:
-    """Session VWAP (no groupby — suitable for intraday slice)."""
+    """Session-anchored VWAP, reset at each trading date."""
     typical = (df["high"] + df["low"] + df["close"]) / 3
-    cum_vol = df["volume"].cumsum()
-    cum_tvol = (typical * df["volume"]).cumsum()
-    return cum_tvol / cum_vol
+    session = pd.Series(df.index.date, index=df.index)
+    cum_vol = df["volume"].groupby(session).cumsum()
+    cum_tvol = (typical * df["volume"]).groupby(session).cumsum()
+    return cum_tvol / cum_vol.replace(0, pd.NA)
 
 
 def _bbands(series: pd.Series, period=20, num_std=2.0):
@@ -298,7 +310,7 @@ def _classify_ce_flow(chain_rows: list[dict]) -> tuple[int, str]:
       +2  Call Buying     (bullish — call buyers adding; increasing demand)
       +1  Short Covering  (mildly bullish)
       -1  Long Unwinding  (mildly bearish)
-      -2  Call Writing    (bullish — call sellers adding, cap overhead)
+      -2  Call Writing    (bearish/resistance — call sellers adding, cap overhead)
     """
     ce_oi_chg  = sum(r.get("ce_oi_chg", 0) or 0 for r in chain_rows)
     ce_ltp_chg = sum(r.get("ce_ltp_chg", 0) or 0 for r in chain_rows)
@@ -765,6 +777,10 @@ class OptionsMomentumBot:
         # Guards all reads/writes to position lifecycle (positions dict mutations,
         # session counters, daily P&L) across WebSocket, strategy, and exit threads.
         self.state_lock = threading.Lock()
+        # Accepted orders that have not reached a terminal broker status yet.
+        # These prevent duplicate entries/exits while orderstatus catches up.
+        self.pending_entries: dict[str, dict] = {}
+        self.pending_exits: dict[str, dict] = {}
         self.running    = True
         self.stop_event = threading.Event()
 
@@ -792,8 +808,9 @@ class OptionsMomentumBot:
         print(f"[BOT] Premium SL: {PREMIUM_STOP_PCT}% | Target: {PREMIUM_TARGET_PCT}%")
         print(f"[BOT] Risk gates — max trades/session: {MAX_TRADES_PER_SESSION} | "
               f"max loss streak: {MAX_CONSECUTIVE_LOSSES} | cooldown: {ENTRY_COOLDOWN_SECS}s")
-        print(f"[BOT] Daily loss limit — {MAX_DAILY_LOSS_PCT}% of capital "
-              f"| ₹{MAX_DAILY_LOSS_AMOUNT:.0f} absolute")
+        print(f"[BOT] Daily loss limit — {MAX_DAILY_LOSS_PCT}% of live available cash | ₹{MAX_DAILY_LOSS_AMOUNT:.0f} absolute")
+        print(f"[BOT] Per-trade risk cap: {RISK_PERCENT}% of live available cash "
+              f"| checkpoint fallback: {'enabled' if ALLOW_CHECKPOINT_FALLBACK else 'disabled'}")
         print(f"[BOT] Trail SL mode: {TRAIL_SL_MODE} | reward {SPOT_REWARD_PCT}% spot | "
               f"activates at {TRAIL_ACTIVATE_AT_PCT}% | step {TRAIL_STEP_RR_PCT}% of reward")
         print(f"[BOT] Long-only mode: {'ENABLED — CE (calls) only' if LONG_ONLY_MODE else 'disabled (CE + PE)'}")
@@ -885,6 +902,26 @@ class OptionsMomentumBot:
         """
         return INDEX_EXCHANGE if symbol in INDEX_UNDERLYINGS else SPOT_EXCHANGE
 
+    def _available_capital(self) -> float:
+        """
+        Return live available cash from OpenAlgo funds(), falling back to
+        `0.0` only when the broker/API response is unavailable.
+        """
+        try:
+            resp = self.client.funds()
+            data = resp.get("data", {}) if isinstance(resp, dict) else {}
+            for key in ("availablecash", "available_cash", "cash", "available_margin", "net"):
+                value = data.get(key)
+                if value is None:
+                    continue
+                capital = float(value)
+                if capital > 0:
+                    return capital
+            print(f"[FUNDS] available cash not found in funds() response: {resp}")
+        except Exception as exc:
+            print(f"[FUNDS] funds() fetch error: {exc}")
+        return 0.0
+
     # ── Risk Gate ─────────────────────────────────────────────────────────────
 
     def _check_risk_gates(self) -> tuple[bool, str]:
@@ -896,7 +933,7 @@ class OptionsMomentumBot:
           1. Max trades per session
           2. Max consecutive losses (loss streak)
           3. Entry cooldown (minimum seconds between entries)
-          4. Daily loss limit (percentage of account capital OR absolute ₹ amount)
+          4. Daily loss limit (percentage of live available cash OR absolute ₹ amount)
         """
         self._maybe_reset_daily_state()
 
@@ -921,7 +958,8 @@ class OptionsMomentumBot:
 
         # 4a. Daily loss — percentage of account capital
         if MAX_DAILY_LOSS_PCT > 0:
-            max_loss_amt = ACCOUNT_CAPITAL * (MAX_DAILY_LOSS_PCT / 100.0)
+            capital = self._available_capital()
+            max_loss_amt = capital * (MAX_DAILY_LOSS_PCT / 100.0)
             if self.daily_pnl <= -max_loss_amt:
                 reason = (
                     f"Daily loss limit hit ({MAX_DAILY_LOSS_PCT}% = "
@@ -1347,8 +1385,32 @@ class OptionsMomentumBot:
                 print(f"[DATA] optiongreeks error for {opt_sym}: {exc}")
         return ce_delta, pe_delta
 
+    def _fetch_option_delta(self, symbol: str, option_symbol: str | None) -> float | None:
+        """
+        Fetch absolute delta for a candidate option strike. Used by the strike
+        filter so DELTA_TARGET_LOW/HIGH are real Greeks gates when optiongreeks()
+        is available.
+        """
+        if not option_symbol:
+            return None
+        try:
+            resp = self.client.optiongreeks(
+                symbol=option_symbol,
+                exchange=FNO_EXCHANGE,
+                underlying_symbol=symbol,
+                underlying_exchange=self._underlying_exchange(symbol),
+            )
+            if resp and resp.get("status") == "success":
+                delta = resp.get("greeks", {}).get("delta")
+                if delta is not None:
+                    return abs(float(delta))
+        except Exception as exc:
+            print(f"[DATA] option delta error for {option_symbol}: {exc}")
+        return None
+
     def _select_best_strike(
         self,
+        symbol: str,
         chain_rows: list[dict],
         spot: float,
         direction: str,   # "CE" or "PE"
@@ -1380,6 +1442,12 @@ class OptionsMomentumBot:
         """
         if not chain_rows or not spot:
             return None
+        if iv_rank is not None and iv_rank >= IV_RANK_MAX_ENTRY:
+            print(
+                f"[STRIKE] IVR {iv_rank:.1f}% >= max {IV_RANK_MAX_ENTRY:.1f}% - "
+                "buyer edge rejected"
+            )
+            return None
 
         # ── 1. Strike range proxy for target delta (0.25–0.45 absolute) ──────
         # Slightly OTM CE: between ATM (spot) and 5% above spot
@@ -1409,6 +1477,27 @@ class OptionsMomentumBot:
 
         if not candidates:
             return None
+
+        opt_key = "ce_symbol" if direction == "CE" else "pe_symbol"
+        delta_checked: list[dict] = []
+        delta_available = False
+        for row in candidates:
+            abs_delta = self._fetch_option_delta(symbol, row.get(opt_key))
+            if abs_delta is None:
+                continue
+            delta_available = True
+            if DELTA_TARGET_LOW <= abs_delta <= DELTA_TARGET_HIGH:
+                row = dict(row)
+                row["_abs_delta"] = abs_delta
+                delta_checked.append(row)
+        if delta_available:
+            if not delta_checked:
+                print(
+                    f"[STRIKE] No candidate delta in target range "
+                    f"{DELTA_TARGET_LOW:.2f}-{DELTA_TARGET_HIGH:.2f}"
+                )
+                return None
+            candidates = delta_checked
 
         # ── 3. Asymmetry score ────────────────────────────────────────────────
         # Weights from check_all_checkpoints (total = 1.0):
@@ -1509,20 +1598,58 @@ class OptionsMomentumBot:
 
             now = datetime.now().date()
             for exp in expiry_list:
-                try:
-                    exp_date = datetime.strptime(str(exp), "%d%b%y").date()
-                except ValueError:
+                exp_text = str(exp).strip().upper()
+                exp_date = None
+                for fmt in ("%d%b%y", "%d-%b-%y", "%d%b%Y", "%d-%b-%Y"):
                     try:
-                        exp_date = datetime.strptime(str(exp), "%d%b%Y").date()
+                        exp_date = datetime.strptime(exp_text, fmt).date()
+                        break
                     except ValueError:
-                        continue
+                        pass
+                if exp_date is None:
+                    continue
                 dte = (exp_date - now).days
                 if DTE_MIN <= dte <= DTE_MAX:
-                    return str(exp)
+                    # expiry() docs return DD-MMM-YY; optionchain() expects DDMMMYY.
+                    return exp_date.strftime("%d%b%y").upper()
             return None
         except Exception as exc:
             print(f"[DATA] expiry fetch error for {symbol}: {exc}")
             return None
+
+    def _poll_order_status(
+        self,
+        order_id: str,
+        max_retries: int = ORDER_STATUS_MAX_RETRIES,
+        sleep_secs: float = ORDER_STATUS_POLL_INTERVAL,
+    ) -> tuple[str | None, float | None, dict]:
+        """
+        Poll orderstatus and preserve pending state for accepted-but-open orders.
+        Returns (status, average_price, raw_order_data).
+        """
+        if not order_id:
+            return None, None, {}
+        last_status = None
+        last_data: dict = {}
+        for attempt in range(max_retries):
+            time.sleep(sleep_secs)
+            try:
+                resp = self.client.orderstatus(
+                    order_id=order_id, strategy=self.strategy_name
+                )
+                od = resp.get("data", {}) if resp else {}
+                last_data = od
+                last_status = str(od.get("order_status", "")).lower() or None
+                if last_status == "complete":
+                    p = float(od.get("average_price", 0) or 0)
+                    return "complete", p if p > 0 else None, od
+                if last_status in ("rejected", "cancelled", "canceled"):
+                    print(f"[ORDER] Order {order_id} {last_status} - no fill")
+                    return last_status, None, od
+            except Exception as exc:
+                print(f"[ORDER] orderstatus poll error (attempt {attempt + 1}): {exc}")
+        print(f"[ORDER] {order_id} still pending after {max_retries} retries - keeping for reconciliation")
+        return last_status, None, last_data
 
     def _get_executed_price(
         self,
@@ -1562,7 +1689,7 @@ class OptionsMomentumBot:
 
     # ── Broker Order Helpers ─────────────────────────────────────────────────
 
-    def _cancel_broker_orders(self, underlying: str) -> bool:
+    def _cancel_broker_orders(self, underlying: str) -> dict | None:
         """
         Cancel any pending broker-side SL-M and LIMIT target orders for *underlying*.
         Called before software-initiated exits so the broker orders don't double-execute.
@@ -1581,7 +1708,7 @@ class OptionsMomentumBot:
         pos = self.positions.get(underlying)
         if not pos:
             return False
-        broker_filled = False
+        broker_filled: dict | None = None
         for key, label in (("sl_order_id", "SL-M"), ("tgt_order_id", "Target LIMIT")):
             oid = pos.get(key)
             if not oid:
@@ -1590,10 +1717,15 @@ class OptionsMomentumBot:
             try:
                 pre_resp = self.client.orderstatus(order_id=oid, strategy=self.strategy_name)
                 pre_od   = pre_resp.get("data", {}) if pre_resp else {}
-                if pre_od.get("order_status") == "complete":
+                pre_status = str(pre_od.get("order_status", "")).lower()
+                if pre_status == "complete":
                     print(f"[CANCEL] {underlying}: {label} order {oid} already filled — skip cancel")
                     pos[key] = None
-                    broker_filled = True
+                    broker_filled = {
+                        "order_id": oid,
+                        "label": label,
+                        "price": float(pre_od.get("average_price", 0) or 0),
+                    }
                     continue
             except Exception as exc:
                 print(f"[CANCEL] {underlying}: {label} pre-cancel status error: {exc}")
@@ -1610,13 +1742,21 @@ class OptionsMomentumBot:
             try:
                 post_resp = self.client.orderstatus(order_id=oid, strategy=self.strategy_name)
                 post_od   = post_resp.get("data", {}) if post_resp else {}
-                if post_od.get("order_status") == "complete":
+                post_status = str(post_od.get("order_status", "")).lower()
+                if post_status == "complete":
                     print(f"[CANCEL] {underlying}: {label} order {oid} filled during cancel window!")
-                    broker_filled = True
+                    pos[key] = None
+                    broker_filled = {
+                        "order_id": oid,
+                        "label": label,
+                        "price": float(post_od.get("average_price", 0) or 0),
+                    }
+                elif post_status in ("cancelled", "canceled", "rejected"):
+                    pos[key] = None
+                else:
+                    print(f"[CANCEL] {underlying}: {label} order {oid} status unknown/open ({post_status}); keeping id")
             except Exception as exc:
                 print(f"[CANCEL] {underlying}: {label} post-cancel status error: {exc}")
-
-            pos[key] = None
 
         return broker_filled
 
@@ -1700,13 +1840,14 @@ class OptionsMomentumBot:
                 print(f"\n[BROKER-FILL] {ul} {pos.get('option_type','')}: {reason} | P&L ₹{pnl:.2f}")
 
                 # Update session / daily risk state
-                self.daily_pnl += pnl
-                if pnl < 0:
-                    self.session_consecutive_losses += 1
-                    print(f"[RISK] Loss streak: {self.session_consecutive_losses} | "
-                          f"Daily P&L ₹{self.daily_pnl:.0f}")
-                else:
-                    self.session_consecutive_losses = 0
+                with self.state_lock:
+                    self.daily_pnl += pnl
+                    if pnl < 0:
+                        self.session_consecutive_losses += 1
+                        print(f"[RISK] Loss streak: {self.session_consecutive_losses} | "
+                              f"Daily P&L ₹{self.daily_pnl:.0f}")
+                    else:
+                        self.session_consecutive_losses = 0
 
                 self._send_telegram(
                     f"{pnl_sign} {self.strategy_name} EXIT (broker)\n"
@@ -1739,6 +1880,139 @@ class OptionsMomentumBot:
                 break   # position cleaned up; no need to check the other order
 
     # ── Order Placement ──────────────────────────────────────────────────────
+
+    def _register_filled_entry(
+        self,
+        underlying: str,
+        option_symbol: str,
+        qty: int,
+        spot: float,
+        direction: str,
+        executed: float,
+    ) -> bool:
+        """Record a confirmed BUY fill and place broker-side protection."""
+        sl = round(executed * (1 - PREMIUM_STOP_PCT / 100), 2)
+        tgt = round(executed * (1 + PREMIUM_TARGET_PCT / 100), 2)
+        reward_dist = spot * SPOT_REWARD_PCT / 100.0
+
+        with self.state_lock:
+            self.positions[underlying] = {
+                "symbol": option_symbol,
+                "entry_premium": executed,
+                "qty": qty,
+                "option_type": direction,
+                "sl": sl,
+                "tgt": tgt,
+                "spot_symbol": underlying,
+                "spot_entry": spot,
+                "reward_dist": reward_dist,
+                "trail_active": False,
+                "trail_peak": None,
+                "trail_sl_spot": None,
+                "premium_trail_active": False,
+                "premium_trail_peak": None,
+                "premium_trail_sl": None,
+                "sl_order_id": None,
+                "tgt_order_id": None,
+                "broker_protection": False,
+            }
+
+        sl_placed = False
+        tgt_placed = False
+        if BROKER_SL_ORDERS:
+            for attempt in range(3):
+                try:
+                    sl_resp = self.client.placeorder(
+                        strategy=self.strategy_name,
+                        symbol=option_symbol,
+                        exchange=FNO_EXCHANGE,
+                        action="SELL",
+                        quantity=qty,
+                        price_type="SL-M",
+                        product="NRML",
+                        price=0,
+                        trigger_price=sl,
+                    )
+                    if sl_resp and sl_resp.get("status") == "success":
+                        with self.state_lock:
+                            self.positions[underlying]["sl_order_id"] = sl_resp.get("orderid")
+                        sl_placed = True
+                        print(
+                            f"        [BROKER-SL]  SL-M order placed  | "
+                            f"trigger=₹{sl:.2f} | id={sl_resp.get('orderid')}"
+                        )
+                        break
+                    print(f"[WARN] Broker SL-M attempt {attempt + 1} failed: {sl_resp}")
+                    time.sleep(1)
+                except Exception as exc:
+                    print(f"[WARN] Broker SL-M attempt {attempt + 1} exception: {exc}")
+                    time.sleep(1)
+
+            if not sl_placed:
+                self._send_telegram(
+                    f"🚨 {self.strategy_name}: BROKER SL-M FAILED for "
+                    f"{underlying} {direction} {option_symbol}\n"
+                    f"Entry ₹{executed:.2f} | SL should be ₹{sl:.2f}\n"
+                    "⚠️ POSITION UNPROTECTED — place SL-M manually!",
+                    priority=9,
+                )
+            else:
+                try:
+                    tgt_resp = self.client.placeorder(
+                        strategy=self.strategy_name,
+                        symbol=option_symbol,
+                        exchange=FNO_EXCHANGE,
+                        action="SELL",
+                        quantity=qty,
+                        price_type="LIMIT",
+                        product="NRML",
+                        price=tgt,
+                    )
+                    if tgt_resp and tgt_resp.get("status") == "success":
+                        with self.state_lock:
+                            self.positions[underlying]["tgt_order_id"] = tgt_resp.get("orderid")
+                        tgt_placed = True
+                        print(
+                            f"        [BROKER-TGT] LIMIT order placed  | "
+                            f"price=₹{tgt:.2f}   | id={tgt_resp.get('orderid')}"
+                        )
+                    else:
+                        print(f"[WARN] Broker target LIMIT order not placed: {tgt_resp}")
+                except Exception as exc:
+                    print(f"[WARN] Broker target order exception: {exc}")
+
+                if tgt_placed:
+                    with self.state_lock:
+                        self.positions[underlying]["broker_protection"] = True
+
+        self._subscribe(FNO_EXCHANGE, option_symbol)
+        if TRAIL_SL_MODE in ("spot", "both"):
+            self._subscribe_spot(underlying)
+
+        with self.state_lock:
+            self.session_trade_count += 1
+            self.last_entry_time = datetime.now()
+            broker_ok = self.positions[underlying].get("broker_protection")
+
+        print(f"[ENTRY] {underlying} | {option_symbol} × {qty} @ ₹{executed:.2f}")
+        print(f"        SL ₹{sl:.2f} | TGT ₹{tgt:.2f} | "
+              f"Broker protection: {'OK' if broker_ok else 'PARTIAL/NONE'}")
+        if TRAIL_SL_MODE in ("spot", "both"):
+            print(f"        Spot entry {spot:.1f} | reward dist {reward_dist:.1f} pts | "
+                  f"spot trail activates at +{reward_dist * TRAIL_ACTIVATE_AT_PCT / 100:.1f} pts")
+        if TRAIL_SL_MODE in ("premium", "both"):
+            prem_reward = executed * (PREMIUM_TARGET_PCT / 100.0)
+            print(f"        Premium entry ₹{executed:.2f} | prem reward ₹{prem_reward:.2f} | "
+                  f"trail activates at +₹{prem_reward * TRAIL_ACTIVATE_AT_PCT / 100:.2f}")
+
+        self._send_telegram(
+            f"📈 {self.strategy_name} ENTRY\n"
+            f"{underlying} {direction} | {option_symbol} × {qty}\n"
+            f"Entry ₹{executed:.2f} | SL ₹{sl:.2f} | TGT ₹{tgt:.2f}\n"
+            f"Spot ₹{spot:.1f}",
+            priority=7,
+        )
+        return True
 
     def _place_entry(
         self,
@@ -1773,8 +2047,29 @@ class OptionsMomentumBot:
             )
             if resp.get("status") == "success":
                 order_id = resp.get("orderid")
-                executed = self._get_executed_price(order_id)
+                if not order_id:
+                    print(f"[ERROR] BUY accepted without order id: {resp}")
+                    self._send_telegram(
+                        f"🚨 {self.strategy_name}: BUY response missing order id for "
+                        f"{underlying} {direction} {option_symbol}. Verify orderbook manually.",
+                        priority=9,
+                    )
+                    return False
+                status, executed, _ = self._poll_order_status(order_id)
                 if not executed:
+                    if status in ("rejected", "cancelled", "canceled"):
+                        print(f"[ERROR] BUY order {order_id} {status}: {resp}")
+                        return False
+                    if status not in ("rejected", "cancelled", "canceled"):
+                        with self.state_lock:
+                            self.pending_entries[underlying] = {
+                                "order_id": order_id,
+                                "symbol": option_symbol,
+                                "qty": qty,
+                                "spot": spot,
+                                "direction": direction,
+                                "created_at": datetime.now(),
+                            }
                     # Order accepted but still pending after retries.
                     # Keep tracking via order_id so we don't abandon a live position.
                     print(
@@ -1789,139 +2084,9 @@ class OptionsMomentumBot:
                     )
                     return False
 
-                sl  = round(executed * (1 - PREMIUM_STOP_PCT / 100), 2)
-                tgt = round(executed * (1 + PREMIUM_TARGET_PCT / 100), 2)
-
-                # Spot-based trailing SL state
-                reward_dist = spot * SPOT_REWARD_PCT / 100.0
-
-                self.positions[underlying] = {
-                    "symbol":          option_symbol,
-                    "entry_premium":   executed,
-                    "qty":             qty,
-                    "option_type":     direction,      # "CE" or "PE"
-                    "sl":              sl,
-                    "tgt":             tgt,
-                    # spot trailing fields (used when TRAIL_SL_MODE is "spot" or "both")
-                    "spot_symbol":     underlying,     # same name on SPOT_EXCHANGE
-                    "spot_entry":      spot,
-                    "reward_dist":     reward_dist,
-                    "trail_active":    False,
-                    "trail_peak":      None,
-                    "trail_sl_spot":   None,
-                    # option-premium trailing fields (used when TRAIL_SL_MODE is "premium" or "both")
-                    "premium_trail_active": False,
-                    "premium_trail_peak":   None,
-                    "premium_trail_sl":     None,
-                    # broker-side protective order IDs (None until placed)
-                    "sl_order_id":     None,
-                    "tgt_order_id":    None,
-                    # broker protection health flag
-                    "broker_protection": False,
-                }
-
-                # ── Broker-side protective SL-M and LIMIT target orders ────────
-                # Placed immediately after BUY fill so the exchange holds the
-                # floor even if this script loses connectivity or crashes.
-                sl_placed  = False
-                tgt_placed = False
-                if BROKER_SL_ORDERS:
-                    # ── SL-M order (with retry on first failure) ───────────────
-                    for _sl_attempt in range(3):
-                        try:
-                            sl_resp = self.client.placeorder(
-                                strategy=self.strategy_name,
-                                symbol=option_symbol,
-                                exchange=FNO_EXCHANGE,
-                                action="SELL",
-                                quantity=qty,
-                                price_type="SL-M",
-                                product="NRML",
-                                price=0,
-                                trigger_price=sl,
-                            )
-                            if sl_resp and sl_resp.get("status") == "success":
-                                self.positions[underlying]["sl_order_id"] = sl_resp.get("orderid")
-                                sl_placed = True
-                                print(
-                                    f"        [BROKER-SL]  SL-M order placed  | "
-                                    f"trigger=₹{sl:.2f} | id={sl_resp.get('orderid')}"
-                                )
-                                break
-                            else:
-                                print(f"[WARN] Broker SL-M attempt {_sl_attempt + 1} failed: {sl_resp}")
-                                time.sleep(1)
-                        except Exception as _exc_sl:
-                            print(f"[WARN] Broker SL-M attempt {_sl_attempt + 1} exception: {_exc_sl}")
-                            time.sleep(1)
-
-                    if not sl_placed:
-                        # Mark position as unprotected and raise urgent alert
-                        self.positions[underlying]["broker_protection"] = False
-                        self._send_telegram(
-                            f"🚨 {self.strategy_name}: BROKER SL-M FAILED for "
-                            f"{underlying} {direction} {option_symbol}\n"
-                            f"Entry ₹{executed:.2f} | SL should be ₹{sl:.2f}\n"
-                            "⚠️ POSITION UNPROTECTED — place SL-M manually!",
-                            priority=9,
-                        )
-                    else:
-                        # ── LIMIT target order ─────────────────────────────────
-                        try:
-                            tgt_resp = self.client.placeorder(
-                                strategy=self.strategy_name,
-                                symbol=option_symbol,
-                                exchange=FNO_EXCHANGE,
-                                action="SELL",
-                                quantity=qty,
-                                price_type="LIMIT",
-                                product="NRML",
-                                price=tgt,
-                            )
-                            if tgt_resp and tgt_resp.get("status") == "success":
-                                self.positions[underlying]["tgt_order_id"] = tgt_resp.get("orderid")
-                                tgt_placed = True
-                                print(
-                                    f"        [BROKER-TGT] LIMIT order placed  | "
-                                    f"price=₹{tgt:.2f}   | id={tgt_resp.get('orderid')}"
-                                )
-                            else:
-                                print(f"[WARN] Broker target LIMIT order not placed: {tgt_resp}")
-                        except Exception as _exc_tgt:
-                            print(f"[WARN] Broker target order exception: {_exc_tgt}")
-
-                        if sl_placed and tgt_placed:
-                            self.positions[underlying]["broker_protection"] = True
-
-                # Always subscribe option feed (drives fixed SL/target and premium trail)
-                self._subscribe(FNO_EXCHANGE, option_symbol)
-                # Subscribe underlying spot feed only when spot trailing is enabled
-                if TRAIL_SL_MODE in ("spot", "both"):
-                    self._subscribe_spot(underlying)
-
-                # Update session state
-                self.session_trade_count += 1
-                self.last_entry_time = datetime.now()
-
-                print(f"[ENTRY] {underlying} | {option_symbol} × {qty} @ ₹{executed:.2f}")
-                print(f"        SL ₹{sl:.2f} | TGT ₹{tgt:.2f} | "
-                      f"Broker protection: {'OK' if self.positions[underlying].get('broker_protection') else 'PARTIAL/NONE'}")
-                if TRAIL_SL_MODE in ("spot", "both"):
-                    print(f"        Spot entry {spot:.1f} | reward dist {reward_dist:.1f} pts | "
-                          f"spot trail activates at +{reward_dist * TRAIL_ACTIVATE_AT_PCT / 100:.1f} pts")
-                if TRAIL_SL_MODE in ("premium", "both"):
-                    prem_reward = executed * (PREMIUM_TARGET_PCT / 100.0)
-                    print(f"        Premium entry ₹{executed:.2f} | prem reward ₹{prem_reward:.2f} | "
-                          f"trail activates at +₹{prem_reward * TRAIL_ACTIVATE_AT_PCT / 100:.2f}")
-
-                self._send_telegram(
-                    f"📈 {self.strategy_name} ENTRY\n"
-                    f"{underlying} {direction} | {option_symbol} × {qty}\n"
-                    f"Entry ₹{executed:.2f} | SL ₹{sl:.2f} | TGT ₹{tgt:.2f}\n"
-                    f"Spot ₹{spot:.1f}",
-                    priority=7,
+                return self._register_filled_entry(
+                    underlying, option_symbol, qty, spot, direction, executed
                 )
-                return True
             print(f"[ERROR] Order failed: {resp}")
         except Exception as exc:
             print(f"[ERROR] Entry order exception: {exc}")
@@ -1939,21 +2104,22 @@ class OptionsMomentumBot:
         # Cancel pending broker-side SL-M and target orders before placing the
         # software exit so the exchange does not execute both sides.
         # Returns True if a broker order was already filled (double-exit risk).
-        broker_already_filled = self._cancel_broker_orders(underlying)
+        broker_fill = self._cancel_broker_orders(underlying)
 
-        if broker_already_filled:
+        if broker_fill:
             # A broker SL-M or target order already filled while we tried to cancel.
             # Do NOT place another market SELL — the position is already squared off.
             # Use last known LTP as proxy exit price for P&L reporting.
             print(f"[EXIT] {underlying}: broker order already filled — skipping software SELL")
-            exit_price = self.ltp_map.get(opt_sym, pos["entry_premium"])
+            exit_price = broker_fill.get("price") or self.ltp_map.get(opt_sym, pos["entry_premium"])
             pnl = (exit_price - pos["entry_premium"]) * pos["qty"]
             pnl_sign = "✅" if pnl >= 0 else "❌"
-            self.daily_pnl += pnl
-            if pnl < 0:
-                self.session_consecutive_losses += 1
-            else:
-                self.session_consecutive_losses = 0
+            with self.state_lock:
+                self.daily_pnl += pnl
+                if pnl < 0:
+                    self.session_consecutive_losses += 1
+                else:
+                    self.session_consecutive_losses = 0
             self._send_telegram(
                 f"{pnl_sign} {self.strategy_name} EXIT (broker-filled, no sw-SELL)\n"
                 f"{underlying} {pos.get('option_type','')} | {opt_sym}\n"
@@ -1965,8 +2131,9 @@ class OptionsMomentumBot:
             self._unsubscribe(FNO_EXCHANGE, opt_sym)
             if TRAIL_SL_MODE in ("spot", "both"):
                 self._unsubscribe_spot(pos.get("spot_symbol", underlying))
-            self.positions.pop(underlying, None)
-            self._prev_straddle.pop(underlying, None)
+            with self.state_lock:
+                self.positions.pop(underlying, None)
+                self._prev_straddle.pop(underlying, None)
             with self.exit_lock:
                 self.exit_queue.discard(opt_sym)
             return
@@ -1985,9 +2152,47 @@ class OptionsMomentumBot:
             )
             if resp.get("status") == "success":
                 exit_order_id = resp.get("orderid")
-                # Confirm fill via orderstatus; fall back to last-known LTP on timeout.
-                actual_exit = self._get_executed_price(exit_order_id) if exit_order_id else None
-                exit_price  = actual_exit or self.ltp_map.get(opt_sym, pos["entry_premium"])
+                if not exit_order_id:
+                    print(f"[EXIT ERROR] SELL accepted without order id: {resp}")
+                    self._send_telegram(
+                        f"🚨 {self.strategy_name}: EXIT response missing order id for {underlying} {opt_sym}\n"
+                        "Verify orderbook manually before retrying.",
+                        priority=9,
+                    )
+                    with self.exit_lock:
+                        self.exit_queue.discard(opt_sym)
+                    return
+                # Confirm fill via orderstatus.  A pending SELL must stay tracked;
+                # falling back to LTP here would hide a live position.
+                status, actual_exit, _ = self._poll_order_status(exit_order_id) if exit_order_id else (None, None, {})
+                if status in ("rejected", "cancelled", "canceled"):
+                    print(f"[EXIT ERROR] SELL order {exit_order_id} {status}")
+                    self._send_telegram(
+                        f"🚨 {self.strategy_name}: EXIT FAILED for {underlying} {opt_sym}\n"
+                        f"SELL order {exit_order_id} {status}\n"
+                        "⚠️ POSITION STILL OPEN — manual exit required!",
+                        priority=9,
+                    )
+                    with self.exit_lock:
+                        self.exit_queue.discard(opt_sym)
+                    return
+                if status != "complete" or actual_exit is None:
+                    with self.state_lock:
+                        self.pending_exits[underlying] = {
+                            "order_id": exit_order_id,
+                            "reason": reason,
+                            "created_at": datetime.now(),
+                        }
+                        pos["exit_pending"] = True
+                    print(f"[EXIT] {underlying}: SELL order {exit_order_id} pending — keeping position tracked")
+                    self._send_telegram(
+                        f"⚠️ {self.strategy_name}: EXIT order pending\n"
+                        f"{underlying} {opt_sym} | order {exit_order_id}\n"
+                        "Position remains tracked until orderstatus confirms completion.",
+                        priority=8,
+                    )
+                    return
+                exit_price = actual_exit
                 exit_confirmed = True
 
                 pnl = (exit_price - pos["entry_premium"]) * pos["qty"]
@@ -1995,13 +2200,14 @@ class OptionsMomentumBot:
                 print(f"[EXIT] {underlying}: exit ₹{exit_price:.2f} | P&L ₹{pnl:.2f}")
 
                 # Update session / daily risk state
-                self.daily_pnl += pnl
-                if pnl < 0:
-                    self.session_consecutive_losses += 1
-                    print(f"[RISK] Loss streak: {self.session_consecutive_losses} | "
-                          f"Daily P&L ₹{self.daily_pnl:.0f}")
-                else:
-                    self.session_consecutive_losses = 0   # reset on a win
+                with self.state_lock:
+                    self.daily_pnl += pnl
+                    if pnl < 0:
+                        self.session_consecutive_losses += 1
+                        print(f"[RISK] Loss streak: {self.session_consecutive_losses} | "
+                              f"Daily P&L ₹{self.daily_pnl:.0f}")
+                    else:
+                        self.session_consecutive_losses = 0   # reset on a win
 
                 self._send_telegram(
                     f"{pnl_sign} {self.strategy_name} EXIT\n"
@@ -2036,7 +2242,8 @@ class OptionsMomentumBot:
             if TRAIL_SL_MODE in ("spot", "both"):
                 spot_sym = pos.get("spot_symbol", underlying) if pos else underlying
                 self._unsubscribe_spot(spot_sym)
-            self.positions.pop(underlying, None)
+            with self.state_lock:
+                self.positions.pop(underlying, None)
             # Clear the straddle cache so the next entry on this underlying
             # starts with a fresh prev_straddle_price rather than a stale value
             # from the previous position's holding period.
@@ -2052,7 +2259,9 @@ class OptionsMomentumBot:
     # ── Signal Loop ──────────────────────────────────────────────────────────
 
     def _scan_underlying(self, symbol: str):
-        if symbol in self.positions:
+        with self.state_lock:
+            already_active = symbol in self.positions or symbol in self.pending_entries
+        if already_active:
             return   # already in a trade for this underlying
 
         # Check all session-level risk gates before doing any expensive fetches
@@ -2135,6 +2344,9 @@ class OptionsMomentumBot:
 
         # IV Rank
         iv_rank = self._fetch_iv_rank(symbol)
+        if iv_rank is not None and iv_rank >= IV_RANK_MAX_ENTRY:
+            print(f"[SKIP] {symbol}: IVR {iv_rank:.1f}% >= max {IV_RANK_MAX_ENTRY:.1f}%")
+            return
 
         # --- compute score ---
         result = compute_composite_score(
@@ -2192,12 +2404,15 @@ class OptionsMomentumBot:
         # Step 1: try the check_all_checkpoints liquidity + asymmetry score filter.
         #   This selects the OTM strike with the best institutional-edge profile
         #   (OI concentration, IV regime, delta range).
-        opt_row = self._select_best_strike(chain_rows, spot, direction, iv_rank)
+        opt_row = self._select_best_strike(symbol, chain_rows, spot, direction, iv_rank)
 
         # Step 2: if no strike passes the checkpoint criteria, fall back to the
         #   OTM_OFFSET-based simple selection so the strategy can still enter when
         #   the chain is thinly populated or the asymmetry threshold is marginal.
         if opt_row is None:
+            if not ALLOW_CHECKPOINT_FALLBACK:
+                print(f"[SKIP] {symbol}: checkpoint strike criteria not met")
+                return
             print(f"[STRIKE] {symbol}: checkpoint criteria not met — falling back to OTM offset={OTM_OFFSET}")
             opt_row = select_option_strike(chain_rows, spot, direction, OTM_OFFSET)
 
@@ -2217,19 +2432,114 @@ class OptionsMomentumBot:
             print(f"[SKIP] {symbol}: option symbol not in chain row")
             return
 
-        qty = LOT_MULTIPLIER * int(opt_row.get("lotsize", 1) or 1)
+        lotsize = int(opt_row.get("lotsize", 1) or 1)
+        fixed_qty = LOT_MULTIPLIER * lotsize
+        available_capital = self._available_capital()
+        risk_cap = available_capital * (RISK_PERCENT / 100.0)
+        risk_per_unit = option_ltp * (PREMIUM_STOP_PCT / 100.0)
+        risk_qty = int(risk_cap / risk_per_unit) if risk_per_unit > 0 else 0
+        risk_qty = (risk_qty // lotsize) * lotsize if lotsize > 0 else risk_qty
+        qty = min(fixed_qty, risk_qty) if risk_qty > 0 else 0
         if qty <= 0:
-            qty = LOT_MULTIPLIER
+            print(
+                f"[SKIP] {symbol}: 1 lot risk exceeds cap "
+                f"(premium ₹{option_ltp:.2f}, stop {PREMIUM_STOP_PCT}%, "
+                f"risk cap ₹{risk_cap:.0f})"
+            )
+            return
 
         print(f"[SIGNAL] {symbol}: BUY {direction} | strike={target_strike} | premium=₹{option_ltp:.2f} | qty={qty}")
 
         self._place_entry(symbol, opt_symbol, qty, spot=spot, direction=direction)
+
+    def _check_pending_entries(self):
+        with self.state_lock:
+            pending = list(self.pending_entries.items())
+        for ul, info in pending:
+            order_id = info.get("order_id")
+            status, price, _ = self._poll_order_status(order_id, max_retries=1, sleep_secs=0)
+            if status == "complete" and price:
+                with self.state_lock:
+                    self.pending_entries.pop(ul, None)
+                    already_open = ul in self.positions
+                if already_open:
+                    self._send_telegram(
+                        f"⚠️ {self.strategy_name}: pending BUY {order_id} filled but "
+                        f"{ul} already has a tracked position. Reconcile manually.",
+                        priority=9,
+                    )
+                    continue
+                print(f"[PENDING] BUY {order_id} filled for {ul} @ ₹{price:.2f}; activating protection")
+                self._register_filled_entry(
+                    ul,
+                    info["symbol"],
+                    int(info["qty"]),
+                    float(info["spot"]),
+                    info["direction"],
+                    price,
+                )
+            elif status in ("rejected", "cancelled", "canceled"):
+                with self.state_lock:
+                    self.pending_entries.pop(ul, None)
+                print(f"[PENDING] BUY {order_id} {status}; removed from pending entries")
+
+    def _check_pending_exits(self):
+        with self.state_lock:
+            pending = list(self.pending_exits.items())
+        for ul, info in pending:
+            order_id = info.get("order_id")
+            status, price, _ = self._poll_order_status(order_id, max_retries=1, sleep_secs=0)
+            with self.state_lock:
+                pos = self.positions.get(ul)
+            if not pos:
+                with self.state_lock:
+                    self.pending_exits.pop(ul, None)
+                continue
+            opt_sym = pos["symbol"]
+            if status == "complete" and price:
+                pnl = (price - pos["entry_premium"]) * pos["qty"]
+                pnl_sign = "✅" if pnl >= 0 else "❌"
+                with self.state_lock:
+                    self.daily_pnl += pnl
+                    if pnl < 0:
+                        self.session_consecutive_losses += 1
+                    else:
+                        self.session_consecutive_losses = 0
+                    self.positions.pop(ul, None)
+                    self.pending_exits.pop(ul, None)
+                    self._prev_straddle.pop(ul, None)
+                self._unsubscribe(FNO_EXCHANGE, opt_sym)
+                if TRAIL_SL_MODE in ("spot", "both"):
+                    self._unsubscribe_spot(pos.get("spot_symbol", ul))
+                with self.exit_lock:
+                    self.exit_queue.discard(opt_sym)
+                print(f"[PENDING] EXIT {order_id} complete for {ul} @ ₹{price:.2f} | P&L ₹{pnl:.2f}")
+                self._send_telegram(
+                    f"{pnl_sign} {self.strategy_name} EXIT confirmed\n"
+                    f"{ul} {pos.get('option_type','')} | {opt_sym}\n"
+                    f"Exit ₹{price:.2f} | Entry ₹{pos['entry_premium']:.2f} | P&L ₹{pnl:.2f}\n"
+                    f"Daily P&L ₹{self.daily_pnl:.0f}",
+                    priority=8 if pnl < 0 else 6,
+                )
+            elif status in ("rejected", "cancelled", "canceled"):
+                with self.state_lock:
+                    self.pending_exits.pop(ul, None)
+                    pos["exit_pending"] = False
+                with self.exit_lock:
+                    self.exit_queue.discard(opt_sym)
+                self._send_telegram(
+                    f"🚨 {self.strategy_name}: pending EXIT {order_id} {status} for {ul} {opt_sym}\n"
+                    "Position remains tracked; software exit may retry on next trigger.",
+                    priority=9,
+                )
 
     def _strategy_thread(self):
         print("[STRATEGY] Thread started — scanning every "
               f"{SIGNAL_CHECK_INTERVAL}s")
         while not self.stop_event.is_set():
             try:
+                self._check_pending_entries()
+                self._check_pending_exits()
                 for ul in UNDERLYINGS:
                     if self.stop_event.is_set():
                         break
@@ -2262,8 +2572,7 @@ class OptionsMomentumBot:
         print(f"  Max trades/session : {MAX_TRADES_PER_SESSION or 'unlimited'}")
         print(f"  Max loss streak    : {MAX_CONSECUTIVE_LOSSES or 'unlimited'}")
         print(f"  Entry cooldown     : {ENTRY_COOLDOWN_SECS}s")
-        print(f"  Daily loss limit   : {MAX_DAILY_LOSS_PCT}% of capital "
-              f"(₹{ACCOUNT_CAPITAL:.0f}) | ₹{MAX_DAILY_LOSS_AMOUNT:.0f} absolute")
+        print(f"  Daily loss limit   : {MAX_DAILY_LOSS_PCT}% of live available cash | ₹{MAX_DAILY_LOSS_AMOUNT:.0f} absolute")
         print(f" [TRAILING SL — MODE: {TRAIL_SL_MODE.upper()}]")
         if TRAIL_SL_MODE in ("spot", "both"):
             print(f"  [Spot]    Reward target  : {SPOT_REWARD_PCT}% spot move")
