@@ -1,0 +1,19 @@
+strategies/examples/BuyerEdgeStrategy.py
+  s_3c8657818f092c::t_b4288ad03f5522 2591-2613
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "0851b733b0ddf4e1a95a8e27a89a8861b0b79a8b",
+  "prompts": {},
+  "sessions": {
+    "s_3c8657818f092c": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "f1d88eec-9e43-4d0e-9b92-8c8457611f53",
+        "model": "unknown"
+      },
+      "human_author": "Manoj Verma <71809372+manojvermamv@users.noreply.github.com>"
+    }
+  }
+}
