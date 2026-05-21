@@ -1,60 +1,42 @@
 """
-===============================================================================
-          OPTIONS BUYER-EDGE STRATEGY — Multi-Layer Confirmation
-                         OpenAlgo Trading Bot
-===============================================================================
+OPTIONS BUYER-EDGE STRATEGY  ·  Multi-Layer Confirmation  ·  OpenAlgo Trading Bot
 
-Buying NSE F&O options (Calls or Puts) only when institutional-grade
-confirmation lines up across FIVE independent signal layers — exactly the
-same checks used inside the BuyerEdge analysis tool:
+Buys NSE F&O options (CE / PE) only when five independent signal layers agree:
 
-  Layer 1 — Technical Trend          (EMA, VWAP, RSI, MACD on spot candles)
-  Layer 2 — OI Flow Intelligence     (PCR, Call/Put Flow, Migration)
-  Layer 3 — Greeks Engine            (Delta Imbalance, Gamma Regime)
-  Layer 4 — Straddle Engine          (IV Regime, Straddle Velocity)
-  Layer 5 — Synthetic Futures        (spot-SF co-movement confirmation)
+  Layer 1 — Technical Trend        (EMA, VWAP, RSI, MACD on spot candles)
+  Layer 2 — OI Flow Intelligence   (PCR, Call/Put Flow, OI Wall)
+  Layer 3 — Greeks Engine          (Delta Imbalance, Gamma Regime)
+  Layer 4 — Straddle & IV          (IV Regime, Straddle Velocity)
+  Layer 5 — Synthetic Futures      (spot-SF co-movement)
 
-A composite score is computed (range −100 → +100) along with a trap-risk
-score (0 → 100).  An order is placed only when:
+Composite score: −100 → +100.  Order placed when:
+  • abs(score) ≥ MIN_SCORE  and  trap_score ≤ MAX_TRAP  and  signal == "EXECUTE"
 
-  • composite score  ≥ MIN_SCORE  (absolute value, bullish or bearish)
-  • trap_score       ≤ MAX_TRAP
-  • signal is "EXECUTE" (not "WATCH" or "NO_TRADE")
+Run:  export OPENALGO_API_KEY="your-key"  &&  python BuyerEdgeStrategy.py
+      Inside OpenAlgo /python runner: OPENALGO_API_KEY is injected automatically.
 
-Run standalone:
-    export OPENALGO_API_KEY="your-api-key"
-    python BuyerEdgeStrategy.py
-
-Run via OpenAlgo's /python strategy runner:
-    OPENALGO_API_KEY            : injected per-strategy.
-    HOST_SERVER / WEBSOCKET_URL : inherited from OpenAlgo's .env.
-    No code changes required.
-
-⚠ RISK WARNING
-    Long options buying has asymmetric payoff but unlimited theta decay.
-    Always set PREMIUM_STOP_PTS and ensure adequate capital.
-
-KEY ENVIRONMENT VARIABLES
-    LONG_ONLY_MODE=true        — Buy CE on bullish signals, Buy PE on bearish.
-    BROKER_SL_ORDERS=true      — place exchange-level SELL SL-M + SELL LIMIT
-                                 immediately after each BUY fill.
-===============================================================================
+⚠  Long options carry unlimited theta decay — always set PREMIUM_STOP_PTS.
 """
 
 import csv
 import math
 import os
 import re
+import sys
 import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Callable
-
 import pandas as pd
-
 from openalgo import api, ta
+
+# Ensure UTF-8 output on Windows (cp1252 console cannot encode ₹ and other Unicode chars).
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
 # ===============================================================================
@@ -144,38 +126,24 @@ class BotConfig:
     order_status_max_retries:   int   = 15
     order_status_poll_interval: float = 2.0
 
-    # ── Paper Trading (from automated_intraday_trader) ─────────────────────────
-    # When True: no real orders are sent; fills are simulated from live WS LTP.
-    # Use for dry-run testing before going live.
-    paper_trade: bool = False
+    # ── Paper Trading ──────────────────────────────────────────────────────────
+    paper_trade: bool = False       # simulate fills from WS LTP; no real orders sent
 
     # ── Daily Profit Target ────────────────────────────────────────────────────
-    # Stop taking new entries once the day's realised P&L reaches this amount.
-    # 0 = disabled.  Great for locking in a good day and avoiding overtrading.
-    max_daily_profit_amount: float = 0.0
+    max_daily_profit_amount: float = 0.0    # halt new entries when day P&L hits this; 0=off
 
-    # ── Session Timing Rules (critical for options — theta burns faster late) ──
-    # No new BUY entries will be placed after this IST time.
-    no_new_trade_after: str = "13:30"
-    # All open positions are force-exited at this IST time regardless of P&L.
-    square_off_time: str = "15:15"
+    # ── Session Timing ─────────────────────────────────────────────────────────
+    no_new_trade_after: str = "15:10"   # no new BUY entries after this IST time (HH:MM)
+    square_off_time:    str = "15:15"   # force-exit all positions at this IST time
 
-    # ── Max Hold Time per Trade (Theta Decay Guard) ────────────────────────────
-    # Exit any option position that has been held longer than this many minutes.
-    # 0 = disabled.  Recommended: 90–120 for expiry week, 0 otherwise.
-    max_hold_minutes: int = 0
+    # ── Max Hold Time ──────────────────────────────────────────────────────────
+    max_hold_minutes: int = 0   # exit positions held > N minutes; 0=disabled
 
-    # ── Breakeven SL (Protect Open Profits) ───────────────────────────────────
-    # Once premium gain reaches this % of the target distance (tgt - entry),
-    # the software SL is auto-moved to the entry premium (breakeven).
-    # 0 = disabled.  80% of target gain is a sensible default.
-    breakeven_at_gain_pct: float = 80.0
+    # ── Breakeven SL ───────────────────────────────────────────────────────────
+    breakeven_at_gain_pct: float = 80.0  # move SL to entry cost at X% of target gain; 0=off
 
-    # ── Trade Journal (CSV) ───────────────────────────────────────────────────
-    # Path to append a CSV trade log.  Empty string = disabled.
-    # Columns: timestamp, underlying, option_symbol, direction, qty,
-    #          entry, exit, pnl, reason, mode (LIVE / PAPER)
-    trade_journal_path: str = ""
+    # ── Trade Journal ──────────────────────────────────────────────────────────
+    trade_journal_path: str = ""    # CSV path for trade log (timestamp,underlying,entry,exit,pnl,...); ""=off
 
     @classmethod
     def from_env(cls) -> "BotConfig":
@@ -194,15 +162,11 @@ class BotConfig:
         )
         host_server = os.getenv("HOST_SERVER", "http://127.0.0.1:5000")
 
-        # Resolve the WebSocket URL to use, applying corrections as needed.
-        # Priority: WEBSOCKET_URL env var > auto-derived from HOST_SERVER.
+        # WebSocket URL: explicit env var → auto-corrected → derived from host.
         _ws_env    = os.getenv("WEBSOCKET_URL", "")
         _ws_domain = host_server[8:].split("/")[0] if host_server.startswith("https://") else ""
 
-        # Auto-correct a misconfigured WEBSOCKET_URL:
-        # ws://hostname (plain, non-local) for an HTTPS host always fails because
-        # port 80 issues a 301 → https:// which is not a valid WS URI.
-        # Correct it to wss://domain/ws and warn the user to fix their .env.
+        # Correct ws://hostname for HTTPS hosts to wss://domain/ws (port 80 → 301 breaks WS).
         _is_plain_ws_for_https = (
             _ws_env
             and _ws_domain                         # HOST_SERVER is https://
@@ -215,17 +179,15 @@ class BotConfig:
             print(
                 f"[CONFIG] WARNING: WEBSOCKET_URL='{_ws_env}' auto-corrected to '{_corrected}'."
                 f"\n[CONFIG]          Update your .env: WEBSOCKET_URL={_corrected}"
-                f"\n[CONFIG]          (Or use ws://127.0.0.1:8765 if the strategy runs on the same server)"
             )
             _ws_env = _corrected
         if not _ws_env:
-            # Auto-derive the WS URL from the HOST_SERVER by switching to wss:// and appending /ws
             _ws_env = f"wss://{_ws_domain}/ws" if _ws_domain else "ws://127.0.0.1:8765"
 
         cfg = cls(
             api_key=os.getenv("OPENALGO_API_KEY", "openalgo-apikey"),
             api_host=host_server,
-            ws_url=_ws_env,   # corrected/explicit env > auto-derived wss://domain/ws
+            ws_url=_ws_env,
             strategy_name=os.getenv("STRATEGY_NAME", "OptionsBuyerEdgeBot"),
             underlyings=underlyings,
             index_underlyings=index_underlyings,
@@ -462,12 +424,7 @@ class BotState:
 
 
 def _field_trend(oldest: dict, newest: dict, fld: str) -> int:
-    """Return direction of a chain field: +1 rising, 0 flat, -1 falling.
-
-    Compares the field value in the newest vs oldest snapshot for a given
-    strike.  Used by OIFlowAnalyzer.smooth_chain_rows().  Defined at module
-    level to avoid allocating a new closure object on every loop iteration.
-    """
+    """Return +1 (rising), 0 (flat), or -1 (falling) for a chain field across oldest→newest snapshot."""
     diff = float(newest.get(fld) or 0) - float(oldest.get(fld) or 0)
     return 1 if diff > 0 else (-1 if diff < 0 else 0)
 
@@ -528,11 +485,7 @@ class OIFlowAnalyzer:
                 vals = [float(r.get(fld) or 0) for r in rows]
                 row_out[fld] = sum(vals) / len(vals)
 
-            # rows[] is oldest-first (snaps iteration order); pre-compute endpoints
-            # once per strike so _field_trend makes 6 cheap dict lookups instead of
-            # scanning the whole snaps list 6 times via generator expressions.
-            _oldest_row = rows[0]
-            _newest_row = rows[-1]
+            _oldest_row, _newest_row = rows[0], rows[-1]
             row_out["ce_ltp_dir"] = _field_trend(_oldest_row, _newest_row, "ce_ltp")
             row_out["ce_vol_dir"] = _field_trend(_oldest_row, _newest_row, "ce_volume")
             row_out["ce_oi_dir"]  = _field_trend(_oldest_row, _newest_row, "ce_oi")
@@ -1267,33 +1220,20 @@ class RiskManager:
         self._last_entry_times: dict[str, datetime] = {}
         self._daily_pnl                  = 0.0
 
-        # ── Funds cache ─────────────────────────────────────────────────────
-        # funds() is an HTTP call; cache the result for FUNDS_CACHE_TTL seconds.
-        # Between refreshes, offset with the script's own _daily_pnl delta so
-        # the estimate stays accurate without an extra broker round-trip.
         self._funds_cache:       float = 0.0   # last broker-reported available capital
-        self._funds_cache_time:  float = 0.0   # time.time() when cache was populated
-        self._funds_cache_ttl:   float = 60.0  # re-fetch interval (seconds)
-        self._pnl_at_last_fetch: float = 0.0   # _daily_pnl value at last cache fill
+        self._funds_cache_time:  float = 0.0
+        self._funds_cache_ttl:   float = 60.0  # re-poll interval; between refreshes uses pnl delta
+        self._pnl_at_last_fetch: float = 0.0
 
     def available_capital(self) -> float:
-        """Return the best available-capital estimate.
-
-        Calls funds() at most once every ``_funds_cache_ttl`` seconds.  Between
-        refreshes the cached broker value is offset by any P&L the *script itself*
-        has accumulated since the last poll, so the estimate stays tight even when
-        the TTL window covers multiple exits.
-
-        The next full broker refresh will re-anchor the value, picking up capital
-        movements from other strategies or manual trades automatically.
+        """Cached funds() call: re-polls broker every _funds_cache_ttl seconds.
+        Between refreshes returns cached broker capital + script P&L delta since last poll.
         """
         now = time.time()
         if self._funds_cache_time and (now - self._funds_cache_time) < self._funds_cache_ttl:
-            # Cache hit: broker capital at last fetch  +  script P&L since then.
             delta_pnl = self._daily_pnl - self._pnl_at_last_fetch
             return max(0.0, self._funds_cache + delta_pnl)
 
-        # Cache miss (or first call): fetch live from broker.
         try:
             resp = self.client.funds()
             data = resp.get("data", {}) if isinstance(resp, dict) else {}
@@ -1310,7 +1250,6 @@ class RiskManager:
             print(f"[FUNDS] available cash not found in funds() response: {resp}")
         except Exception as exc:
             print(f"[FUNDS] funds() fetch error: {exc}")
-            # On error fall back to stale cache + script delta rather than 0.
             if self._funds_cache_time:
                 delta_pnl = self._daily_pnl - self._pnl_at_last_fetch
                 return max(0.0, self._funds_cache + delta_pnl)
@@ -1335,8 +1274,6 @@ class RiskManager:
         self._maybe_reset_daily_state()
         cfg = self.config
 
-        # Snapshot all mutable counters under the lock so reads are consistent
-        # with writes in record_entry() / record_exit() which also hold state_lock.
         with self._state.state_lock:
             trade_count        = self._session_trade_count
             consecutive_losses = self._session_consecutive_losses
@@ -1370,13 +1307,11 @@ class RiskManager:
                 f"Daily loss limit hit (₹{cfg.max_daily_loss_amount:.0f}) "
                 f"| current P&L ₹{daily_pnl:.0f}"
             )
-        # Daily profit target — lock in the day when we've reached our goal
         if cfg.max_daily_profit_amount > 0 and daily_pnl >= cfg.max_daily_profit_amount:
             return False, (
                 f"Daily profit target reached ₹{daily_pnl:.0f} "
                 f"(target ₹{cfg.max_daily_profit_amount:.0f}) — locking in gains for the day"
             )
-        # Time-based entry cutoff — options decay accelerates in last 2 hours of session
         if cfg.no_new_trade_after:
             now_hm = datetime.now().strftime("%H:%M")
             if now_hm >= cfg.no_new_trade_after:
@@ -1502,7 +1437,6 @@ class WebSocketManager:
             return
 
         self._last_tick_time = time.time()    # feed heartbeat for watchdog
-        # Update LTP caches
         with self._state.exit_lock:
             self._state.ltp_map[symbol] = ltp
 
@@ -1520,12 +1454,10 @@ class WebSocketManager:
 
     def _check_premium_trail(self, underlying: str, pos: OptionPosition, ltp: float) -> None:
         cfg = self.config
-        # Hard SL check
         if ltp <= pos.sl:
             print(f"[WS] PREMIUM SL HIT {underlying}: LTP {ltp:.2f} <= SL {pos.sl:.2f}")
             self._trigger_exit(underlying, "premium_sl_hit")
             return
-        # Hard Target check
         if ltp >= pos.tgt:
             print(f"[WS] PREMIUM TARGET HIT {underlying}: LTP {ltp:.2f} >= TGT {pos.tgt:.2f}")
             self._trigger_exit(underlying, "premium_target_hit")
@@ -1533,10 +1465,6 @@ class WebSocketManager:
 
         ep = pos.entry_premium
 
-        # ── Breakeven SL: move SL to entry cost once gain reaches X% of target ─
-        # e.g. breakeven_at_gain_pct=80 → SL moves to cost when we've captured
-        # 80% of the distance to the target.  This protects open profit without
-        # requiring a partial exit and works seamlessly with broker SL-M orders.
         if cfg.breakeven_at_gain_pct > 0 and not pos.breakeven_moved:
             target_gain_pts = pos.tgt - ep
             gain_pts        = ltp - ep
@@ -1604,6 +1532,20 @@ class WebSocketManager:
                     new_sl_spot = spot_ltp + step_pts
                 pos.trail_sl_spot = new_sl_spot
                 print(f"[WS] Spot trail activated {underlying}: peak {spot_ltp:.2f}, SL spot → {new_sl_spot:.2f}")
+                # Spot trail activation means we are in a favorable spot position.
+                # Raise the premium hard-SL to at least breakeven so IV crush cannot
+                # inflict a full stop-loss loss once spot has moved in our favour.
+                if not pos.breakeven_moved:
+                    new_premium_sl = pos.entry_premium
+                    if new_premium_sl > pos.sl:
+                        pos.sl             = new_premium_sl
+                        pos.breakeven_moved = True
+                        print(
+                            f"[WS] Spot-trail → breakeven SL {underlying}: "
+                            f"pos.sl raised to cost ₹{new_premium_sl:.2f}"
+                        )
+                        if cfg.broker_sl_orders and pos.sl_order_id and self._sl_modify_callback:
+                            self._sl_modify_callback(underlying, new_premium_sl)
         else:
             if pos.option_type == "CE":
                 if pos.trail_peak is None or spot_ltp > pos.trail_peak:
@@ -1649,15 +1591,12 @@ class WebSocketManager:
         ws_url = self.config.ws_url or "(SDK default)"
         while True:
             try:
-                ok = client.connect()   # no keyword args — just connect()
+                ok = client.connect()
                 _actual_url = getattr(client, 'ws_url', ws_url)
                 print(f"[WS] `client.connect()` using {_actual_url} (expected {ws_url})")
                 if ok:
                     print(f"[WS] Connected to {_actual_url} — SDK managing reconnects automatically")
-                    # ── Subscription replay (initial connect AND hard reconnect) ──
-                    # The SDK may or may not replay subscriptions after a reconnect;
-                    # we replay explicitly using the registry to guarantee delivery.
-                    subs = list(self._subscriptions)
+                    subs = list(self._subscriptions)   # replay all subscriptions (handles reconnects)
                     if subs:
                         print(f"[WS] Replaying {len(subs)} subscription(s)...")
                         for (exch, sym) in subs:
@@ -1668,11 +1607,7 @@ class WebSocketManager:
                                 )
                             except Exception as _re_exc:
                                 print(f"[WS] Re-subscribe error {exch}:{sym}: {_re_exc}")
-                    # ── Watchdog: detect silent SDK reconnect failure ─────────
-                    # Sleep in 60s cycles. If ticks go silent during market hours
-                    # (9:00–15:35 IST) for > 120s, the SDK auto_reconnect has
-                    # likely failed — break to force a hard reconnect.
-                    while True:
+                    while True:  # watchdog: force reconnect if feed silent > 120s in market hours
                         time.sleep(60)
                         elapsed = time.time() - self._last_tick_time
                         hm = int(datetime.now().strftime("%H%M"))
@@ -1758,7 +1693,6 @@ class OrderManager:
         sl_id  = pos.sl_order_id
         tgt_id = pos.tgt_order_id
 
-        # Pre-check fills
         for attr_name, oid in (("sl_order_id", sl_id), ("tgt_order_id", tgt_id)):
             if not oid:
                 continue
@@ -1777,7 +1711,6 @@ class OrderManager:
             except Exception as exc:
                 print(f"[ORDER] pre-check fill error {oid}: {exc}")
 
-        # Cancel open orders
         for attr_name, oid in (("sl_order_id", sl_id), ("tgt_order_id", tgt_id)):
             if not oid or attr_name in broker_filled:
                 continue
@@ -1790,7 +1723,6 @@ class OrderManager:
             except Exception as exc:
                 print(f"[ORDER] Cancel error {oid}: {exc}")
 
-        # Post-check status
         for attr_name, oid in (("sl_order_id", sl_id), ("tgt_order_id", tgt_id)):
             if not oid:
                 continue
@@ -1897,11 +1829,9 @@ class OrderManager:
         with self._state.state_lock:
             self._state.positions[underlying] = pos
 
-        # Subscribe WebSocket feeds
         self._ws.subscribe(cfg.fno_exchange, option_symbol)
         self._ws.subscribe_spot(underlying)
 
-        # Place broker SL-M + LIMIT orders if enabled (skipped in paper trade mode)
         if cfg.broker_sl_orders and not cfg.paper_trade:
             try:
                 sl_resp = self.client.placeorder(
@@ -1998,7 +1928,6 @@ class OrderManager:
             print(f"[ORDER] {underlying} already has an open position — skip entry")
             return False
 
-        # ── Paper trade mode: simulate fill from current WS LTP ─────────────
         if cfg.paper_trade:
             executed = self._state.ltp_map.get(option_symbol) or spot * 0.01
             print(f"[PAPER] Simulated BUY {qty}x {option_symbol} @ ₹{executed:.2f}")
@@ -2078,7 +2007,6 @@ class OrderManager:
             return
         print(f"[ORDER] Exiting {underlying} — reason: {reason}")
 
-        # ── Paper trade mode: simulate fill from current WS LTP ─────────────
         if cfg.paper_trade:
             executed_price = self._state.ltp_map.get(pos.symbol) or pos.entry_premium
             pnl = (executed_price - pos.entry_premium) * pos.qty
@@ -2105,7 +2033,6 @@ class OrderManager:
         if cfg.broker_sl_orders:
             broker_filled = self.cancel_broker_orders(underlying)
 
-        # Check if broker order already exited us
         for attr_name, info in broker_filled.items():
             if isinstance(info, dict) and info.get("order_status") in ("complete", "filled", "executed"):
                 executed_price = info.get("executed", 0)
@@ -2121,8 +2048,8 @@ class OrderManager:
                     self._state.exit_queue.discard(underlying)
                 return
 
-        # Place SELL MARKET
         executed_price = 0.0
+        order_id       = None
         try:
             resp = self.client.placeorder(
                 strategy=cfg.strategy_name,
@@ -2133,36 +2060,48 @@ class OrderManager:
                 product="NRML",
                 quantity=pos.qty,
             )
-            order_id = None
             if isinstance(resp, dict) and resp.get("status") == "success":
                 order_id = resp.get("orderid")
                 print(f"[ORDER] Exit order {order_id} placed for {underlying}")
             else:
                 print(f"[ORDER] Exit order response: {resp}")
-
-            if order_id:
-                with self._state.state_lock:
-                    self._state.pending_exits[underlying] = PendingExit(
-                        order_id=order_id,
-                        reason=reason,
-                        created_at=datetime.now(),
-                    )
-                filled = self.poll_order_status(order_id)
-                with self._state.state_lock:
-                    self._state.pending_exits.pop(underlying, None)
-                if filled:
-                    data           = filled.get("data") or filled
-                    executed_price = float(data.get("average_price", 0) or 0)
         except Exception as exc:
             print(f"[ORDER] place_exit error for {underlying}: {exc}")
 
-        pnl = (executed_price - pos.entry_premium) * pos.qty if executed_price else 0.0
-        self._risk.record_exit(pnl)
-        if executed_price:
-            self._write_journal(underlying, pos, executed_price, pnl, reason)
-        else:
-            print(f"[ORDER] Exit fill unconfirmed for {underlying} — journal entry skipped")
+        if order_id is None:
+            # Order was not submitted — safe to release exit lock so the next SL
+            # trigger from the WS trail can retry the exit on the next tick.
+            print(f"[ORDER] Exit order not submitted for {underlying} — releasing for retry")
+            with self._state.exit_lock:
+                self._state.exit_queue.discard(underlying)
+            pos.exit_pending = False
+            return
 
+        with self._state.state_lock:
+            self._state.pending_exits[underlying] = PendingExit(
+                order_id=order_id,
+                reason=reason,
+                created_at=datetime.now(),
+            )
+        filled = self.poll_order_status(order_id)
+        if not filled:
+            # Order submitted but fill could not be confirmed within the poll window.
+            # Leave pending_exits intact so check_pending_exits() reconciles on the
+            # next strategy cycle; position and exit_pending stay as-is.
+            print(
+                f"[ORDER] Exit fill unconfirmed for {underlying} (order {order_id}) "
+                f"— leaving in pending_exits for reconciliation"
+            )
+            return
+
+        with self._state.state_lock:
+            self._state.pending_exits.pop(underlying, None)
+        data           = filled.get("data") or filled
+        executed_price = float(data.get("average_price", 0) or 0)
+
+        pnl = (executed_price - pos.entry_premium) * pos.qty
+        self._risk.record_exit(pnl)
+        self._write_journal(underlying, pos, executed_price, pnl, reason)
         self._ws.unsubscribe(cfg.fno_exchange, pos.symbol)
         self._ws.unsubscribe_spot(pos.spot_symbol)
         with self._state.state_lock:
@@ -2328,14 +2267,7 @@ class OptionsBuyerEdgeBot:
             print(f"[STARTUP] positionbook error: {exc}")
 
     def _check_max_hold(self) -> None:
-        """
-        Theta Decay Guard: exit any option position held longer than
-        max_hold_minutes.  Runs every strategy cycle.  0 = disabled.
-
-        Rationale: long options bleed premium every minute (theta decay).
-        If a trade hasn't moved in our favour within a reasonable time window,
-        cutting it preserves capital for the next opportunity.
-        """
+        """Exit positions held > max_hold_minutes (theta decay guard). 0=disabled."""
         cfg = self.config
         if cfg.max_hold_minutes <= 0:
             return
@@ -2399,24 +2331,20 @@ class OptionsBuyerEdgeBot:
         state  = self.state
         orders = self.orders
 
-        # Skip if already in a position
         if symbol in state.positions:
             return
 
-        # Risk gates
         allowed, gate_reason = self.risk.check_gates(symbol)
         if not allowed:
             print(f"[SCAN] {symbol} blocked by risk gate: {gate_reason}")
             return
 
-        # Fetch spot
         spot_q = self.fetcher.fetch_quote(symbol, self.fetcher.underlying_exchange(symbol))
         spot   = float(spot_q.get("ltp", 0) or 0)
         if not spot:
             print(f"[SCAN] {symbol}: no spot LTP")
             return
 
-        # Fetch target expiry
         expiry = self.fetcher.fetch_target_expiry(symbol)
         if not expiry and not cfg.allow_checkpoint_fallback:
             print(f"[SCAN] {symbol}: no expiry in DTE range {cfg.dte_min}–{cfg.dte_max} — skip")
@@ -2430,17 +2358,14 @@ class OptionsBuyerEdgeBot:
         if expiry_used and not expiry:
             expiry = expiry_used
 
-        # Accumulate chain history + smooth
         chain_hist = state.get_chain_history(symbol)
         chain_hist.append(chain_rows)
         smoothed = OIFlowAnalyzer.smooth_chain_rows(list(chain_hist))
         if not smoothed:
             return
 
-        # Spot candles
         df_spot = self.fetcher.fetch_spot_candles(symbol)
 
-        # ATM strike data
         strikes = sorted(set(r["strike"] for r in smoothed))
         atm_k   = min(strikes, key=lambda x: abs(x - spot))
         atm_row = next((r for r in smoothed if r.get("strike") == atm_k), {})
@@ -2456,7 +2381,6 @@ class OptionsBuyerEdgeBot:
         if straddle_price is not None:
             state.prev_straddle[symbol] = {"strike": atm_k, "price": straddle_price}
 
-        # Synthetic future
         sf_ltp   = self.fetcher.fetch_synthetic_future(symbol, expiry)
         prev_sf_ltp  = state.prev_sf.get(symbol)
         prev_spot_ltp = state.prev_spot.get(symbol)
@@ -2464,14 +2388,12 @@ class OptionsBuyerEdgeBot:
             state.prev_sf[symbol] = sf_ltp
         state.prev_spot[symbol] = spot
 
-        # ATM greeks
         ce_delta, pe_delta = self.fetcher.fetch_atm_greeks(
             symbol,
             atm_row.get("ce_symbol"),
             atm_row.get("pe_symbol"),
         )
 
-        # CE/PE bid/ask
         ce_bid = float(atm_row.get("ce_bid", 0) or 0) or None
         ce_ask = float(atm_row.get("ce_ask", 0) or 0) or None
         pe_bid = float(atm_row.get("pe_bid", 0) or 0) or None
@@ -2486,7 +2408,6 @@ class OptionsBuyerEdgeBot:
                 cfg.iv_52w_high,
             )
 
-        # Score
         result = self.scorer.score(
             spot=spot,
             df_spot=df_spot,
@@ -2539,7 +2460,6 @@ class OptionsBuyerEdgeBot:
         if direction is None:
             return
 
-        # Strike selection
         best = self.strikes.select_best(symbol, smoothed, spot, direction, iv_rank_val)
         if best is None:
             if cfg.allow_checkpoint_fallback:
@@ -2559,8 +2479,6 @@ class OptionsBuyerEdgeBot:
         lotsize = int(best.get("lotsize", 1) or 1)
         fixed_qty = max(1, cfg.lot_multiplier) * lotsize
 
-        # Two-way qty cap: min(fixed_qty, risk_qty) where risk_qty is derived
-        # from available capital and premium stop points (same as original).
         available  = self.risk.available_capital()
         risk_cap   = available * (cfg.risk_percent / 100.0)
         risk_per_unit = cfg.premium_stop_pts
@@ -2598,13 +2516,11 @@ class OptionsBuyerEdgeBot:
         print("[STRATEGY] Strategy scan thread started")
         while True:
             try:
-                # Reconcile pending orders
                 self.orders.check_pending_entries()
                 self.orders.check_pending_exits()
                 if cfg.broker_sl_orders and not cfg.paper_trade:
                     self.orders.check_broker_order_fills()
 
-                # EOD force-exit: close all open positions at square_off_time
                 if cfg.square_off_time:
                     now_hm = datetime.now().strftime("%H:%M")
                     if now_hm >= cfg.square_off_time:
@@ -2624,18 +2540,14 @@ class OptionsBuyerEdgeBot:
                                         continue
                                     pos.exit_pending = True
                                 self.orders.place_exit(ul, "EOD-SquareOff")
-                # Theta decay guard: exit positions held > max_hold_minutes
                 self._check_max_hold()
-                # Scan all underlyings for new entry signals
                 for symbol in cfg.underlyings:
                     self.scan_underlying(symbol)
 
             except Exception as exc:
                 print(f"[STRATEGY ERROR] {exc}")
 
-            # Clock-anchored sync: sleep to the next multiple of signal_check_interval
-            # from the epoch so scans align to regular boundaries (e.g., every minute
-            # at 09:15:00, 09:16:00, … rather than drifting based on scan duration).
+            # clock-anchored sleep: align to next N-second boundary
             interval = max(cfg.signal_check_interval, 1)
             now = time.time()
             sleep_secs = interval - (now % interval)
@@ -2648,16 +2560,7 @@ class OptionsBuyerEdgeBot:
     # ------------------------------------------------------------------
 
     def _test_websocket(self) -> None:
-        """
-        Run a quick WebSocket smoke-test and print PASS / FAIL / WARNING
-        to the server log before the live feed thread starts.
-
-        Protocol (websocket_proxy/server.py):
-          1. Connect to ws_url
-          2. {"action": "authenticate", "api_key": ...}
-          3. {"action": "subscribe", "symbols": [...], "mode": "ltp"}
-          4. Wait up to TICK_WAIT seconds for at least one tick
-        """
+        """Smoke-test: connect → authenticate → subscribe → await ticks. Prints PASS/FAIL before live feed starts."""
         import asyncio as _aio
         import json as _json
         try:
@@ -2675,9 +2578,6 @@ class OptionsBuyerEdgeBot:
         TICK_WAIT   = 15   # seconds to wait for a live tick after subscribing
         TEST_SYMBOL = {"exchange": "NSE_INDEX", "symbol": "Nifty 50"}
 
-        # ── REST API pre-check ────────────────────────────────────────────────
-        # Verify the API key works for REST BEFORE testing WebSocket.
-        # If REST fails → key is wrong; if REST passes but WS fails → WS routing issue.
         try:
             import httpx as _httpx
             _rest_resp = _httpx.post(
@@ -2705,7 +2605,6 @@ class OptionsBuyerEdgeBot:
                 async with _websockets.connect(ws_url, open_timeout=10) as ws:
                     print("[WS-TEST] Transport OK — WebSocket handshake succeeded")
 
-                    # ── Authenticate ──────────────────────────────────────────
                     await ws.send(_json.dumps({
                         "action": "authenticate",
                         "api_key": cfg.api_key,
@@ -2727,7 +2626,6 @@ class OptionsBuyerEdgeBot:
                         return
                     print(f"[WS-TEST] Auth OK")
 
-                    # ── Subscribe ─────────────────────────────────────────────
                     await ws.send(_json.dumps({
                         "action": "subscribe",
                         "symbols": [TEST_SYMBOL],
@@ -2735,7 +2633,6 @@ class OptionsBuyerEdgeBot:
                     }))
                     print(f"[WS-TEST] Subscribed {TEST_SYMBOL['exchange']}:{TEST_SYMBOL['symbol']}")
 
-                    # ── Wait for ticks ────────────────────────────────────────
                     deadline = _aio.get_event_loop().time() + TICK_WAIT
                     tick_count = 0
                     while _aio.get_event_loop().time() < deadline:
@@ -2811,13 +2708,10 @@ class OptionsBuyerEdgeBot:
             1,
         )
 
-        # Run WebSocket connectivity self-test before starting live feed
         self._test_websocket()
 
-        # Start WebSocket thread
         self.ws.start()
 
-        # Start strategy thread
         st_thread = threading.Thread(
             target=self._strategy_thread, name="strategy-thread", daemon=True
         )
@@ -2829,7 +2723,6 @@ class OptionsBuyerEdgeBot:
                 time.sleep(1)
         except KeyboardInterrupt:
             print("\n[SHUTDOWN] Stopping bot...")
-            # Close all open positions before exiting
             for ul in list(self.state.positions.keys()):
                 print(f"[SHUTDOWN] Closing {ul} position...")
                 self.orders.place_exit(ul, "Bot Shutdown")
@@ -2858,6 +2751,3 @@ if __name__ == "__main__":
 
     bot = OptionsBuyerEdgeBot(config)
     bot.run()
-
-
-
