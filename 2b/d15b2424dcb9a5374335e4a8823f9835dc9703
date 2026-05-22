@@ -1,0 +1,14 @@
+Caddyfile
+  h_90988d5629fc41 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "2bd15b2424dcb9a5374335e4a8823f9835dc9703",
+  "prompts": {},
+  "humans": {
+    "h_90988d5629fc41": {
+      "author": "Manoj Verma <71809372+manojvermamv@users.noreply.github.com>"
+    }
+  }
+}
