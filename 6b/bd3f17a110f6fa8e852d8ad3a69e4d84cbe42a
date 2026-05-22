@@ -1,0 +1,21 @@
+websocket_proxy/server.py
+  s_3c8657818f092c::t_754cd07e3e9c8e 15-24
+strategies/examples/BuyerEdgeStrategy.py
+  s_3c8657818f092c::t_fe75a304aa3b31 185-189
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "6bbd3f17a110f6fa8e852d8ad3a69e4d84cbe42a",
+  "prompts": {},
+  "sessions": {
+    "s_3c8657818f092c": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "f1d88eec-9e43-4d0e-9b92-8c8457611f53",
+        "model": "unknown"
+      },
+      "human_author": "Manoj Verma <71809372+manojvermamv@users.noreply.github.com>"
+    }
+  }
+}
