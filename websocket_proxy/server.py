@@ -12,6 +12,16 @@ import websockets
 import zmq
 import zmq.asyncio
 from dotenv import load_dotenv
+
+# Load .env with override=True BEFORE importing database.auth_db.
+# In Docker/standalone mode, start.sh launches this process directly from the
+# shell, which inherits the Docker container environment (placeholder values for
+# API_KEY_PEPPER and FERNET_SALT injected by Coolify/compose). Flask/gunicorn
+# fixes its own os.environ via load_and_check_env_variables(), but that runs in
+# a separate process started later. Without this call, PEPPER is initialised to
+# the placeholder at module-import time, making every verify_api_key() call fail.
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"), override=True)
+
 from sqlalchemy import text
 
 from database.auth_db import get_broker_name, verify_api_key

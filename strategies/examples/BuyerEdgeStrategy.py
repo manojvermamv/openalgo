@@ -182,7 +182,11 @@ class BotConfig:
             )
             _ws_env = _corrected
         if not _ws_env:
-            _ws_env = f"wss://{_ws_domain}/ws" if _ws_domain else "ws://127.0.0.1:8765"
+            # Strategy runs as a subprocess of the OpenAlgo Python runner — always on the same
+            # host as the WS server (port 8765, loopback). Default to localhost instead of
+            # wss://domain/ws which requires a Traefik /ws route that is rarely configured.
+            # Override with WEBSOCKET_URL=wss://... if you need external/TLS access.
+            _ws_env = "ws://127.0.0.1:8765"
 
         cfg = cls(
             api_key=os.getenv("OPENALGO_API_KEY", "openalgo-apikey"),
