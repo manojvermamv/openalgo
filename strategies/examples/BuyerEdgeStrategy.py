@@ -40,6 +40,15 @@ if hasattr(sys.stderr, "reconfigure"):
 
 
 # ===============================================================================
+# GLOBAL CONSTANTS
+# ===============================================================================
+
+# Market hours (IST): 9:15 AM – 3:30 PM
+MARKET_HOURS_START = 915   # 09:15 IST
+MARKET_HOURS_END   = 1530  # 15:30 IST
+
+
+# ===============================================================================
 # CONFIGURATION — BotConfig dataclass
 # ===============================================================================
 
@@ -414,6 +423,7 @@ class BotState:
         self.prev_sf:         dict[str, float] = {}
         self.chain_history:   dict[str, deque] = {}
         self._lookback_bars   = lookback_bars
+        self.entry_in_flight: int = 0
 
     def get_chain_history(self, symbol: str) -> deque:
         if symbol not in self.chain_history:
@@ -629,9 +639,9 @@ class SignalEngine:
         if df_spot is not None and len(df_spot) >= cfg.slow_ema_period + 2:
             fast = ta.ema(df_spot["close"], period=cfg.fast_ema_period)
             slow = ta.ema(df_spot["close"], period=cfg.slow_ema_period)
-            if fast.iloc[-2] > slow.iloc[-2] and fast.iloc[-3] <= slow.iloc[-3]:
+            if len(df_spot) >= cfg.slow_ema_period + 3 and fast.iloc[-2] > slow.iloc[-2] and fast.iloc[-3] <= slow.iloc[-3]:
                 s1 = 1;   trend_note = f"Bullish EMA crossover ({cfg.fast_ema_period}/{cfg.slow_ema_period})"
-            elif fast.iloc[-2] < slow.iloc[-2] and fast.iloc[-3] >= slow.iloc[-3]:
+            elif len(df_spot) >= cfg.slow_ema_period + 3 and fast.iloc[-2] < slow.iloc[-2] and fast.iloc[-3] >= slow.iloc[-3]:
                 s1 = -1;  trend_note = f"Bearish EMA crossover ({cfg.fast_ema_period}/{cfg.slow_ema_period})"
             elif fast.iloc[-2] > slow.iloc[-2]:
                 s1 = 0.5; trend_note = "Fast EMA above Slow EMA (bullish)"
@@ -668,12 +678,21 @@ class SignalEngine:
         s4 = 0
         vwap_note = "VWAP unavailable"
         if df_spot is not None and len(df_spot) >= 5 and "volume" in df_spot.columns:
-            vwap = ta.vwap(df_spot["high"], df_spot["low"], df_spot["close"], df_spot["volume"])
-            vv = vwap.iloc[-2]
-            if spot > vv:
-                s4 = 1;  vwap_note = f"Spot {spot:.1f} above VWAP {vv:.1f}"
+            today = pd.Timestamp.now().normalize()
+            df_today = (
+                df_spot[df_spot.index.normalize() == today]
+                if isinstance(df_spot.index, pd.DatetimeIndex)
+                else df_spot
+            )
+            if len(df_today) >= 5:
+                vwap = ta.vwap(df_today["high"], df_today["low"], df_today["close"], df_today["volume"])
+                vv = vwap.iloc[-2]
+                if spot > vv:
+                    s4 = 1;  vwap_note = f"Spot {spot:.1f} above VWAP {vv:.1f}"
+                else:
+                    s4 = -1; vwap_note = f"Spot {spot:.1f} below VWAP {vv:.1f}"
             else:
-                s4 = -1; vwap_note = f"Spot {spot:.1f} below VWAP {vv:.1f}"
+                vwap_note = "VWAP insufficient bars for today"
         _c("Spot vs VWAP", s4, 1, _dir(s4), vwap_note)
 
         # ── LAYER 2: OI Flow Intelligence ────────────────────────────────────
@@ -1261,14 +1280,15 @@ class RiskManager:
 
     def _maybe_reset_daily_state(self):
         today = datetime.now().strftime("%Y-%m-%d")
-        if today != self._session_date:
-            print(f"[RISK] New trading day {today} — resetting session state")
-            self._session_date               = today
-            self._session_trade_count        = 0
-            self._session_consecutive_losses = 0
-            self._daily_pnl                  = 0.0
-            self._last_entry_times.clear()
-            self._state.reset_market_caches()
+        with self._state.state_lock:
+            if today != self._session_date:
+                print(f"[RISK] New trading day {today} — resetting session state")
+                self._session_date               = today
+                self._session_trade_count        = 0
+                self._session_consecutive_losses = 0
+                self._daily_pnl                  = 0.0
+                self._last_entry_times.clear()
+                self._state.reset_market_caches()
 
     def check_gates(self, symbol: str = "") -> tuple[bool, str]:
         """
@@ -1283,7 +1303,10 @@ class RiskManager:
             consecutive_losses = self._session_consecutive_losses
             daily_pnl          = self._daily_pnl
             last_entry_time    = self._last_entry_times.get(symbol)
+            entry_in_flight    = self._state.entry_in_flight
 
+        if entry_in_flight > 0:
+            return False, f"Entry already in flight ({entry_in_flight})"
         if cfg.max_trades_per_session > 0 and trade_count >= cfg.max_trades_per_session:
             return False, (
                 f"Max trades/session reached ({trade_count}/{cfg.max_trades_per_session})"
@@ -1372,6 +1395,7 @@ class WebSocketManager:
         self._sl_modify_callback: Callable[[str, float], None] | None = None
         self._ws_started     = threading.Event()
         self._subscriptions: set[tuple[str, str]] = set()   # (exchange, symbol) registry for reconnect
+        self._subscribe_lock  = threading.Lock()
         self._last_tick_time: float = 0.0                   # updated on every valid tick; used by watchdog
 
     def set_exit_callback(self, cb: Callable[[str, str], None]) -> None:
@@ -1386,42 +1410,46 @@ class WebSocketManager:
         self._ws_started.wait(timeout=10)
 
     def subscribe(self, exchange: str, symbol: str) -> None:
-        self._subscriptions.add((exchange, symbol))
-        try:
-            self.client.subscribe_ltp(
-                [{"exchange": exchange, "symbol": symbol}],
-                on_data_received=self._on_ws_data,
-            )
-            print(f"[WS] Subscribed option {exchange}:{symbol}")
-        except Exception as exc:
-            print(f"[WS] Subscribe error {exchange}:{symbol}: {exc}")
+        with self._subscribe_lock:
+            self._subscriptions.add((exchange, symbol))
+            try:
+                self.client.subscribe_ltp(
+                    [{"exchange": exchange, "symbol": symbol}],
+                    on_data_received=self._on_ws_data,
+                )
+                print(f"[WS] Subscribed option {exchange}:{symbol}")
+            except Exception as exc:
+                print(f"[WS] Subscribe error {exchange}:{symbol}: {exc}")
 
     def subscribe_spot(self, symbol: str) -> None:
         exch = self.config.index_exchange if symbol in self.config.index_underlyings else self.config.spot_exchange
-        self._subscriptions.add((exch, symbol))
-        try:
-            self.client.subscribe_ltp(
-                [{"exchange": exch, "symbol": symbol}],
-                on_data_received=self._on_ws_data,
-            )
-            print(f"[WS] Subscribed spot {exch}:{symbol}")
-        except Exception as exc:
-            print(f"[WS] Subscribe spot error {symbol}: {exc}")
+        with self._subscribe_lock:
+            self._subscriptions.add((exch, symbol))
+            try:
+                self.client.subscribe_ltp(
+                    [{"exchange": exch, "symbol": symbol}],
+                    on_data_received=self._on_ws_data,
+                )
+                print(f"[WS] Subscribed spot {exch}:{symbol}")
+            except Exception as exc:
+                print(f"[WS] Subscribe spot error {symbol}: {exc}")
 
     def unsubscribe(self, exchange: str, symbol: str) -> None:
-        self._subscriptions.discard((exchange, symbol))
-        try:
-            self.client.unsubscribe_ltp([{"exchange": exchange, "symbol": symbol}])
-        except Exception as exc:
-            print(f"[WS] Unsubscribe error {exchange}:{symbol}: {exc}")
+        with self._subscribe_lock:
+            self._subscriptions.discard((exchange, symbol))
+            try:
+                self.client.unsubscribe_ltp([{"exchange": exchange, "symbol": symbol}])
+            except Exception as exc:
+                print(f"[WS] Unsubscribe error {exchange}:{symbol}: {exc}")
 
     def unsubscribe_spot(self, symbol: str) -> None:
         exch = self.config.index_exchange if symbol in self.config.index_underlyings else self.config.spot_exchange
-        self._subscriptions.discard((exch, symbol))
-        try:
-            self.client.unsubscribe_ltp([{"exchange": exch, "symbol": symbol}])
-        except Exception as exc:
-            print(f"[WS] Unsubscribe spot error {symbol}: {exc}")
+        with self._subscribe_lock:
+            self._subscriptions.discard((exch, symbol))
+            try:
+                self.client.unsubscribe_ltp([{"exchange": exch, "symbol": symbol}])
+            except Exception as exc:
+                print(f"[WS] Unsubscribe spot error {symbol}: {exc}")
 
     def _on_ws_data(self, data: dict) -> None:
         """
@@ -1441,7 +1469,7 @@ class WebSocketManager:
             return
 
         self._last_tick_time = time.time()    # feed heartbeat for watchdog
-        with self._state.exit_lock:
+        with self._state.state_lock:
             self._state.ltp_map[symbol] = ltp
 
         # ── Part A: Premium Trail (option LTP → trail SL) ──────────────────
@@ -1573,12 +1601,14 @@ class WebSocketManager:
                     self._trigger_exit(underlying, "spot_trail_sl_hit")
 
     def _trigger_exit(self, underlying: str, reason: str) -> None:
-        with self._state.exit_lock:
-            if underlying in self._state.exit_queue:
-                return
+        with self._state.state_lock:
             pos = self._state.positions.get(underlying)
-            if pos and not pos.exit_pending:
-                pos.exit_pending = True
+            if not pos or pos.exit_pending:
+                return
+            pos.exit_pending = True
+            with self._state.exit_lock:
+                if underlying in self._state.exit_queue:
+                    return
                 self._state.exit_queue.add(underlying)
         if self._exit_callback:
             threading.Thread(
@@ -1600,22 +1630,24 @@ class WebSocketManager:
                 print(f"[WS] `client.connect()` using {_actual_url} (expected {ws_url})")
                 if ok:
                     print(f"[WS] Connected to {_actual_url} — SDK managing reconnects automatically")
-                    subs = list(self._subscriptions)   # replay all subscriptions (handles reconnects)
+                    with self._subscribe_lock:
+                        subs = list(self._subscriptions)   # replay all subscriptions (handles reconnects)
                     if subs:
                         print(f"[WS] Replaying {len(subs)} subscription(s)...")
                         for (exch, sym) in subs:
                             try:
-                                client.subscribe_ltp(
-                                    [{"exchange": exch, "symbol": sym}],
-                                    on_data_received=self._on_ws_data,
-                                )
+                                with self._subscribe_lock:
+                                    client.subscribe_ltp(
+                                        [{"exchange": exch, "symbol": sym}],
+                                        on_data_received=self._on_ws_data,
+                                    )
                             except Exception as _re_exc:
                                 print(f"[WS] Re-subscribe error {exch}:{sym}: {_re_exc}")
                     while True:  # watchdog: force reconnect if feed silent > 120s in market hours
                         time.sleep(60)
                         elapsed = time.time() - self._last_tick_time
                         hm = int(datetime.now().strftime("%H%M"))
-                        if self._last_tick_time and 900 <= hm <= 1535 and elapsed > 120:
+                        if self._last_tick_time and MARKET_HOURS_START <= hm <= MARKET_HOURS_END and elapsed > 120:
                             print(
                                 f"[WS] Feed silent {int(elapsed)}s during market hours — "
                                 f"forcing hard reconnect..."
@@ -1670,18 +1702,37 @@ class OrderManager:
         cfg = self.config
         max_r = max_retries if max_retries is not None else cfg.order_status_max_retries
         slp   = sleep_secs  if sleep_secs  is not None else cfg.order_status_poll_interval
+        _TERMINAL_FILL    = ("complete", "filled", "executed")
+        _TERMINAL_FAIL    = ("rejected", "cancelled")
         for attempt in range(max_r):
             try:
                 resp = self.client.orderstatus(order_id=order_id, strategy=cfg.strategy_name)
                 if not resp:
                     time.sleep(slp)
                     continue
-                status = resp.get("status", "").lower() if isinstance(resp, dict) else ""
-                if status == "success":
+                if not isinstance(resp, dict):
+                    time.sleep(slp)
+                    continue
+                api_status = resp.get("status", "").lower()
+                if api_status not in ("success",):
+                    time.sleep(slp)
+                    continue
+                data         = resp.get("data") or resp
+                order_status = str(data.get("order_status", "")).lower()
+                if order_status in _TERMINAL_FILL:
+                    # ORD-2: only return on a confirmed terminal fill state
                     return resp
-                elif status in ("rejected", "cancelled"):
-                    print(f"[ORDER] Order {order_id} {status}")
+                if order_status in _TERMINAL_FAIL:
+                    print(f"[ORDER] Order {order_id} {order_status}")
                     return None
+                # ORD-2: detect partial fill near end of retry window
+                filled_qty = int(data.get("filled_quantity", 0) or 0)
+                if filled_qty > 0 and attempt >= int(max_r * 0.8):
+                    print(
+                        f"[ORDER] Partial fill detected: {filled_qty} units "
+                        f"for {order_id} (attempt {attempt+1}/{max_r}) — treating as fill"
+                    )
+                    return resp
             except Exception as exc:
                 print(f"[ORDER] orderstatus error (attempt {attempt+1}): {exc}")
             time.sleep(slp)
@@ -1749,6 +1800,19 @@ class OrderManager:
         pos = self._state.positions.get(underlying)
         if not pos or not pos.sl_order_id:
             return
+        # ORD-4: pre-check if broker SL already filled before sending modifyorder
+        try:
+            pre = self.client.orderstatus(
+                order_id=pos.sl_order_id, strategy=self.config.strategy_name
+            )
+            if isinstance(pre, dict) and pre.get("status") == "success":
+                _data = pre.get("data") or pre
+                if str(_data.get("order_status", "")).lower() in ("complete", "filled", "executed"):
+                    print(f"[ORDER] SL already filled for {underlying} — skipping modify, triggering exit")
+                    self._trigger_exit(underlying, "broker_sl_filled_on_modify")
+                    return
+        except Exception as _pre_exc:
+            print(f"[ORDER] modify_broker_sl pre-check error for {underlying}: {_pre_exc}")
         try:
             resp = self.client.modifyorder(
                 order_id=pos.sl_order_id,
@@ -1786,8 +1850,16 @@ class OrderManager:
                     data = resp.get("data") or resp
                     broker_stat = str(data.get("order_status", "")).lower()
                     if broker_stat in ("complete", "filled", "executed"):
+                        # ORD-5: mark exit_pending immediately to block concurrent WS trail exits
+                        with self._state.state_lock:
+                            if pos.exit_pending:
+                                continue
+                            pos.exit_pending = True
+                            with self._state.exit_lock:
+                                self._state.exit_queue.add(underlying)
                         print(f"[ORDER] Broker {attr_name} filled for {underlying} ({oid})")
                         executed_price = float(data.get("average_price", 0) or 0)
+                        pnl = 0.0
                         if executed_price > 0:
                             pnl = (executed_price - pos.entry_premium) * pos.qty
                             self._risk.record_exit(pnl)
@@ -1797,10 +1869,14 @@ class OrderManager:
                                 f"P&L: ₹{pnl:.0f}\nReason: {reason}",
                                 2,
                             )
+                        # PNL-2: write journal entry for broker-triggered exits
+                        self._write_journal(underlying, pos, executed_price, pnl, reason)
                         self._ws.unsubscribe(self.config.fno_exchange, pos.symbol)
                         self._ws.unsubscribe_spot(pos.spot_symbol)
                         with self._state.state_lock:
                             self._state.positions.pop(underlying, None)
+                        with self._state.exit_lock:
+                            self._state.exit_queue.discard(underlying)
                 except Exception as exc:
                     print(f"[ORDER] check_broker_order_fills error ({underlying}, {oid}): {exc}")
 
@@ -1947,6 +2023,8 @@ class OrderManager:
             )
             return True
 
+        with self._state.state_lock:
+            self._state.entry_in_flight += 1
         try:
             resp = self.client.placeorder(
                 strategy=cfg.strategy_name,
@@ -1962,46 +2040,57 @@ class OrderManager:
                 return False
             order_id = resp.get("orderid")
             print(f"[ORDER] Entry order {order_id} placed for {underlying} ({option_symbol} x{qty})")
+
+            # Add to pending entries for reconciliation
+            with self._state.state_lock:
+                self._state.pending_entries[underlying] = PendingEntry(
+                    order_id=order_id,
+                    symbol=option_symbol,
+                    qty=qty,
+                    spot=spot,
+                    direction=direction,
+                    created_at=datetime.now(),
+                )
+
+            filled = self.poll_order_status(order_id)
+            with self._state.state_lock:
+                self._state.pending_entries.pop(underlying, None)
+            if not filled:
+                print(f"[ORDER] Entry order {order_id} not filled within poll window — abandoning")
+                return False
+
+            data       = filled.get("data") or filled
+            executed   = float(data.get("average_price", 0) or 0)
+            if not executed:
+                executed = float(data.get("price", 0) or 0)
+            if not executed:
+                print(f"[ORDER] Executed price is zero for {order_id} — cannot register position")
+                return False
+
+            filled_qty = int(data.get("filled_quantity", 0) or data.get("filled_qty", 0) or 0)
+            if filled_qty > 0 and filled_qty != qty:
+                print(
+                    f"[ORDER] Partial fill accepted for {order_id}: requested {qty}, "
+                    f"filled {filled_qty}"
+                )
+                qty = filled_qty
+
+            self._risk.record_entry(underlying)
+            self.register_filled_entry(underlying, option_symbol, qty, spot, direction, executed)
+            self._notify(
+                f"✅ Entry executed: {underlying}\n"
+                f"Option: {option_symbol}\nQty: {qty}\nExecuted: ₹{executed:.2f}\n"
+                f"SL: ₹{executed - cfg.premium_stop_pts:.2f} | "
+                f"TGT: ₹{executed + cfg.premium_target_pts:.2f}",
+                2,
+            )
+            return True
         except Exception as exc:
             print(f"[ORDER] placeorder error for {underlying}: {exc}")
             return False
-
-        # Add to pending entries for reconciliation
-        with self._state.state_lock:
-            self._state.pending_entries[underlying] = PendingEntry(
-                order_id=order_id,
-                symbol=option_symbol,
-                qty=qty,
-                spot=spot,
-                direction=direction,
-                created_at=datetime.now(),
-            )
-
-        filled = self.poll_order_status(order_id)
-        with self._state.state_lock:
-            self._state.pending_entries.pop(underlying, None)
-        if not filled:
-            print(f"[ORDER] Entry order {order_id} not filled within poll window — abandoning")
-            return False
-
-        data     = filled.get("data") or filled
-        executed = float(data.get("average_price", 0) or 0)
-        if not executed:
-            executed = float(data.get("price", 0) or 0)
-        if not executed:
-            print(f"[ORDER] Executed price is zero for {order_id} — cannot register position")
-            return False
-
-        self._risk.record_entry(underlying)
-        self.register_filled_entry(underlying, option_symbol, qty, spot, direction, executed)
-        self._notify(
-            f"✅ Entry executed: {underlying}\n"
-            f"Option: {option_symbol}\nQty: {qty}\nExecuted: ₹{executed:.2f}\n"
-            f"SL: ₹{executed - cfg.premium_stop_pts:.2f} | "
-            f"TGT: ₹{executed + cfg.premium_target_pts:.2f}",
-            2,
-        )
-        return True
+        finally:
+            with self._state.state_lock:
+                self._state.entry_in_flight = max(0, self._state.entry_in_flight - 1)
 
     def place_exit(self, underlying: str, reason: str = "manual") -> None:
         """Cancel broker orders first, then place SELL MARKET to exit position."""
@@ -2123,9 +2212,11 @@ class OrderManager:
         )
 
     def check_pending_entries(self) -> None:
-        """Reconcile stale pending entry orders (safety net — runs every cycle)."""
+        """Reconcile stale pending entry orders. WC-09: post-cutoff entries queue immediate exit."""
         with self._state.state_lock:
             pending = list(self._state.pending_entries.items())
+        now_hm = datetime.now().strftime("%H:%M")
+        square_off_hm = self.config.square_off_time
         for underlying, pending_entry in pending:
             order_id = pending_entry.order_id
             filled = self.poll_order_status(order_id, max_retries=1, sleep_secs=0)
@@ -2149,6 +2240,16 @@ class OrderManager:
                         underlying, pending_entry.symbol, pending_entry.qty,
                         pending_entry.spot, pending_entry.direction, price,
                     )
+                    # WC-09: If filled after square_off_time, queue immediate exit
+                    if square_off_hm and now_hm >= square_off_hm:
+                        print(f"[PENDING] Entry {order_id} filled AFTER cutoff ({now_hm} >= {square_off_hm}) — queuing exit")
+                        with self._state.state_lock:
+                            pos = self._state.positions.get(underlying)
+                            if pos:
+                                pos.exit_pending = True
+                                with self._state.exit_lock:
+                                    self._state.exit_queue.add(underlying)
+                        self.orders.place_exit(underlying, "PostCutoffEntry")
                     self._notify(
                         f"✅ {self.config.strategy_name}: pending BUY {order_id} reconciled "
                         f"for {underlying} @ ₹{price:.2f} (fill detected outside normal path)",
@@ -2158,6 +2259,17 @@ class OrderManager:
                     with self._state.state_lock:
                         self._state.pending_entries.pop(underlying, None)
                     print(f"[PENDING] BUY {order_id} {status}; removed from pending entries")
+            elif square_off_hm and now_hm >= square_off_hm:
+                # WC-09: Cancel unfilled pending entry after square_off_time cutoff
+                try:
+                    cancel_resp = self.client.cancelorder(order_id=order_id, strategy=self.config.strategy_name)
+                    cancel_status = cancel_resp.get("status") if isinstance(cancel_resp, dict) else None
+                    if cancel_status == "success" or "cancel" in str(cancel_resp).lower():
+                        with self._state.state_lock:
+                            self._state.pending_entries.pop(underlying, None)
+                        print(f"[PENDING] Cancelled unfilled entry {order_id} after {now_hm} cutoff")
+                except Exception as _exc:
+                    print(f"[PENDING] Cancel error for {order_id}: {_exc}")
 
     def check_pending_exits(self) -> None:
         """Reconcile stale pending exit orders (safety net — runs every cycle)."""
@@ -2251,8 +2363,23 @@ class OptionsBuyerEdgeBot:
         except Exception as exc:
             print(f"[TELEGRAM] Send error: {exc}")
 
+    def _verify_registration(self) -> None:
+        """WC-14: Verify strategy is registered in broker's strategy configs."""
+        cfg = self.config
+        try:
+            resp = self.client.orderbook(strategy=cfg.strategy_name)
+            if isinstance(resp, dict) and resp.get("status") == "success":
+                print(f"[STARTUP] ✓ Strategy '{cfg.strategy_name}' registered OK")
+                return
+        except Exception:
+            pass
+        print(f"[STARTUP] ⚠️  Strategy '{cfg.strategy_name}' not found in strategy configs.")
+        print(f"[STARTUP]    Run: python3 /app/strategies/register_strategy.py")
+        print(f"[STARTUP]    Then restart this script.")
+        print(f"[STARTUP] Continuing anyway (may cause runtime errors)...\n")
+
     def _check_open_positions_on_startup(self) -> None:
-        """Reconcile any open positions from a prior session (e.g., after crash restart)."""
+        """WC-01: Restore broker positions + resubscribe WS + query SL orders."""
         try:
             resp = self.client.positionbook(strategy=self.config.strategy_name)
             if not isinstance(resp, dict) or resp.get("status") != "success":
@@ -2261,12 +2388,52 @@ class OptionsBuyerEdgeBot:
             if not positions:
                 print("[STARTUP] No open positions found in broker position book")
                 return
-            print(f"[STARTUP] Found {len(positions)} broker position(s):")
+            print(f"[STARTUP] Found {len(positions)} broker position(s). Restoring...")
+            cfg = self.config
+            # Fetch orderbook to find SL/TGT orders
+            orderbook_resp = self.client.orderbook(strategy=cfg.strategy_name)
+            open_orders = orderbook_resp.get("data", []) if isinstance(orderbook_resp, dict) else []
             for p in positions:
-                sym   = p.get("symbol", "")
-                qty   = int(p.get("netqty", 0) or 0)
-                entry = float(p.get("average_price", 0) or 0)
-                print(f"  {sym}: qty={qty}, avg_entry=₹{entry:.2f}")
+                sym      = p.get("symbol", "")
+                qty      = int(p.get("netqty", 0) or 0)
+                entry_px = float(p.get("average_price", 0) or 0)
+                if not sym or qty == 0 or entry_px <= 0:
+                    continue
+                # Extract underlying (e.g., BANKNIFTY from BANKNIFTY24APR24CE)
+                base = sym.replace("FUT", "").replace("CE", "").replace("PE", "")
+                underlying = base.split("24")[0] if "24" in base else base
+                opt_type = "CE" if sym.endswith("CE") else ("PE" if sym.endswith("PE") else None)
+                if not opt_type or underlying in self.state.positions:
+                    continue
+                # Create position with conservative SL/TGT estimates
+                pos = OptionPosition(
+                    underlying=underlying,
+                    symbol=sym,
+                    entry_premium=entry_px,
+                    qty=qty,
+                    option_type=opt_type,
+                    sl=entry_px - cfg.premium_stop_pts,
+                    tgt=entry_px + cfg.premium_target_pts,
+                    spot_symbol=underlying,
+                    spot_entry=entry_px,
+                    reward_dist=0.0,
+                )
+                # Query SL/TGT order IDs from orderbook
+                for order in open_orders:
+                    o_sym = order.get("symbol", "")
+                    o_stat = str(order.get("status", "")).lower()
+                    o_type = str(order.get("order_type", "")).lower()
+                    if o_stat in ("pending", "open") and o_sym == sym:
+                        if "sl" in o_type:
+                            pos.sl_order_id = order.get("orderid")
+                        elif "limit" in o_type:
+                            pos.tgt_order_id = order.get("orderid")
+                # Register + resubscribe WS
+                with self.state.state_lock:
+                    self.state.positions[underlying] = pos
+                self.ws.subscribe(cfg.fno_exchange, sym)
+                self.ws.subscribe_spot(underlying)
+                print(f"[STARTUP] ✓ Restored {underlying}: {sym} x{qty} @ ₹{entry_px:.2f}")
         except Exception as exc:
             print(f"[STARTUP] positionbook error: {exc}")
 
@@ -2292,6 +2459,10 @@ class OptionsBuyerEdgeBot:
                         continue
                     pos.exit_pending = True
                 self.orders.place_exit(ul, f"MaxHoldTime({cfg.max_hold_minutes}m)")
+
+    def _is_market_hours(self) -> bool:
+        hm = int(datetime.now().strftime("%H%M"))
+        return MARKET_HOURS_START <= hm <= MARKET_HOURS_END
 
     def _print_startup_info(self) -> None:
         cfg = self.config
@@ -2545,8 +2716,11 @@ class OptionsBuyerEdgeBot:
                                     pos.exit_pending = True
                                 self.orders.place_exit(ul, "EOD-SquareOff")
                 self._check_max_hold()
-                for symbol in cfg.underlyings:
-                    self.scan_underlying(symbol)
+                if self._is_market_hours():
+                    for symbol in cfg.underlyings:
+                        self.scan_underlying(symbol)
+                else:
+                    print("[STRATEGY] Outside market hours — skipping signal scan")
 
             except Exception as exc:
                 print(f"[STRATEGY ERROR] {exc}")
@@ -2702,8 +2876,9 @@ class OptionsBuyerEdgeBot:
     def run(self) -> None:
         """Start WebSocket + strategy threads, run until KeyboardInterrupt."""
         cfg = self.config
+        self._verify_registration()  # WC-14: check strategy config first
         self._print_startup_info()
-        self._check_open_positions_on_startup()
+        self._check_open_positions_on_startup()  # WC-01: restore broker positions
 
         self._send_telegram(
             f"🚀 {cfg.strategy_name} starting\n"
