@@ -28,7 +28,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Callable
+from typing import Any, Callable
 import pandas as pd
 from openalgo import api, ta
 
@@ -80,14 +80,28 @@ class BotConfig:
     otm_offset:     int = 1
     strike_count:   int = 8   # strikes each side fetched from the option chain (STRIKE_COUNT env var)
     lot_multiplier: int = 1
+    gex_enabled:    bool = True
 
     # ── Signal Thresholds ──────────────────────────────────────────────────────
     min_score: int = 15
     max_trap:  int = 80
 
+    # ── Session Regime Weighting (U8) ─────────────────────────────────────────
+    morning_session_end:   str   = "09:45"
+    afternoon_power_start: str   = "14:00"
+    power_hour_score_factor: float = 0.80
+    morning_score_factor:    float = 1.50
+
     # ── Risk — Fixed ₹ Points ──────────────────────────────────────────────────
     premium_stop_pts:   float = 30.0
     premium_target_pts: float = 50.0
+
+    # ── Entry SL Policy (upgrade-ready component mode switch) ─────────────────
+    entry_sl_mode:         str   = "fixed"   # fixed | strike_atr | spot_atr
+    dynamic_sl_atr_period: int   = 14
+    dynamic_sl_atr_mult:   float = 1.5
+    dynamic_sl_min_pts:    float = 15.0
+    dynamic_sl_max_pts:    float = 80.0
 
     # ── Session Gates ──────────────────────────────────────────────────────────
     max_trades_per_session: int   = 5
@@ -134,6 +148,36 @@ class BotConfig:
     # ── Order Polling ──────────────────────────────────────────────────────────
     order_status_max_retries:   int   = 15
     order_status_poll_interval: float = 2.0
+
+    # ── U2 Greeks-Aware Deep OTM Exit ─────────────────────────────────────────
+    delta_exit_threshold: float = 0.10
+
+    # ── U3 OI Velocity ─────────────────────────────────────────────────────────
+    oi_velocity_enabled:   bool  = True
+    oi_velocity_threshold: float = 0.05
+
+    # ── U4 Hard Entry Spread Block ─────────────────────────────────────────────
+    max_entry_spread_pct: float = 8.0
+
+    # ── U5 Duplicate/Re-entry Guard (configurable per strike) ─────────────────
+    same_strike_reentry_guard_enabled: bool = True
+    max_same_strike_trades_per_day:    int  = 1
+
+    # ── U6 Drawdown Rate Monitor (velocity-based halt; disabled by default) ───
+    drawdown_rate_enabled:     bool  = False
+    drawdown_rate_window_mins: int   = 30
+    drawdown_rate_max_loss:    float = 1000.0
+
+    # ── U7 Pre-trade Liquidity Preflight ───────────────────────────────────────
+    preflight_spread_check:   bool  = True
+    preflight_max_spread_pct: float = 10.0
+    preflight_min_bid:        float = 5.0
+
+    # ── U9 Adaptive Sizing (disabled by default) ──────────────────────────────
+    adaptive_sizing_enabled:     bool = False
+    adaptive_max_lot_mult:       int  = 3
+    adaptive_win_streak_trigger: int  = 2
+    adaptive_win_streak_step:    int  = 1
 
     # ── Paper Trading ──────────────────────────────────────────────────────────
     paper_trade: bool = False       # simulate fills from WS LTP; no real orders sent
@@ -213,10 +257,20 @@ class BotConfig:
             otm_offset=int(os.getenv("OTM_OFFSET", "1")),
             strike_count=int(os.getenv("STRIKE_COUNT", "8")),
             lot_multiplier=int(os.getenv("LOT_MULTIPLIER", "1")),
+            gex_enabled=os.getenv("GEX_ENABLED", "true").lower() in ("1", "true", "yes"),
             min_score=int(os.getenv("MIN_SCORE", "15")),
             max_trap=int(os.getenv("MAX_TRAP", "80")),
+            morning_session_end=os.getenv("MORNING_SESSION_END", "09:45"),
+            afternoon_power_start=os.getenv("AFTERNOON_POWER_START", "14:00"),
+            power_hour_score_factor=float(os.getenv("POWER_HOUR_SCORE_FACTOR", "0.80")),
+            morning_score_factor=float(os.getenv("MORNING_SCORE_FACTOR", "1.50")),
             premium_stop_pts=float(os.getenv("PREMIUM_STOP_PTS", "30.0")),
             premium_target_pts=float(os.getenv("PREMIUM_TARGET_PTS", "50.0")),
+            entry_sl_mode=os.getenv("ENTRY_SL_MODE", "fixed").strip().lower(),
+            dynamic_sl_atr_period=int(os.getenv("DYNAMIC_SL_ATR_PERIOD", "14")),
+            dynamic_sl_atr_mult=float(os.getenv("DYNAMIC_SL_ATR_MULT", "1.5")),
+            dynamic_sl_min_pts=float(os.getenv("DYNAMIC_SL_MIN_PTS", "15.0")),
+            dynamic_sl_max_pts=float(os.getenv("DYNAMIC_SL_MAX_PTS", "80.0")),
             max_trades_per_session=int(os.getenv("MAX_TRADES_PER_SESSION", "5")),
             max_consecutive_losses=int(os.getenv("MAX_CONSECUTIVE_LOSSES", "3")),
             entry_cooldown_secs=int(os.getenv("ENTRY_COOLDOWN_SECS", "300")),
@@ -247,6 +301,22 @@ class BotConfig:
             delta_target_high=float(os.getenv("DELTA_TARGET_HIGH", "0.45")),
             order_status_max_retries=int(os.getenv("ORDER_STATUS_MAX_RETRIES", "15")),
             order_status_poll_interval=float(os.getenv("ORDER_STATUS_POLL_INTERVAL", "2.0")),
+            delta_exit_threshold=float(os.getenv("DELTA_EXIT_THRESHOLD", "0.10")),
+            oi_velocity_enabled=os.getenv("OI_VELOCITY_ENABLED", "true").lower() in ("1", "true", "yes"),
+            oi_velocity_threshold=float(os.getenv("OI_VELOCITY_THRESHOLD", "0.05")),
+            max_entry_spread_pct=float(os.getenv("MAX_ENTRY_SPREAD_PCT", "8.0")),
+            same_strike_reentry_guard_enabled=os.getenv("SAME_STRIKE_REENTRY_GUARD_ENABLED", "true").lower() in ("1", "true", "yes"),
+            max_same_strike_trades_per_day=int(os.getenv("MAX_SAME_STRIKE_TRADES_PER_DAY", "1")),
+            drawdown_rate_enabled=os.getenv("DRAWDOWN_RATE_ENABLED", "false").lower() in ("1", "true", "yes"),
+            drawdown_rate_window_mins=int(os.getenv("DRAWDOWN_RATE_WINDOW_MINS", "30")),
+            drawdown_rate_max_loss=float(os.getenv("DRAWDOWN_RATE_MAX_LOSS", "1000.0")),
+            preflight_spread_check=os.getenv("PREFLIGHT_SPREAD_CHECK", "true").lower() in ("1", "true", "yes"),
+            preflight_max_spread_pct=float(os.getenv("PREFLIGHT_MAX_SPREAD_PCT", "10.0")),
+            preflight_min_bid=float(os.getenv("PREFLIGHT_MIN_BID", "5.0")),
+            adaptive_sizing_enabled=os.getenv("ADAPTIVE_SIZING_ENABLED", "false").lower() in ("1", "true", "yes"),
+            adaptive_max_lot_mult=int(os.getenv("ADAPTIVE_MAX_LOT_MULT", "3")),
+            adaptive_win_streak_trigger=int(os.getenv("ADAPTIVE_WIN_STREAK_TRIGGER", "2")),
+            adaptive_win_streak_step=int(os.getenv("ADAPTIVE_WIN_STREAK_STEP", "1")),
             paper_trade=os.getenv("PAPER_TRADE", "false").lower() in ("1", "true", "yes"),
             max_daily_profit_amount=float(os.getenv("MAX_DAILY_PROFIT_AMOUNT", "0.0")),
             no_new_trade_after=os.getenv("NO_NEW_TRADE_AFTER", "13:30"),
@@ -276,6 +346,22 @@ class BotConfig:
             errors.append(f"PREMIUM_STOP_PTS={self.premium_stop_pts} must be > 0 (fixed ₹ points)")
         if self.premium_target_pts <= 0:
             errors.append(f"PREMIUM_TARGET_PTS={self.premium_target_pts} must be > 0 (fixed ₹ points)")
+        if self.entry_sl_mode not in ("fixed", "strike_atr", "spot_atr"):
+            errors.append(
+                f"ENTRY_SL_MODE={self.entry_sl_mode!r} must be one of 'fixed', 'strike_atr', 'spot_atr'"
+            )
+        if self.dynamic_sl_atr_period < 2:
+            errors.append(f"DYNAMIC_SL_ATR_PERIOD={self.dynamic_sl_atr_period} must be >= 2")
+        if self.dynamic_sl_atr_mult <= 0:
+            errors.append(f"DYNAMIC_SL_ATR_MULT={self.dynamic_sl_atr_mult} must be > 0")
+        if self.dynamic_sl_min_pts <= 0:
+            errors.append(f"DYNAMIC_SL_MIN_PTS={self.dynamic_sl_min_pts} must be > 0")
+        if self.dynamic_sl_max_pts <= 0:
+            errors.append(f"DYNAMIC_SL_MAX_PTS={self.dynamic_sl_max_pts} must be > 0")
+        if self.dynamic_sl_max_pts < self.dynamic_sl_min_pts:
+            errors.append(
+                f"DYNAMIC_SL_MAX_PTS={self.dynamic_sl_max_pts} must be >= DYNAMIC_SL_MIN_PTS={self.dynamic_sl_min_pts}"
+            )
         if self.risk_percent <= 0:
             errors.append(f"RISK_PERCENT={self.risk_percent} must be > 0")
         if self.trail_sl_mode not in ("spot", "premium", "both"):
@@ -286,10 +372,44 @@ class BotConfig:
             errors.append(f"LOT_MULTIPLIER={self.lot_multiplier} must be >= 1")
         if self.strike_count < 1:
             errors.append(f"STRIKE_COUNT={self.strike_count} must be >= 1")
+        if not isinstance(self.gex_enabled, bool):
+            errors.append(f"GEX_ENABLED={self.gex_enabled!r} must be boolean")
         if not (1 <= self.min_score <= 100):
             errors.append(f"MIN_SCORE={self.min_score} must be in range [1, 100]")
         if not (0 <= self.max_trap <= 100):
             errors.append(f"MAX_TRAP={self.max_trap} must be in range [0, 100]")
+        if self.delta_exit_threshold < 0 or self.delta_exit_threshold >= 1:
+            errors.append(f"DELTA_EXIT_THRESHOLD={self.delta_exit_threshold} must be in [0, 1)")
+        if self.oi_velocity_threshold < 0:
+            errors.append(f"OI_VELOCITY_THRESHOLD={self.oi_velocity_threshold} must be >= 0")
+        if self.max_entry_spread_pct < 0:
+            errors.append(f"MAX_ENTRY_SPREAD_PCT={self.max_entry_spread_pct} must be >= 0")
+        if self.max_same_strike_trades_per_day < 1:
+            errors.append(
+                f"MAX_SAME_STRIKE_TRADES_PER_DAY={self.max_same_strike_trades_per_day} must be >= 1"
+            )
+        if self.drawdown_rate_window_mins < 1:
+            errors.append(
+                f"DRAWDOWN_RATE_WINDOW_MINS={self.drawdown_rate_window_mins} must be >= 1"
+            )
+        if self.drawdown_rate_max_loss < 0:
+            errors.append(f"DRAWDOWN_RATE_MAX_LOSS={self.drawdown_rate_max_loss} must be >= 0")
+        if self.preflight_max_spread_pct < 0:
+            errors.append(f"PREFLIGHT_MAX_SPREAD_PCT={self.preflight_max_spread_pct} must be >= 0")
+        if self.preflight_min_bid < 0:
+            errors.append(f"PREFLIGHT_MIN_BID={self.preflight_min_bid} must be >= 0")
+        if self.power_hour_score_factor <= 0:
+            errors.append(f"POWER_HOUR_SCORE_FACTOR={self.power_hour_score_factor} must be > 0")
+        if self.morning_score_factor <= 0:
+            errors.append(f"MORNING_SCORE_FACTOR={self.morning_score_factor} must be > 0")
+        if self.adaptive_max_lot_mult < 1:
+            errors.append(f"ADAPTIVE_MAX_LOT_MULT={self.adaptive_max_lot_mult} must be >= 1")
+        if self.adaptive_win_streak_trigger < 1:
+            errors.append(
+                f"ADAPTIVE_WIN_STREAK_TRIGGER={self.adaptive_win_streak_trigger} must be >= 1"
+            )
+        if self.adaptive_win_streak_step < 1:
+            errors.append(f"ADAPTIVE_WIN_STREAK_STEP={self.adaptive_win_streak_step} must be >= 1")
         if self.dte_min < 0 or self.dte_max < self.dte_min:
             errors.append(
                 f"DTE_MIN={self.dte_min} / DTE_MAX={self.dte_max}: "
@@ -316,6 +436,8 @@ class BotConfig:
         for _fname, _val in (
             ("NO_NEW_TRADE_AFTER", self.no_new_trade_after),
             ("SQUARE_OFF_TIME",    self.square_off_time),
+            ("MORNING_SESSION_END", self.morning_session_end),
+            ("AFTERNOON_POWER_START", self.afternoon_power_start),
         ):
             if _val and not _hhmm.match(_val):
                 errors.append(f"{_fname}={_val!r} must be in HH:MM format (e.g. '13:30')")
@@ -393,6 +515,7 @@ class PendingEntry:
     qty:        int
     spot:       float
     direction:  str
+    sl_pts:     float
     created_at: datetime
 
 
@@ -424,6 +547,7 @@ class BotState:
         self.chain_history:   dict[str, deque] = {}
         self._lookback_bars   = lookback_bars
         self.entry_in_flight: int = 0
+        self._traded_today:   dict[str, int] = {}
 
     def get_chain_history(self, symbol: str) -> deque:
         if symbol not in self.chain_history:
@@ -435,6 +559,20 @@ class BotState:
         self.prev_spot.clear()
         self.prev_sf.clear()
         self.chain_history.clear()
+
+    def mark_traded(self, option_symbol: str, direction: str) -> None:
+        key = f"{option_symbol}|{direction}"
+        with self.state_lock:
+            self._traded_today[key] = self._traded_today.get(key, 0) + 1
+
+    def trade_count_today(self, option_symbol: str, direction: str) -> int:
+        key = f"{option_symbol}|{direction}"
+        with self.state_lock:
+            return int(self._traded_today.get(key, 0))
+
+    def reset_traded_today(self) -> None:
+        with self.state_lock:
+            self._traded_today.clear()
 
 
 def _field_trend(oldest: dict, newest: dict, fld: str) -> int:
@@ -617,6 +755,8 @@ class SignalEngine:
         pe_ask: float | None,
         ce_delta: float | None = None,
         pe_delta: float | None = None,
+        gex_levels: dict[str, Any] | None = None,
+        min_score_override: int | None = None,
         prev_spot: float | None = None,
         prev_sf_ltp: float | None = None,
     ) -> SignalResult:
@@ -752,8 +892,111 @@ class SignalEngine:
             else:                 di_note = f"LTP proxy Δ {di:+.3f} — balanced"
         _c("Greeks Bias (Δ)", s9, 1, _dir(s9), di_note)
 
-        # L3-b: Gamma Regime (disabled — no GEX data)
-        _c("Gamma Regime", 0, 2, "neutral", "Gamma flip unavailable (no GEX data)")
+        # L3-b: Gamma Regime (institutional GEX interpretation)
+        s10 = 0
+        gamma_note = "Gamma regime unavailable"
+        if gex_levels:
+            total_net_gex = float(gex_levels.get("total_net_gex") or 0)
+            gamma_flip = gex_levels.get("gamma_flip")
+            upside_punch = gex_levels.get("upside_punch_target")
+            downside_punch = gex_levels.get("downside_punch_target")
+
+            if total_net_gex < 0:
+                # Short-gamma regime: directional moves tend to accelerate near nearest
+                # negative-net-GEX strike (punch target).
+                chosen_side = None
+                chosen_target = None
+                chosen_dist = None
+
+                if upside_punch is not None and downside_punch is not None:
+                    up_dist = abs(float(upside_punch) - spot)
+                    dn_dist = abs(spot - float(downside_punch))
+                    if up_dist < dn_dist:
+                        chosen_side, chosen_target, chosen_dist = "upside", float(upside_punch), up_dist
+                    elif dn_dist < up_dist:
+                        chosen_side, chosen_target, chosen_dist = "downside", float(downside_punch), dn_dist
+                elif upside_punch is not None:
+                    chosen_side, chosen_target, chosen_dist = "upside", float(upside_punch), abs(float(upside_punch) - spot)
+                elif downside_punch is not None:
+                    chosen_side, chosen_target, chosen_dist = "downside", float(downside_punch), abs(spot - float(downside_punch))
+
+                if chosen_side == "upside":
+                    s10 = 1
+                elif chosen_side == "downside":
+                    s10 = -1
+
+                # Very near punch target implies stronger acceleration risk.
+                if chosen_dist is not None and spot > 0 and chosen_dist <= spot * 0.0025 and s10 != 0:
+                    s10 = 2 if s10 > 0 else -2
+
+                if chosen_side and chosen_target is not None:
+                    gamma_note = (
+                        f"Short gamma (Net GEX {total_net_gex:+.0f}); nearest {chosen_side} punch "
+                        f"{chosen_target:.0f} from spot {spot:.0f}"
+                    )
+                else:
+                    gamma_note = (
+                        f"Short gamma (Net GEX {total_net_gex:+.0f}) but no nearby punch target "
+                        "resolved — neutral"
+                    )
+
+            elif total_net_gex > 0:
+                gamma_note = (
+                    f"Long gamma (Net GEX {total_net_gex:+.0f}) — dealer hedging tends to dampen "
+                    "directional follow-through"
+                )
+                s10 = 0
+            else:
+                gamma_note = "Net GEX near zero — no clear gamma regime"
+
+            if gamma_flip is not None:
+                gamma_note += f" | gamma flip {float(gamma_flip):.0f}"
+
+        _c("Gamma Regime", s10, 2, _dir(s10), gamma_note)
+
+        # L3-c: OI Build/Unwind Velocity (U3; additive to Gamma, not replacement)
+        s10b = 0
+        oi_vel_note = "OI velocity unavailable"
+        if cfg.oi_velocity_enabled and chain_rows:
+            ce_oi_chg = sum(float(r.get("ce_oi_chg", 0) or 0) for r in chain_rows)
+            pe_oi_chg = sum(float(r.get("pe_oi_chg", 0) or 0) for r in chain_rows)
+            ce_oi_tot = sum(float(r.get("ce_oi", 0) or 0) for r in chain_rows)
+            pe_oi_tot = sum(float(r.get("pe_oi", 0) or 0) for r in chain_rows)
+            ce_vel = ce_oi_chg / ce_oi_tot if ce_oi_tot > 0 else 0.0
+            pe_vel = pe_oi_chg / pe_oi_tot if pe_oi_tot > 0 else 0.0
+            th = cfg.oi_velocity_threshold
+
+            if ce_vel > th and s6 > 0:
+                s10b = 1
+                oi_vel_note = (
+                    f"CE OI building {ce_vel:+.2%} + call buying — institutional accumulation"
+                )
+            elif ce_vel > th and s6 < 0:
+                s10b = -1
+                oi_vel_note = (
+                    f"CE OI building {ce_vel:+.2%} + call writing — institutional writer trap"
+                )
+            elif ce_vel < -th and s6 > 0:
+                s10b = 0.5
+                oi_vel_note = f"CE OI unwinding {ce_vel:+.2%} — short covering"
+            elif pe_vel > th and s7 < 0:
+                s10b = -1
+                oi_vel_note = (
+                    f"PE OI building {pe_vel:+.2%} + put buying — bearish accumulation"
+                )
+            elif pe_vel > th and s7 > 0:
+                s10b = 1
+                oi_vel_note = (
+                    f"PE OI building {pe_vel:+.2%} + put writing — institutional support"
+                )
+            elif pe_vel < -th and s7 < 0:
+                s10b = -0.5
+                oi_vel_note = f"PE OI unwinding {pe_vel:+.2%} — put covering"
+            else:
+                oi_vel_note = f"OI velocity below threshold (CE {ce_vel:+.2%}, PE {pe_vel:+.2%})"
+        else:
+            oi_vel_note = "OI velocity disabled"
+        _c("OI Velocity", s10b, 2, _dir(s10b), oi_vel_note)
 
         # ── LAYER 4: Straddle & IV ───────────────────────────────────────────
         # L4-a: IV Regime
@@ -831,11 +1074,12 @@ class SignalEngine:
         trap_score = min(100, trap_score)
 
         # ── Final Score ──────────────────────────────────────────────────────
-        # Active score_max sum: EMA(1)+RSI(1)+MACD(1)+VWAP(1)+PCR(1)+CE-flow(2)+PE-flow(2)
-        #   +Wall(1)+Greeks(1)+IV(1)+Straddle(2)+SF(1) = 15  (Gamma=2 disabled → excluded)
-        MAX_RAW_SCORE = 15
+        # Active score_max sum includes Gamma Regime now.
+        # Current total: EMA(1)+RSI(1)+MACD(1)+VWAP(1)+PCR(1)+CE-flow(2)+PE-flow(2)
+        # +Wall(1)+Delta(1)+Gamma(2)+IV(1)+Straddle(2)+SF(1) = 17
+        MAX_RAW_SCORE = sum(c.score_max for c in components)
         raw_score  = sum(c.score for c in components)
-        base_score = (raw_score / MAX_RAW_SCORE) * 100
+        base_score = (raw_score / MAX_RAW_SCORE) * 100 if MAX_RAW_SCORE > 0 else 0
         final_score = int(max(-100, min(100, base_score)))
 
         for c in components:
@@ -843,12 +1087,18 @@ class SignalEngine:
                 reasons.append(c.note)
 
         abs_score = abs(final_score)
+        effective_min_score = int(min_score_override) if min_score_override is not None else cfg.min_score
+        if effective_min_score < 1:
+            effective_min_score = 1
+        elif effective_min_score > 100:
+            effective_min_score = 100
+
         if trap_score > cfg.max_trap:
             signal = "NO_TRADE"
             if trap_reasons:
                 reasons.insert(0, f"⚠ High trap risk: {trap_reasons[0]}")
-        elif abs_score >= cfg.min_score:
-            signal = "EXECUTE" if trap_score <= cfg.max_trap else "WATCH"
+        elif abs_score >= effective_min_score:
+            signal = "EXECUTE"
         elif abs_score >= 30:
             signal = "WATCH"
         else:
@@ -874,28 +1124,106 @@ class DataFetcher:
     def __init__(self, client: api, config: BotConfig):
         self.client = client
         self.config = config
+        self._greeks_cache: dict[tuple[str, str], dict[str, float]] = {}
+        self._greeks_cache_hits: int = 0
+        self._greeks_cache_misses: int = 0
+        self._greeks_api_calls: int = 0
+
+    def clear_greeks_cache(self, symbol: str | None = None) -> None:
+        """Clear cached option greeks. Called once per scan to avoid stale reads."""
+        if symbol is None:
+            self._greeks_cache.clear()
+            self._greeks_cache_hits = 0
+            self._greeks_cache_misses = 0
+            self._greeks_api_calls = 0
+            return
+        keys = [k for k in self._greeks_cache if k[0] == symbol]
+        for k in keys:
+            self._greeks_cache.pop(k, None)
+        # Symbol scan cycle starts fresh counters.
+        self._greeks_cache_hits = 0
+        self._greeks_cache_misses = 0
+        self._greeks_api_calls = 0
+
+    def _fetch_option_greeks_cached(
+        self, symbol: str, option_symbol: str | None
+    ) -> dict[str, float] | None:
+        if not option_symbol:
+            return None
+        cache_key = (symbol, option_symbol)
+        cached = self._greeks_cache.get(cache_key)
+        if cached is not None:
+            self._greeks_cache_hits += 1
+            return cached
+        self._greeks_cache_misses += 1
+
+        try:
+            self._greeks_api_calls += 1
+            resp = self.client.optiongreeks(
+                symbol=option_symbol,
+                exchange=self.config.fno_exchange,
+                underlying_symbol=symbol,
+                underlying_exchange=self.underlying_exchange(symbol),
+            )
+            if resp and resp.get("status") == "success":
+                greeks = resp.get("greeks", {}) or {}
+                parsed = {
+                    "delta": float(greeks.get("delta", 0) or 0),
+                    "gamma": float(greeks.get("gamma", 0) or 0),
+                }
+                self._greeks_cache[cache_key] = parsed
+                return parsed
+        except Exception as exc:
+            print(f"[DATA] optiongreeks error for {option_symbol}: {exc}")
+        return None
+
+    def greeks_perf_snapshot(self, symbol: str | None = None) -> dict[str, float | int]:
+        cache_size = len(self._greeks_cache)
+        if symbol is not None:
+            cache_size = sum(1 for k in self._greeks_cache if k[0] == symbol)
+        total_lookups = self._greeks_cache_hits + self._greeks_cache_misses
+        hit_rate = (self._greeks_cache_hits / total_lookups * 100.0) if total_lookups > 0 else 0.0
+        return {
+            "hits": self._greeks_cache_hits,
+            "misses": self._greeks_cache_misses,
+            "api_calls": self._greeks_api_calls,
+            "cache_size": cache_size,
+            "hit_rate": round(hit_rate, 1),
+        }
+
+    def batch_prefetch_option_greeks(self, symbol: str, option_symbols: list[str]) -> None:
+        """Prefetch greeks for unique option symbols used in this scan cycle."""
+        for opt_sym in dict.fromkeys([s for s in option_symbols if s]):
+            self._fetch_option_greeks_cached(symbol, opt_sym)
 
     def underlying_exchange(self, symbol: str) -> str:
         """Return NSE_INDEX/BSE_INDEX for index underlyings, else SPOT_EXCHANGE."""
         return self.config.index_exchange if symbol in self.config.index_underlyings else self.config.spot_exchange
 
-    def fetch_spot_candles(self, symbol: str) -> pd.DataFrame | None:
+    def fetch_candles(self, symbol: str, exchange: str) -> pd.DataFrame | None:
+        """Fetch OHLCV history for any instrument symbol on a given exchange."""
         try:
-            end   = datetime.now()
+            end = datetime.now()
             start = end - timedelta(days=self.config.lookback_days)
-            df = self.client.history(
+            return self.client.history(
                 symbol=symbol,
-                exchange=self.underlying_exchange(symbol),
+                exchange=exchange,
                 interval=self.config.candle_interval,
                 start_date=start.strftime("%Y-%m-%d"),
                 end_date=end.strftime("%Y-%m-%d"),
             )
-            if df is None or len(df) < self.config.slow_ema_period + 5:
-                return None
-            return df
         except Exception as exc:
-            print(f"[DATA] Candle fetch error for {symbol}: {exc}")
+            print(f"[DATA] Candle fetch error for {symbol}@{exchange}: {exc}")
             return None
+
+    def fetch_spot_candles(self, symbol: str) -> pd.DataFrame | None:
+        df = self.fetch_candles(symbol, self.underlying_exchange(symbol))
+        if df is None or len(df) < self.config.slow_ema_period + 5:
+            return None
+        return df
+
+    def fetch_option_candles(self, option_symbol: str) -> pd.DataFrame | None:
+        return self.fetch_candles(option_symbol, self.config.fno_exchange)
 
     def fetch_option_chain(
         self, symbol: str, expiry: str | None = None
@@ -993,47 +1321,139 @@ class DataFetcher:
         ce_symbol: str | None,
         pe_symbol: str | None,
     ) -> tuple[float | None, float | None]:
-        ul_exchange = self.underlying_exchange(symbol)
         ce_delta: float | None = None
         pe_delta: float | None = None
         for opt_sym, key in ((ce_symbol, "ce"), (pe_symbol, "pe")):
             if not opt_sym:
                 continue
-            try:
-                resp = self.client.optiongreeks(
-                    symbol=opt_sym,
-                    exchange=self.config.fno_exchange,
-                    underlying_symbol=symbol,
-                    underlying_exchange=ul_exchange,
-                )
-                if resp and resp.get("status") == "success":
-                    delta = resp.get("greeks", {}).get("delta")
-                    if delta is not None:
-                        if key == "ce":
-                            ce_delta = float(delta)
-                        else:
-                            pe_delta = float(delta)
-            except Exception as exc:
-                print(f"[DATA] optiongreeks error for {opt_sym}: {exc}")
+            greeks = self._fetch_option_greeks_cached(symbol, opt_sym)
+            if greeks is not None:
+                delta = greeks.get("delta")
+                if key == "ce":
+                    ce_delta = float(delta)
+                else:
+                    pe_delta = float(delta)
         return ce_delta, pe_delta
 
     def fetch_option_delta(self, symbol: str, option_symbol: str | None) -> float | None:
         if not option_symbol:
             return None
-        try:
-            resp = self.client.optiongreeks(
-                symbol=option_symbol,
-                exchange=self.config.fno_exchange,
-                underlying_symbol=symbol,
-                underlying_exchange=self.underlying_exchange(symbol),
-            )
-            if resp and resp.get("status") == "success":
-                delta = resp.get("greeks", {}).get("delta")
-                if delta is not None:
-                    return abs(float(delta))
-        except Exception as exc:
-            print(f"[DATA] option delta error for {option_symbol}: {exc}")
+        greeks = self._fetch_option_greeks_cached(symbol, option_symbol)
+        if greeks is not None:
+            return abs(float(greeks.get("delta", 0) or 0))
         return None
+
+    def fetch_option_gamma(self, symbol: str, option_symbol: str | None) -> float | None:
+        if not option_symbol:
+            return None
+        greeks = self._fetch_option_greeks_cached(symbol, option_symbol)
+        if greeks is not None:
+            return float(greeks.get("gamma", 0) or 0)
+        return None
+
+    @staticmethod
+    def derive_gex_levels(gex_chain: list[dict], spot_price: float) -> dict[str, Any]:
+        """Derive institutional GEX levels from per-strike net-gex profile."""
+        if not gex_chain:
+            return {
+                "gamma_flip": None,
+                "call_gamma_wall": None,
+                "put_gamma_wall": None,
+                "absolute_wall": None,
+                "total_net_gex": 0.0,
+                "upside_punch_target": None,
+                "downside_punch_target": None,
+            }
+
+        sorted_chain = sorted(gex_chain, key=lambda x: x["strike"])
+        total_net_gex = float(sum(float(x.get("net_gex", 0) or 0) for x in sorted_chain))
+
+        # Gamma flip via cumulative net-gex sign change.
+        gamma_flip: float | None = None
+        cumsum = 0.0
+        prev_sign = None
+        prev_item = None
+        for item in sorted_chain:
+            prev_cumsum = cumsum
+            cumsum += float(item.get("net_gex", 0) or 0)
+            sign = 1 if cumsum >= 0 else -1
+            if prev_sign is not None and sign != prev_sign and prev_item is not None:
+                if cumsum != prev_cumsum:
+                    frac = -prev_cumsum / (cumsum - prev_cumsum)
+                    gamma_flip = round(
+                        float(prev_item["strike"]) + frac * (float(item["strike"]) - float(prev_item["strike"])),
+                        2,
+                    )
+                else:
+                    gamma_flip = float(item["strike"])
+                break
+            prev_sign = sign
+            prev_item = item
+
+        above_spot_pos = [x for x in sorted_chain if x["strike"] > spot_price and (x.get("net_gex", 0) or 0) > 0]
+        below_spot_neg = [x for x in sorted_chain if x["strike"] < spot_price and (x.get("net_gex", 0) or 0) < 0]
+        call_gamma_wall = max(above_spot_pos, key=lambda x: x["net_gex"])["strike"] if above_spot_pos else None
+        put_gamma_wall = min(below_spot_neg, key=lambda x: x["net_gex"])["strike"] if below_spot_neg else None
+        absolute_wall = max(sorted_chain, key=lambda x: abs(x.get("net_gex", 0) or 0))["strike"] if sorted_chain else None
+
+        above_neg = [x for x in sorted_chain if x["strike"] > spot_price and (x.get("net_gex", 0) or 0) < 0]
+        below_neg = [x for x in sorted_chain if x["strike"] < spot_price and (x.get("net_gex", 0) or 0) < 0]
+        upside_punch_target = min(above_neg, key=lambda x: x["strike"])["strike"] if above_neg else None
+        downside_punch_target = max(below_neg, key=lambda x: x["strike"])["strike"] if below_neg else None
+
+        return {
+            "gamma_flip": gamma_flip,
+            "call_gamma_wall": call_gamma_wall,
+            "put_gamma_wall": put_gamma_wall,
+            "absolute_wall": absolute_wall,
+            "total_net_gex": round(total_net_gex, 2),
+            "upside_punch_target": upside_punch_target,
+            "downside_punch_target": downside_punch_target,
+        }
+
+    def fetch_gex_levels(self, symbol: str, chain_rows: list[dict], spot_price: float) -> dict[str, Any] | None:
+        """Compute per-strike GEX from live option greeks + OI using SDK APIs."""
+        if not self.config.gex_enabled:
+            return None
+        if not chain_rows or not spot_price:
+            return None
+
+        gex_chain: list[dict] = []
+        for row in chain_rows:
+            strike = float(row.get("strike", 0) or 0)
+            if not strike:
+                continue
+
+            ce_symbol = row.get("ce_symbol")
+            pe_symbol = row.get("pe_symbol")
+            ce_oi = float(row.get("ce_oi", 0) or 0)
+            pe_oi = float(row.get("pe_oi", 0) or 0)
+            lot_size = float(row.get("lotsize", 1) or 1)
+
+            ce_gamma = self.fetch_option_gamma(symbol, ce_symbol) if ce_oi > 0 else None
+            pe_gamma = self.fetch_option_gamma(symbol, pe_symbol) if pe_oi > 0 else None
+
+            ce_gex = (ce_gamma or 0.0) * ce_oi * lot_size
+            pe_gex = (pe_gamma or 0.0) * pe_oi * lot_size
+            net_gex = ce_gex - pe_gex
+
+            gex_chain.append(
+                {
+                    "strike": strike,
+                    "ce_gamma": round(float(ce_gamma or 0.0), 6),
+                    "pe_gamma": round(float(pe_gamma or 0.0), 6),
+                    "ce_gex": round(float(ce_gex), 2),
+                    "pe_gex": round(float(pe_gex), 2),
+                    "net_gex": round(float(net_gex), 2),
+                }
+            )
+
+        if not gex_chain:
+            return None
+
+        levels = self.derive_gex_levels(gex_chain, spot_price)
+        levels["chain"] = gex_chain
+        return levels
 
     def fetch_iv_rank(self, spot_quote: dict) -> float | None:
         try:
@@ -1085,6 +1505,74 @@ class DataFetcher:
         except Exception as exc:
             print(f"[DATA] expiry fetch error for {symbol}: {exc}")
             return None
+
+
+# ===============================================================================
+# ENTRY SL POLICY ENGINE — fixed / strike ATR / spot ATR
+# ===============================================================================
+
+class EntryStopLossPolicy:
+    """Resolves initial entry SL points using switchable policies."""
+
+    def __init__(self, fetcher: DataFetcher, config: BotConfig):
+        self._fetcher = fetcher
+        self._config = config
+
+    def _atr_stop_pts(self, df: pd.DataFrame | None) -> float | None:
+        cfg = self._config
+        if df is None or len(df) < cfg.dynamic_sl_atr_period + 2:
+            return None
+        needed = {"high", "low", "close"}
+        if not needed.issubset(set(df.columns)):
+            return None
+        try:
+            atr_series = ta.atr(
+                df["high"],
+                df["low"],
+                df["close"],
+                period=cfg.dynamic_sl_atr_period,
+            )
+            atr_val = float(atr_series.iloc[-2])
+            if not math.isfinite(atr_val) or atr_val <= 0:
+                return None
+            return max(
+                cfg.dynamic_sl_min_pts,
+                min(cfg.dynamic_sl_max_pts, atr_val * cfg.dynamic_sl_atr_mult),
+            )
+        except Exception as exc:
+            print(f"[SL] ATR compute error: {exc}")
+            return None
+
+    def resolve_entry_sl_points(
+        self,
+        option_symbol: str,
+        df_spot: pd.DataFrame | None,
+    ) -> tuple[float, str]:
+        cfg = self._config
+        fixed = cfg.premium_stop_pts
+        mode = cfg.entry_sl_mode
+
+        if cfg.trail_sl_mode == "spot":
+            # Strict spot-trail isolation: keep initial premium hard SL fixed in points.
+            return fixed, "spot_trail_forced_fixed"
+
+        if mode == "fixed":
+            return fixed, "fixed"
+
+        if mode == "strike_atr":
+            option_df = self._fetcher.fetch_option_candles(option_symbol)
+            sl_pts = self._atr_stop_pts(option_df)
+            if sl_pts is not None:
+                return sl_pts, "strike_atr"
+            return fixed, "strike_atr_fallback_fixed"
+
+        if mode == "spot_atr":
+            sl_pts = self._atr_stop_pts(df_spot)
+            if sl_pts is not None:
+                return sl_pts, "spot_atr"
+            return fixed, "spot_atr_fallback_fixed"
+
+        return fixed, "unknown_mode_fallback_fixed"
 
 
 # ===============================================================================
@@ -1240,6 +1728,7 @@ class RiskManager:
         self._session_date               = datetime.now().strftime("%Y-%m-%d")
         self._session_trade_count        = 0
         self._session_consecutive_losses = 0
+        self._session_consecutive_wins   = 0
         self._last_entry_times: dict[str, datetime] = {}
         self._daily_pnl                  = 0.0
 
@@ -1247,6 +1736,7 @@ class RiskManager:
         self._funds_cache_time:  float = 0.0
         self._funds_cache_ttl:   float = 60.0  # re-poll interval; between refreshes uses pnl delta
         self._pnl_at_last_fetch: float = 0.0
+        self._pnl_history: list[tuple[float, float]] = []  # (unix_timestamp, cumulative_pnl)
 
     def available_capital(self) -> float:
         """Cached funds() call: re-polls broker every _funds_cache_ttl seconds.
@@ -1286,9 +1776,12 @@ class RiskManager:
                 self._session_date               = today
                 self._session_trade_count        = 0
                 self._session_consecutive_losses = 0
+                self._session_consecutive_wins   = 0
                 self._daily_pnl                  = 0.0
                 self._last_entry_times.clear()
                 self._state.reset_market_caches()
+                self._state._traded_today.clear()
+                self._pnl_history.clear()
 
     def check_gates(self, symbol: str = "") -> tuple[bool, str]:
         """
@@ -1334,6 +1827,13 @@ class RiskManager:
                 f"Daily loss limit hit (₹{cfg.max_daily_loss_amount:.0f}) "
                 f"| current P&L ₹{daily_pnl:.0f}"
             )
+        if cfg.drawdown_rate_enabled and cfg.drawdown_rate_max_loss > 0 and len(self._pnl_history) >= 2:
+            window_pnl_change = self._daily_pnl - self._pnl_history[0][1]
+            if window_pnl_change <= -cfg.drawdown_rate_max_loss:
+                return False, (
+                    f"Drawdown rate limit: ₹{abs(window_pnl_change):.0f} lost in last "
+                    f"{cfg.drawdown_rate_window_mins}m (limit ₹{cfg.drawdown_rate_max_loss:.0f})"
+                )
         if cfg.max_daily_profit_amount > 0 and daily_pnl >= cfg.max_daily_profit_amount:
             return False, (
                 f"Daily profit target reached ₹{daily_pnl:.0f} "
@@ -1358,12 +1858,31 @@ class RiskManager:
         """Call after a confirmed exit fill. Updates daily P&L and loss streak."""
         with self._state.state_lock:
             self._daily_pnl += pnl
+            self._pnl_history.append((time.time(), self._daily_pnl))
+            cutoff = time.time() - (self.config.drawdown_rate_window_mins * 60)
+            self._pnl_history = [(t, p) for t, p in self._pnl_history if t >= cutoff]
             if pnl < 0:
                 self._session_consecutive_losses += 1
+                self._session_consecutive_wins = 0
                 print(f"[RISK] Loss streak: {self._session_consecutive_losses} | "
                       f"Daily P&L ₹{self._daily_pnl:.0f}")
             else:
                 self._session_consecutive_losses = 0
+                self._session_consecutive_wins += 1
+
+    def effective_lot_multiplier(self, base_multiplier: int) -> int:
+        """Adaptive lot sizing (U9). Disabled by default for safety."""
+        cfg = self.config
+        if not cfg.adaptive_sizing_enabled:
+            return max(1, base_multiplier)
+        bonus = (
+            self._session_consecutive_wins // cfg.adaptive_win_streak_trigger
+        ) * cfg.adaptive_win_streak_step
+        return max(1, min(base_multiplier + bonus, cfg.adaptive_max_lot_mult))
+
+    @property
+    def consecutive_wins(self) -> int:
+        return self._session_consecutive_wins
 
     @property
     def daily_pnl(self) -> float:
@@ -1397,6 +1916,49 @@ class WebSocketManager:
         self._subscriptions: set[tuple[str, str]] = set()   # (exchange, symbol) registry for reconnect
         self._subscribe_lock  = threading.Lock()
         self._last_tick_time: float = 0.0                   # updated on every valid tick; used by watchdog
+        self._delta_cache: dict[str, tuple[float, float]] = {}
+        self._delta_fetch_inflight: set[str] = set()
+        self._delta_lock = threading.Lock()
+
+    def _get_cached_delta(self, underlying: str, option_symbol: str, ttl: float = 30.0) -> float | None:
+        """Return cached |delta| and refresh asynchronously when stale."""
+        with self._delta_lock:
+            cached = self._delta_cache.get(option_symbol)
+            if cached and (time.time() - cached[1]) < ttl:
+                return cached[0]
+            if option_symbol not in self._delta_fetch_inflight:
+                self._delta_fetch_inflight.add(option_symbol)
+                threading.Thread(
+                    target=self._fetch_and_cache_delta,
+                    args=(underlying, option_symbol),
+                    daemon=True,
+                    name=f"delta-{option_symbol}",
+                ).start()
+            return cached[0] if cached else None
+
+    def _fetch_and_cache_delta(self, underlying: str, option_symbol: str) -> None:
+        try:
+            ul_exch = (
+                self.config.index_exchange
+                if underlying in self.config.index_underlyings
+                else self.config.spot_exchange
+            )
+            resp = self.client.optiongreeks(
+                symbol=option_symbol,
+                exchange=self.config.fno_exchange,
+                underlying_symbol=underlying,
+                underlying_exchange=ul_exch,
+            )
+            if resp and resp.get("status") == "success":
+                delta = resp.get("greeks", {}).get("delta")
+                if delta is not None:
+                    with self._delta_lock:
+                        self._delta_cache[option_symbol] = (abs(float(delta)), time.time())
+        except Exception:
+            pass
+        finally:
+            with self._delta_lock:
+                self._delta_fetch_inflight.discard(option_symbol)
 
     def set_exit_callback(self, cb: Callable[[str, str], None]) -> None:
         self._exit_callback = cb
@@ -1486,6 +2048,15 @@ class WebSocketManager:
 
     def _check_premium_trail(self, underlying: str, pos: OptionPosition, ltp: float) -> None:
         cfg = self.config
+        if cfg.delta_exit_threshold > 0 and not pos.exit_pending:
+            live_delta = self._get_cached_delta(underlying, pos.symbol)
+            if live_delta is not None and live_delta < cfg.delta_exit_threshold:
+                print(
+                    f"[WS] DEEP OTM EXIT {underlying}: delta {live_delta:.3f} "
+                    f"< threshold {cfg.delta_exit_threshold:.3f}"
+                )
+                self._trigger_exit(underlying, f"DeepOTM_delta_{live_delta:.3f}")
+                return
         if ltp <= pos.sl:
             print(f"[WS] PREMIUM SL HIT {underlying}: LTP {ltp:.2f} <= SL {pos.sl:.2f}")
             self._trigger_exit(underlying, "premium_sl_hit")
@@ -1564,10 +2135,9 @@ class WebSocketManager:
                     new_sl_spot = spot_ltp + step_pts
                 pos.trail_sl_spot = new_sl_spot
                 print(f"[WS] Spot trail activated {underlying}: peak {spot_ltp:.2f}, SL spot → {new_sl_spot:.2f}")
-                # Spot trail activation means we are in a favorable spot position.
-                # Raise the premium hard-SL to at least breakeven so IV crush cannot
-                # inflict a full stop-loss loss once spot has moved in our favour.
-                if not pos.breakeven_moved:
+                # Only bridge spot move -> premium SL in 'both' mode.
+                # In strict 'spot' mode, premium hard-SL remains fixed and independent.
+                if cfg.trail_sl_mode == "both" and not pos.breakeven_moved:
                     new_premium_sl = pos.entry_premium
                     if new_premium_sl > pos.sl:
                         pos.sl             = new_premium_sl
@@ -1684,6 +2254,7 @@ class OrderManager:
         state:   BotState,
         risk:    "RiskManager",
         ws:      WebSocketManager,
+        fetcher: "DataFetcher",
         notify:  Callable[[str, int], None],
     ):
         self.client = client
@@ -1691,6 +2262,7 @@ class OrderManager:
         self._state = state
         self._risk  = risk
         self._ws    = ws
+        self._fetcher = fetcher
         self._notify = notify
 
     def poll_order_status(
@@ -1888,9 +2460,11 @@ class OrderManager:
         spot: float,
         direction: str,
         executed: float,
+        sl_pts: float | None = None,
     ) -> None:
         cfg = self.config
-        sl  = executed - cfg.premium_stop_pts
+        resolved_sl_pts = sl_pts if (sl_pts is not None and sl_pts > 0) else cfg.premium_stop_pts
+        sl  = executed - resolved_sl_pts
         tgt = executed + cfg.premium_target_pts
         reward_dist = spot * (cfg.spot_reward_pct / 100.0)
 
@@ -1908,6 +2482,7 @@ class OrderManager:
         )
         with self._state.state_lock:
             self._state.positions[underlying] = pos
+        self._state.mark_traded(option_symbol, direction)
 
         self._ws.subscribe(cfg.fno_exchange, option_symbol)
         self._ws.subscribe_spot(underlying)
@@ -1951,7 +2526,8 @@ class OrderManager:
 
         print(
             f"[ORDER] Position registered for {underlying}: {option_symbol} "
-            f"QTY={qty} ENTRY=₹{executed:.2f} SL=₹{sl:.2f} TGT=₹{tgt:.2f}"
+            f"QTY={qty} ENTRY=₹{executed:.2f} SL=₹{sl:.2f} "
+            f"(pts={resolved_sl_pts:.2f}) TGT=₹{tgt:.2f}"
         )
 
     # ── Trade Journal ──────────────────────────────────────────────────────────
@@ -2001,9 +2577,11 @@ class OrderManager:
         qty: int,
         spot: float,
         direction: str,
+        sl_pts: float | None = None,
     ) -> bool:
         """Place a market BUY order, poll for fill, then register the position."""
         cfg = self.config
+        resolved_sl_pts = sl_pts if (sl_pts is not None and sl_pts > 0) else cfg.premium_stop_pts
         if underlying in self._state.positions:
             print(f"[ORDER] {underlying} already has an open position — skip entry")
             return False
@@ -2012,12 +2590,12 @@ class OrderManager:
             executed = self._state.ltp_map.get(option_symbol) or spot * 0.01
             print(f"[PAPER] Simulated BUY {qty}x {option_symbol} @ ₹{executed:.2f}")
             self._risk.record_entry(underlying)
-            self.register_filled_entry(underlying, option_symbol, qty, spot, direction, executed)
+            self.register_filled_entry(underlying, option_symbol, qty, spot, direction, executed, sl_pts=resolved_sl_pts)
             self._notify(
                 f"📄 PAPER Entry: {underlying}\n"
                 f"Option: {option_symbol} x{qty}\n"
                 f"Sim fill: ₹{executed:.2f}\n"
-                f"SL: ₹{executed - cfg.premium_stop_pts:.2f} | "
+                f"SL: ₹{executed - resolved_sl_pts:.2f} | "
                 f"TGT: ₹{executed + cfg.premium_target_pts:.2f}",
                 2,
             )
@@ -2026,6 +2604,32 @@ class OrderManager:
         with self._state.state_lock:
             self._state.entry_in_flight += 1
         try:
+            if cfg.preflight_spread_check and not cfg.paper_trade:
+                live_q = self._fetcher.fetch_quote(option_symbol, cfg.fno_exchange)
+                if live_q:
+                    bid = float(live_q.get("bid", 0) or 0)
+                    ask = float(live_q.get("ask", 0) or 0)
+                    ltp = float(live_q.get("ltp", 0) or 0)
+                    mid = (bid + ask) / 2 if (bid and ask) else ltp
+                    if cfg.preflight_min_bid > 0 and bid < cfg.preflight_min_bid:
+                        print(
+                            f"[ORDER] Pre-flight FAIL {option_symbol}: "
+                            f"bid ₹{bid:.2f} < min ₹{cfg.preflight_min_bid:.2f}"
+                        )
+                        return False
+                    if (
+                        cfg.preflight_max_spread_pct > 0
+                        and mid > 0
+                        and ask > bid
+                    ):
+                        spread_pct = (ask - bid) / mid * 100
+                        if spread_pct > cfg.preflight_max_spread_pct:
+                            print(
+                                f"[ORDER] Pre-flight FAIL {option_symbol}: "
+                                f"spread {spread_pct:.1f}% > max {cfg.preflight_max_spread_pct:.1f}%"
+                            )
+                            return False
+
             resp = self.client.placeorder(
                 strategy=cfg.strategy_name,
                 symbol=option_symbol,
@@ -2049,6 +2653,7 @@ class OrderManager:
                     qty=qty,
                     spot=spot,
                     direction=direction,
+                    sl_pts=resolved_sl_pts,
                     created_at=datetime.now(),
                 )
 
@@ -2076,11 +2681,11 @@ class OrderManager:
                 qty = filled_qty
 
             self._risk.record_entry(underlying)
-            self.register_filled_entry(underlying, option_symbol, qty, spot, direction, executed)
+            self.register_filled_entry(underlying, option_symbol, qty, spot, direction, executed, sl_pts=resolved_sl_pts)
             self._notify(
                 f"✅ Entry executed: {underlying}\n"
                 f"Option: {option_symbol}\nQty: {qty}\nExecuted: ₹{executed:.2f}\n"
-                f"SL: ₹{executed - cfg.premium_stop_pts:.2f} | "
+                f"SL: ₹{executed - resolved_sl_pts:.2f} | "
                 f"TGT: ₹{executed + cfg.premium_target_pts:.2f}",
                 2,
             )
@@ -2239,6 +2844,7 @@ class OrderManager:
                     self.register_filled_entry(
                         underlying, pending_entry.symbol, pending_entry.qty,
                         pending_entry.spot, pending_entry.direction, price,
+                        sl_pts=pending_entry.sl_pts,
                     )
                     # WC-09: If filled after square_off_time, queue immediate exit
                     if square_off_hm and now_hm >= square_off_hm:
@@ -2249,7 +2855,7 @@ class OrderManager:
                                 pos.exit_pending = True
                                 with self._state.exit_lock:
                                     self._state.exit_queue.add(underlying)
-                        self.orders.place_exit(underlying, "PostCutoffEntry")
+                        self.place_exit(underlying, "PostCutoffEntry")
                     self._notify(
                         f"✅ {self.config.strategy_name}: pending BUY {order_id} reconciled "
                         f"for {underlying} @ ₹{price:.2f} (fill detected outside normal path)",
@@ -2341,11 +2947,12 @@ class OptionsBuyerEdgeBot:
         self.state   = BotState(lookback_bars=config.lookback_bars)
         self.risk    = RiskManager(self.client, config, self.state)
         self.fetcher = DataFetcher(self.client, config)
+        self.sl_policy = EntryStopLossPolicy(self.fetcher, config)
         self.scorer  = SignalEngine(config)
         self.strikes = StrikeSelector(self.fetcher, config)
         self.ws      = WebSocketManager(self.client, config, self.state)
         self.orders  = OrderManager(
-            self.client, config, self.state, self.risk, self.ws, self._send_telegram
+            self.client, config, self.state, self.risk, self.ws, self.fetcher, self._send_telegram
         )
         # Wire callbacks to break circular dependency
         self.ws.set_exit_callback(self.orders.place_exit)
@@ -2399,12 +3006,28 @@ class OptionsBuyerEdgeBot:
                 entry_px = float(p.get("average_price", 0) or 0)
                 if not sym or qty == 0 or entry_px <= 0:
                     continue
-                # Extract underlying (e.g., BANKNIFTY from BANKNIFTY24APR24CE)
-                base = sym.replace("FUT", "").replace("CE", "").replace("PE", "")
-                underlying = base.split("24")[0] if "24" in base else base
+
+                # Robust underlying extraction for symbols like:
+                #   NIFTY29MAY2623500CE, BANKNIFTY29MAY26FUT, RELIANCE29MAY261200CE
+                underlying = ""
+                m = re.match(r"^(.*?)(\d{1,2}[A-Z]{3}\d{2})(?:\d+(?:\.\d+)?)?(CE|PE|FUT)$", sym)
+                if m:
+                    underlying = m.group(1)
+                if not underlying:
+                    candidates = sorted(self.config.underlyings, key=len, reverse=True)
+                    underlying = next((u for u in candidates if sym.startswith(u)), "")
+                if not underlying:
+                    print(f"[STARTUP] Could not derive underlying from {sym} — skipping restore row")
+                    continue
+
                 opt_type = "CE" if sym.endswith("CE") else ("PE" if sym.endswith("PE") else None)
                 if not opt_type or underlying in self.state.positions:
                     continue
+                spot_q = self.fetcher.fetch_quote(underlying, self.fetcher.underlying_exchange(underlying))
+                restored_spot = float(spot_q.get("ltp", 0) or 0)
+                if restored_spot <= 0:
+                    # Fallback keeps recovery resilient when quote API is temporarily unavailable.
+                    restored_spot = entry_px
                 # Create position with conservative SL/TGT estimates
                 pos = OptionPosition(
                     underlying=underlying,
@@ -2415,8 +3038,8 @@ class OptionsBuyerEdgeBot:
                     sl=entry_px - cfg.premium_stop_pts,
                     tgt=entry_px + cfg.premium_target_pts,
                     spot_symbol=underlying,
-                    spot_entry=entry_px,
-                    reward_dist=0.0,
+                    spot_entry=restored_spot,
+                    reward_dist=restored_spot * (cfg.spot_reward_pct / 100.0),
                 )
                 # Query SL/TGT order IDs from orderbook
                 for order in open_orders:
@@ -2475,6 +3098,11 @@ class OptionsBuyerEdgeBot:
         print(f"  FNO Exchange    : {cfg.fno_exchange}")
         print(f"  Min Score       : {cfg.min_score} | Max Trap: {cfg.max_trap}")
         print(f"  SL Points       : {cfg.premium_stop_pts} | TGT Points: {cfg.premium_target_pts}")
+        print(f"  Entry SL Mode   : {cfg.entry_sl_mode}")
+        print(
+            f"  Dynamic SL ATR  : period={cfg.dynamic_sl_atr_period}, mult={cfg.dynamic_sl_atr_mult}, "
+            f"min={cfg.dynamic_sl_min_pts}, max={cfg.dynamic_sl_max_pts}"
+        )
         print(f"  Trail Mode      : {cfg.trail_sl_mode}")
         print(f"  Breakeven SL    : {'disabled' if cfg.breakeven_at_gain_pct <= 0 else f'{cfg.breakeven_at_gain_pct:.0f}% of target gain'}")
         print(f"  Long Only Mode  : {cfg.long_only_mode}")
@@ -2506,6 +3134,18 @@ class OptionsBuyerEdgeBot:
         state  = self.state
         orders = self.orders
 
+        # Keep greeks cache scoped to this scan cycle for fresh yet deduplicated API calls.
+        self.fetcher.clear_greeks_cache(symbol)
+
+        def _log_greeks_perf(stage: str) -> None:
+            perf = self.fetcher.greeks_perf_snapshot(symbol)
+            print(
+                f"[PERF] {symbol} [{stage}] greeks: "
+                f"hit={perf['hits']} miss={perf['misses']} "
+                f"api_calls={perf['api_calls']} hit_rate={perf['hit_rate']}% "
+                f"cache_size={perf['cache_size']}"
+            )
+
         if symbol in state.positions:
             return
 
@@ -2513,6 +3153,23 @@ class OptionsBuyerEdgeBot:
         if not allowed:
             print(f"[SCAN] {symbol} blocked by risk gate: {gate_reason}")
             return
+
+        now_hm = datetime.now().strftime("%H:%M")
+        effective_min_score = cfg.min_score
+        if cfg.morning_session_end and now_hm < cfg.morning_session_end:
+            effective_min_score = max(1, int(cfg.min_score * cfg.morning_score_factor))
+            print(
+                f"[SCAN] {symbol}: morning volatility gate — min_score raised to "
+                f"{effective_min_score}"
+            )
+        elif (
+            cfg.afternoon_power_start
+            and cfg.afternoon_power_start <= now_hm < cfg.no_new_trade_after
+        ):
+            effective_min_score = max(1, int(cfg.min_score * cfg.power_hour_score_factor))
+            print(
+                f"[SCAN] {symbol}: power hour — min_score eased to {effective_min_score}"
+            )
 
         spot_q = self.fetcher.fetch_quote(symbol, self.fetcher.underlying_exchange(symbol))
         spot   = float(spot_q.get("ltp", 0) or 0)
@@ -2546,6 +3203,39 @@ class OptionsBuyerEdgeBot:
         atm_row = next((r for r in smoothed if r.get("strike") == atm_k), {})
         atm_ce_ltp  = float(atm_row.get("ce_ltp", 0) or 0)
         atm_pe_ltp  = float(atm_row.get("pe_ltp", 0) or 0)
+
+        # Prefetch greeks only for symbols that will be consumed in this scan:
+        # 1) ATM CE/PE (L3 delta component)
+        # 2) Strikes with OI > 0 (GEX gamma profile)
+        # 3) Liquidity-qualified strikes (strike selection delta gate)
+        option_symbols: list[str] = []
+        if atm_row.get("ce_symbol"):
+            option_symbols.append(atm_row.get("ce_symbol"))
+        if atm_row.get("pe_symbol"):
+            option_symbols.append(atm_row.get("pe_symbol"))
+
+        for row in chain_rows:
+            if float(row.get("ce_oi", 0) or 0) > 0 and row.get("ce_symbol"):
+                option_symbols.append(row.get("ce_symbol"))
+            if float(row.get("pe_oi", 0) or 0) > 0 and row.get("pe_symbol"):
+                option_symbols.append(row.get("pe_symbol"))
+
+        for row in smoothed:
+            if (
+                float(row.get("ce_oi", 0) or 0) >= cfg.min_oi_filter
+                and float(row.get("ce_volume", 0) or 0) >= cfg.min_vol_filter
+                and row.get("ce_symbol")
+            ):
+                option_symbols.append(row.get("ce_symbol"))
+            if (
+                float(row.get("pe_oi", 0) or 0) >= cfg.min_oi_filter
+                and float(row.get("pe_volume", 0) or 0) >= cfg.min_vol_filter
+                and row.get("pe_symbol")
+            ):
+                option_symbols.append(row.get("pe_symbol"))
+
+        self.fetcher.batch_prefetch_option_greeks(symbol, option_symbols)
+
         straddle_price = (atm_ce_ltp + atm_pe_ltp) if (atm_ce_ltp and atm_pe_ltp) else None
         # Only compare premium expansion if the ATM strike is the same as the previous scan.
         # If the ATM strike shifted, straddle velocity is undefined/reset for this bar.
@@ -2568,6 +3258,7 @@ class OptionsBuyerEdgeBot:
             atm_row.get("ce_symbol"),
             atm_row.get("pe_symbol"),
         )
+        gex_levels = self.fetcher.fetch_gex_levels(symbol, chain_rows, spot)
 
         ce_bid = float(atm_row.get("ce_bid", 0) or 0) or None
         ce_ask = float(atm_row.get("ce_ask", 0) or 0) or None
@@ -2599,6 +3290,8 @@ class OptionsBuyerEdgeBot:
             pe_ask=pe_ask,
             ce_delta=ce_delta,
             pe_delta=pe_delta,
+            gex_levels=gex_levels,
+            min_score_override=effective_min_score,
             prev_spot=prev_spot_ltp,
             prev_sf_ltp=prev_sf_ltp,
         )
@@ -2624,15 +3317,21 @@ class OptionsBuyerEdgeBot:
         if result.trap_reasons:
             print(f"  ⚠ TRAP {_trap}  ·  {'  ·  '.join(result.trap_reasons)}")
         if _signal != "EXECUTE":
-            print(f"  {_sig_ico} {_signal}  —  not executing  (score {abs(_s)}/100, min {cfg.min_score})")
+            print(
+                f"  {_sig_ico} {_signal}  —  not executing  "
+                f"(score {abs(_s)}/100, min {effective_min_score})"
+            )
+            _log_greeks_perf("no-execute")
             print()
             return
         print(f"  ✔ EXECUTE  {_dir_ico}  {result.direction}")
         print()
         direction = result.direction
         if cfg.long_only_mode and direction not in ("CE", "PE"):
+            _log_greeks_perf("blocked-direction")
             return
         if direction is None:
+            _log_greeks_perf("neutral-direction")
             return
 
         best = self.strikes.select_best(symbol, smoothed, spot, direction, iv_rank_val)
@@ -2643,33 +3342,77 @@ class OptionsBuyerEdgeBot:
                     print(f"[SCAN] {symbol}: using simple OTM fallback strike {best.get('strike')}")
             if best is None:
                 print(f"[SCAN] {symbol}: no qualifying strike found — skip")
+                _log_greeks_perf("no-strike")
                 return
 
         opt_key    = "ce_symbol" if direction == "CE" else "pe_symbol"
         opt_symbol = best.get(opt_key)
         if not opt_symbol:
             print(f"[SCAN] {symbol}: strike {best.get('strike')} has no {direction} symbol — skip")
+            _log_greeks_perf("missing-option-symbol")
             return
 
+        if cfg.same_strike_reentry_guard_enabled:
+            traded_count = state.trade_count_today(opt_symbol, direction)
+            if traded_count >= cfg.max_same_strike_trades_per_day:
+                print(
+                    f"[SCAN] {symbol}: {opt_symbol} {direction} already traded "
+                    f"{traded_count}x today (max {cfg.max_same_strike_trades_per_day}) — skip"
+                )
+                _log_greeks_perf("reentry-guard")
+                return
+
+        if cfg.max_entry_spread_pct > 0:
+            bid_key = "ce_bid" if direction == "CE" else "pe_bid"
+            ask_key = "ce_ask" if direction == "CE" else "pe_ask"
+            bid = float(best.get(bid_key, 0) or 0)
+            ask = float(best.get(ask_key, 0) or 0)
+            mid = (bid + ask) / 2 if (bid and ask) else 0.0
+            if mid > 0 and ask > bid:
+                live_spread_pct = (ask - bid) / mid * 100
+                if live_spread_pct > cfg.max_entry_spread_pct:
+                    print(
+                        f"[SCAN] {symbol}: entry blocked — spread {live_spread_pct:.1f}% "
+                        f"> max {cfg.max_entry_spread_pct:.1f}% (bid={bid:.2f}, ask={ask:.2f})"
+                    )
+                    _log_greeks_perf("hard-spread-block")
+                    return
+
+        entry_sl_pts, entry_sl_source = self.sl_policy.resolve_entry_sl_points(
+            opt_symbol,
+            df_spot,
+        )
+        print(
+            f"[SCAN] {symbol}: entry SL mode={cfg.entry_sl_mode} source={entry_sl_source} "
+            f"-> pts={entry_sl_pts:.2f}"
+        )
+
         lotsize = int(best.get("lotsize", 1) or 1)
-        fixed_qty = max(1, cfg.lot_multiplier) * lotsize
+        effective_mult = self.risk.effective_lot_multiplier(cfg.lot_multiplier)
+        fixed_qty = max(1, effective_mult) * lotsize
+        if cfg.adaptive_sizing_enabled:
+            print(
+                f"[SCAN] {symbol}: lot_mult={effective_mult} "
+                f"(base={cfg.lot_multiplier}, wins={self.risk.consecutive_wins})"
+            )
 
         available  = self.risk.available_capital()
         risk_cap   = available * (cfg.risk_percent / 100.0)
-        risk_per_unit = cfg.premium_stop_pts
+        risk_per_unit = entry_sl_pts
         risk_qty   = int(risk_cap / risk_per_unit) if risk_per_unit > 0 else 0
         # Round down to lot size boundary
         risk_qty   = (risk_qty // lotsize) * lotsize if lotsize > 0 else risk_qty
         qty = min(fixed_qty, risk_qty) if risk_qty > 0 else 0
         if qty <= 0:
             est_premium = float(best.get("ce_ltp" if direction == "CE" else "pe_ltp", 0) or 0)
-            min_risk_pct = (cfg.premium_stop_pts * lotsize / available * 100) if available > 0 else 0.0
+            min_risk_pct = (entry_sl_pts * lotsize / available * 100) if available > 0 else 0.0
             print(
                 f"[SCAN] {symbol}: qty=0 — 1 lot risk exceeds cap "
-                f"(stop ₹{cfg.premium_stop_pts} pts × {lotsize} units = ₹{cfg.premium_stop_pts*lotsize:.0f}/lot, "
+                f"(stop ₹{entry_sl_pts:.2f} pts × {lotsize} units = ₹{entry_sl_pts*lotsize:.0f}/lot, "
                 f"risk cap ₹{risk_cap:.0f} @ {cfg.risk_percent}% of ₹{available:.0f} available; "
                 f"need RISK_PERCENT≥{min_risk_pct:.1f}%)"
             )
+            _log_greeks_perf("qty-zero")
             return
 
         print(
@@ -2683,7 +3426,8 @@ class OptionsBuyerEdgeBot:
             f"Reasons: {'; '.join(result.reasons[:3])}",
             1,
         )
-        orders.place_entry(symbol, opt_symbol, qty, spot, direction)
+        _log_greeks_perf("entry-order")
+        orders.place_entry(symbol, opt_symbol, qty, spot, direction, sl_pts=entry_sl_pts)
 
     def _strategy_thread(self) -> None:
         """Clock-anchored strategy scan loop."""
