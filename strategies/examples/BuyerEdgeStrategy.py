@@ -19,13 +19,14 @@ Run:  export OPENALGO_API_KEY="your-key"  &&  python BuyerEdgeStrategy.py
 """
 
 import csv
+import concurrent.futures
 import math
 import os
 import re
 import sys
 import threading
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Callable
@@ -488,8 +489,10 @@ class OptionPosition:
     entry_premium:        float
     qty:                  int
     option_type:          str           # "CE" or "PE"
-    sl:                   float
-    tgt:                  float
+    entry_delta:          float | None  = None  # Actual delta at entry; used for SL/TP adaptation
+    moneyness:            str           = "Unknown"  # "ATM" / "Sl-OTM" / "OTM" / "Deep-OTM"
+    sl:                   float         = 0.0
+    tgt:                  float         = 0.0
     spot_symbol:          str
     spot_entry:           float
     reward_dist:          float
@@ -1124,10 +1127,11 @@ class DataFetcher:
     def __init__(self, client: api, config: BotConfig):
         self.client = client
         self.config = config
-        self._greeks_cache: dict[tuple[str, str], dict[str, float]] = {}
+        self._greeks_cache: OrderedDict[tuple[str, str], dict[str, float]] = OrderedDict()
         self._greeks_cache_hits: int = 0
         self._greeks_cache_misses: int = 0
         self._greeks_api_calls: int = 0
+        self._greeks_cache_max_size: int = 500  # LRU: prevent unbounded growth
 
     def clear_greeks_cache(self, symbol: str | None = None) -> None:
         """Clear cached option greeks. Called once per scan to avoid stale reads."""
@@ -1154,6 +1158,7 @@ class DataFetcher:
         cached = self._greeks_cache.get(cache_key)
         if cached is not None:
             self._greeks_cache_hits += 1
+            self._greeks_cache.move_to_end(cache_key)
             return cached
         self._greeks_cache_misses += 1
 
@@ -1171,6 +1176,8 @@ class DataFetcher:
                     "delta": float(greeks.get("delta", 0) or 0),
                     "gamma": float(greeks.get("gamma", 0) or 0),
                 }
+                while len(self._greeks_cache) >= self._greeks_cache_max_size:
+                    self._greeks_cache.popitem(last=False)
                 self._greeks_cache[cache_key] = parsed
                 return parsed
         except Exception as exc:
@@ -1512,7 +1519,7 @@ class DataFetcher:
 # ===============================================================================
 
 class EntryStopLossPolicy:
-    """Resolves initial entry SL points using switchable policies."""
+    """Resolves initial entry SL points using switchable policies + delta-aware moneyness adaptation."""
 
     def __init__(self, fetcher: DataFetcher, config: BotConfig):
         self._fetcher = fetcher
@@ -1543,11 +1550,43 @@ class EntryStopLossPolicy:
             print(f"[SL] ATR compute error: {exc}")
             return None
 
+    @staticmethod
+    def _classify_moneyness(delta: float | None) -> str:
+        """Classify entry delta as ATM / Sl-OTM / OTM / Deep-OTM."""
+        if delta is None:
+            return "Unknown"
+        if 0.45 <= delta <= 0.55:
+            return "ATM"
+        elif 0.35 <= delta < 0.45:
+            return "Sl-OTM"
+        elif 0.25 <= delta < 0.35:
+            return "OTM"
+        else:
+            return "Deep-OTM"
+
+    def _sl_pts_by_delta(self, delta: float | None, entry_premium: float) -> tuple[float, str]:
+        """Compute SL points adapted to entry delta (moneyness). Wider SL for OTM, tighter for ATM."""
+        moneyness = self._classify_moneyness(delta)
+        
+        if 0.45 <= (delta or 0) <= 0.55:
+            sl_width_pct = 40
+        elif 0.35 <= (delta or 0) < 0.45:
+            sl_width_pct = 50
+        elif 0.25 <= (delta or 0) < 0.35:
+            sl_width_pct = 60
+        else:
+            sl_width_pct = 75
+        
+        sl_pts = max(10, min(entry_premium * (sl_width_pct / 100), 50))
+        return (sl_pts, moneyness)
+
     def resolve_entry_sl_points(
         self,
         option_symbol: str,
         df_spot: pd.DataFrame | None,
+        entry_delta: float | None = None,
     ) -> tuple[float, str]:
+        """Resolve entry SL using configured mode, then adapt by delta if available."""
         cfg = self._config
         fixed = cfg.premium_stop_pts
         mode = cfg.entry_sl_mode
@@ -1557,22 +1596,27 @@ class EntryStopLossPolicy:
             return fixed, "spot_trail_forced_fixed"
 
         if mode == "fixed":
-            return fixed, "fixed"
-
-        if mode == "strike_atr":
+            base_sl = fixed
+            base_source = "fixed"
+        elif mode == "strike_atr":
             option_df = self._fetcher.fetch_option_candles(option_symbol)
             sl_pts = self._atr_stop_pts(option_df)
-            if sl_pts is not None:
-                return sl_pts, "strike_atr"
-            return fixed, "strike_atr_fallback_fixed"
-
-        if mode == "spot_atr":
+            base_sl = sl_pts if sl_pts is not None else fixed
+            base_source = "strike_atr" if sl_pts is not None else "strike_atr_fallback_fixed"
+        elif mode == "spot_atr":
             sl_pts = self._atr_stop_pts(df_spot)
-            if sl_pts is not None:
-                return sl_pts, "spot_atr"
-            return fixed, "spot_atr_fallback_fixed"
+            base_sl = sl_pts if sl_pts is not None else fixed
+            base_source = "spot_atr" if sl_pts is not None else "spot_atr_fallback_fixed"
+        else:
+            base_sl = fixed
+            base_source = "unknown_mode_fallback_fixed"
 
-        return fixed, "unknown_mode_fallback_fixed"
+        # If delta available, adapt SL by moneyness
+        if entry_delta is not None:
+            delta_sl, moneyness = self._sl_pts_by_delta(entry_delta, base_sl)
+            return (delta_sl, f"{base_source}_adapted_by_{moneyness}")
+        
+        return (base_sl, base_source)
 
 
 # ===============================================================================
@@ -1620,9 +1664,11 @@ class StrikeSelector:
         spot: float,
         direction: str,
         iv_rank: float | None,
+        signal_score: float = 50.0,
     ) -> dict | None:
         """
-        Select the best entry strike using liquidity + asymmetry score.
+        Select the best entry strike using signal strength + liquidity + asymmetry.
+        signal_score: −100 to +100; higher = stronger conviction.
         Returns None if no qualifying strike found.
         """
         cfg = self.config
@@ -1630,6 +1676,25 @@ class StrikeSelector:
             return None
         if iv_rank is not None and iv_rank >= cfg.iv_rank_max_entry:
             print(f"[STRIKE] IVR {iv_rank:.1f}% >= max {cfg.iv_rank_max_entry:.1f}% - buyer edge rejected")
+            return None
+
+        # Map signal strength to target delta
+        abs_score = abs(signal_score)
+        if abs_score >= 80:
+            # Very high conviction: ATM
+            target_delta_low, target_delta_high = 0.45, 0.55
+            reason_suffix = "(very_strong_signal)"
+        elif abs_score >= 60:
+            # High conviction: ATM-leaning
+            target_delta_low, target_delta_high = 0.40, 0.50
+            reason_suffix = "(strong_signal)"
+        elif abs_score >= 40:
+            # Medium conviction: slight OTM
+            target_delta_low, target_delta_high = 0.30, 0.42
+            reason_suffix = "(medium_signal)"
+        else:
+            # Low conviction: insufficient edge
+            print(f"[STRIKE] Signal score {signal_score:.0f} < 40 — insufficient edge to trade")
             return None
 
         if direction == "CE":
@@ -1664,7 +1729,7 @@ class StrikeSelector:
             if abs_delta is None:
                 continue
             delta_available = True
-            if cfg.delta_target_low <= abs_delta <= cfg.delta_target_high:
+            if target_delta_low <= abs_delta <= target_delta_high:
                 row = dict(row)
                 row["_abs_delta"] = abs_delta
                 delta_checked.append(row)
@@ -1672,7 +1737,7 @@ class StrikeSelector:
             if not delta_checked:
                 print(
                     f"[STRIKE] No candidate delta in target range "
-                    f"{cfg.delta_target_low:.2f}-{cfg.delta_target_high:.2f}"
+                    f"{target_delta_low:.2f}-{target_delta_high:.2f} {reason_suffix}"
                 )
                 return None
             candidates = delta_checked
@@ -1680,7 +1745,7 @@ class StrikeSelector:
         ivr        = iv_rank if iv_rank is not None else 50.0
         total_oi   = sum(float(r.get(oi_key,  0) or 0) for r in chain_rows) or 1.0
         total_vol  = sum(float(r.get(vol_key, 0) or 0) for r in chain_rows) or 1.0
-        delta_mid  = (cfg.delta_target_low + cfg.delta_target_high) / 2.0
+        delta_mid  = (target_delta_low + target_delta_high) / 2.0
         best_row: dict | None = None
         best_score = -1.0
 
@@ -1693,7 +1758,7 @@ class StrikeSelector:
             if abs_delta is not None:
                 delta_score = max(0.0, 1.0 - abs(abs_delta - delta_mid) / max(delta_mid, 0.01))
             else:
-                delta_score = 0.5   # neutral when no delta data available
+                delta_score = 0.5
             asym_score = (
                 (1 - ivr / 100) * 0.40 +   # IV regime: lower IV = better buyer edge
                 oi_conc          * 0.30 +   # OI concentration: liquidity depth at strike
@@ -1707,7 +1772,7 @@ class StrikeSelector:
         if best_score < cfg.asym_score_threshold:
             print(
                 f"[STRIKE] Best asymmetry score {best_score:.3f} < threshold "
-                f"{cfg.asym_score_threshold} — no qualifying strike"
+                f"{cfg.asym_score_threshold} {reason_suffix} — no qualifying strike"
             )
             return None
         return best_row
@@ -1916,9 +1981,13 @@ class WebSocketManager:
         self._subscriptions: set[tuple[str, str]] = set()   # (exchange, symbol) registry for reconnect
         self._subscribe_lock  = threading.Lock()
         self._last_tick_time: float = 0.0                   # updated on every valid tick; used by watchdog
-        self._delta_cache: dict[str, tuple[float, float]] = {}
+        self._delta_cache: OrderedDict[str, tuple[float, float]] = OrderedDict()
+        self._delta_cache_max_size: int = 200  # Prevent unbounded growth
         self._delta_fetch_inflight: set[str] = set()
+        self._delta_fetch_limit: int = 100
         self._delta_lock = threading.Lock()
+        # Thread pool to limit concurrent delta fetches (avoid spawning unlimited daemon threads)
+        self._delta_executor = concurrent.futures.ThreadPoolExecutor(max_workers=3, thread_name_prefix="delta-pool")
 
     def _get_cached_delta(self, underlying: str, option_symbol: str, ttl: float = 30.0) -> float | None:
         """Return cached |delta| and refresh asynchronously when stale."""
@@ -1927,13 +1996,12 @@ class WebSocketManager:
             if cached and (time.time() - cached[1]) < ttl:
                 return cached[0]
             if option_symbol not in self._delta_fetch_inflight:
-                self._delta_fetch_inflight.add(option_symbol)
-                threading.Thread(
-                    target=self._fetch_and_cache_delta,
-                    args=(underlying, option_symbol),
-                    daemon=True,
-                    name=f"delta-{option_symbol}",
-                ).start()
+                if len(self._delta_fetch_inflight) < self._delta_fetch_limit:
+                    self._delta_fetch_inflight.add(option_symbol)
+                    # Use thread pool instead of unlimited daemon spawn
+                    self._delta_executor.submit(self._fetch_and_cache_delta, underlying, option_symbol)
+                else:
+                    print(f"[WS] Delta fetch suppressed because {len(self._delta_fetch_inflight)} requests are pending")
             return cached[0] if cached else None
 
     def _fetch_and_cache_delta(self, underlying: str, option_symbol: str) -> None:
@@ -1953,6 +2021,8 @@ class WebSocketManager:
                 delta = resp.get("greeks", {}).get("delta")
                 if delta is not None:
                     with self._delta_lock:
+                        while len(self._delta_cache) >= self._delta_cache_max_size:
+                            self._delta_cache.popitem(last=False)
                         self._delta_cache[option_symbol] = (abs(float(delta)), time.time())
         except Exception:
             pass
@@ -2193,6 +2263,10 @@ class WebSocketManager:
         print("[WS] WebSocket thread starting...")
         self._ws_started.set()
         ws_url = self.config.ws_url or "(SDK default)"
+        backoff_secs = 5
+        max_backoff_secs = 300  # 5 minutes max backoff
+        consecutive_failures = 0
+        max_consecutive_failures = 36  # ~3 hours of retries before circuit break
         while True:
             try:
                 ok = client.connect()
@@ -2200,6 +2274,8 @@ class WebSocketManager:
                 print(f"[WS] `client.connect()` using {_actual_url} (expected {ws_url})")
                 if ok:
                     print(f"[WS] Connected to {_actual_url} — SDK managing reconnects automatically")
+                    backoff_secs = 5  # Reset backoff on successful connect
+                    consecutive_failures = 0
                     with self._subscribe_lock:
                         subs = list(self._subscriptions)   # replay all subscriptions (handles reconnects)
                     if subs:
@@ -2223,17 +2299,28 @@ class WebSocketManager:
                                 f"forcing hard reconnect..."
                             )
                             break   # exit watchdog → outer loop reconnects immediately
-                    continue        # skip time.sleep(5) — reconnect without delay
-                print(f"[WS] Connection failed ({ws_url}), retrying in 5s...")
+                    continue        # skip backoff sleep — reconnect without delay
+                consecutive_failures += 1
+                print(f"[WS] Connection failed ({ws_url}), attempt {consecutive_failures}/{max_consecutive_failures}")
                 print("[WS] Check: WEBSOCKET_URL correct? OPENALGO_API_KEY matches dashboard?")
             except Exception as exc:
                 _emsg = str(exc)
-                print(f"[WS] Connection error: {exc}. Retrying in 5s...")
+                consecutive_failures += 1
+                print(f"[WS] Connection error: {exc}. Attempt {consecutive_failures}/{max_consecutive_failures}")
                 if "Invalid API key" in _emsg or "AUTHENTICATION_ERROR" in _emsg:
                     print("[WS] HINT: Check OPENALGO_API_KEY — copy the key from OpenAlgo dashboard \u2192 API Key page")
                 elif "InvalidStatus" in type(exc).__name__ or "HTTP 200" in _emsg:
                     print("[WS] HINT: Reverse proxy (/ws) not routing to port 8765 — fix Caddyfile or use ws://127.0.0.1:8765")
-            time.sleep(5)
+            # Circuit breaker: if persistent failures, give up to prevent memory accumulation
+            if consecutive_failures >= max_consecutive_failures:
+                print(f"[WS] Circuit breaker triggered: {consecutive_failures} consecutive failures. Giving up.")
+                print("[WS] Check broker connectivity, credentials, and reverse proxy configuration.")
+                return  # Exit thread to prevent infinite retry accumulation
+            # Exponential backoff (5s → 7.5s → 11.25s ... → 300s max)
+            current_backoff = min(backoff_secs, max_backoff_secs)
+            print(f"[WS] Retrying in {current_backoff:.0f}s...")
+            time.sleep(current_backoff)
+            backoff_secs = min(backoff_secs * 1.5, max_backoff_secs)
 
 
 # ===============================================================================
@@ -2461,12 +2548,27 @@ class OrderManager:
         direction: str,
         executed: float,
         sl_pts: float | None = None,
+        entry_delta: float | None = None,
     ) -> None:
+        """Register filled entry with delta tracking for moneyness analysis."""
         cfg = self.config
         resolved_sl_pts = sl_pts if (sl_pts is not None and sl_pts > 0) else cfg.premium_stop_pts
         sl  = executed - resolved_sl_pts
         tgt = executed + cfg.premium_target_pts
         reward_dist = spot * (cfg.spot_reward_pct / 100.0)
+
+        # Classify moneyness from delta
+        if entry_delta is not None:
+            if 0.45 <= entry_delta <= 0.55:
+                moneyness = "ATM"
+            elif 0.35 <= entry_delta < 0.45:
+                moneyness = "Sl-OTM"
+            elif 0.25 <= entry_delta < 0.35:
+                moneyness = "OTM"
+            else:
+                moneyness = "Deep-OTM"
+        else:
+            moneyness = "Unknown"
 
         pos = OptionPosition(
             underlying=underlying,
@@ -2474,6 +2576,8 @@ class OrderManager:
             entry_premium=executed,
             qty=qty,
             option_type=direction,
+            entry_delta=entry_delta,
+            moneyness=moneyness,
             sl=sl,
             tgt=tgt,
             spot_symbol=underlying,
@@ -2578,8 +2682,9 @@ class OrderManager:
         spot: float,
         direction: str,
         sl_pts: float | None = None,
+        entry_delta: float | None = None,
     ) -> bool:
-        """Place a market BUY order, poll for fill, then register the position."""
+        """Place a market BUY order, poll for fill, then register the position with moneyness tracking."""
         cfg = self.config
         resolved_sl_pts = sl_pts if (sl_pts is not None and sl_pts > 0) else cfg.premium_stop_pts
         if underlying in self._state.positions:
@@ -2590,7 +2695,10 @@ class OrderManager:
             executed = self._state.ltp_map.get(option_symbol) or spot * 0.01
             print(f"[PAPER] Simulated BUY {qty}x {option_symbol} @ ₹{executed:.2f}")
             self._risk.record_entry(underlying)
-            self.register_filled_entry(underlying, option_symbol, qty, spot, direction, executed, sl_pts=resolved_sl_pts)
+            self.register_filled_entry(
+                underlying, option_symbol, qty, spot, direction, executed, 
+                sl_pts=resolved_sl_pts, entry_delta=entry_delta
+            )
             self._notify(
                 f"📄 PAPER Entry: {underlying}\n"
                 f"Option: {option_symbol} x{qty}\n"
@@ -2681,7 +2789,10 @@ class OrderManager:
                 qty = filled_qty
 
             self._risk.record_entry(underlying)
-            self.register_filled_entry(underlying, option_symbol, qty, spot, direction, executed, sl_pts=resolved_sl_pts)
+            self.register_filled_entry(
+                underlying, option_symbol, qty, spot, direction, executed, 
+                sl_pts=resolved_sl_pts, entry_delta=entry_delta
+            )
             self._notify(
                 f"✅ Entry executed: {underlying}\n"
                 f"Option: {option_symbol}\nQty: {qty}\nExecuted: ₹{executed:.2f}\n"
@@ -3334,7 +3445,10 @@ class OptionsBuyerEdgeBot:
             _log_greeks_perf("neutral-direction")
             return
 
-        best = self.strikes.select_best(symbol, smoothed, spot, direction, iv_rank_val)
+        best = self.strikes.select_best(
+            symbol, smoothed, spot, direction, iv_rank_val,
+            signal_score=result.score,  # Pass signal strength for delta adaptation
+        )
         if best is None:
             if cfg.allow_checkpoint_fallback:
                 best = StrikeSelector.simple_otm(smoothed, spot, direction, cfg.otm_offset)
@@ -3427,7 +3541,7 @@ class OptionsBuyerEdgeBot:
             1,
         )
         _log_greeks_perf("entry-order")
-        orders.place_entry(symbol, opt_symbol, qty, spot, direction, sl_pts=entry_sl_pts)
+        orders.place_entry(symbol, opt_symbol, qty, spot, direction, sl_pts=entry_sl_pts, entry_delta=best.get("_abs_delta"))
 
     def _strategy_thread(self) -> None:
         """Clock-anchored strategy scan loop."""
