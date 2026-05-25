@@ -1,0 +1,39 @@
+strategies/docs/STRIKE_SELECTION_MONEYNESS_AUDIT.md
+  s_3c8657818f092c::t_6b277a3dc89df5 1-420
+strategies/examples/BuyerEdgeStrategy.py
+  s_3c8657818f092c::t_7488bbd4ba048f 2277-2278
+  s_3c8657818f092c::t_f7f1ea4ed4bfda 2551,2553,2560-2572,2579-2580
+  s_3c8657818f092c::t_d33b6f4dea9d6a 22
+  s_3c8657818f092c::t_1747d44d0344e5 492-495,1667,1670-1671,1681-1699,1732,1740,1748,1761,1775
+  s_3c8657818f092c::t_5f1caef78189d5 2266-2269
+  s_3c8657818f092c::t_828f84c2190047 29,1130,1134,1161,1179-1180,1984,1987,1999-2004,2024-2025
+  s_3c8657818f092c::t_6773af598f9bc9 1985,1989-1990
+  s_3c8657818f092c::t_051f759fe0b2de 1522,1553-1582,1587,1589,1599-1601,1604-1606,1608-1612,1614-1619
+  h_90988d5629fc41 2308-2309,2314-2323
+  s_3c8657818f092c::t_f1c17a1032b4a9 3448-3451
+  s_3c8657818f092c::t_dc1169c6552f24 2685,2687
+  s_3c8657818f092c::t_aa7165be5e5d9d 2698-2701,2792-2795,3544
+strategies/docs/MONEYNESS_INTEGRATION_COMPLETE.md
+  s_3c8657818f092c::t_8a0eb1e441ae66 1-355
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "ab8c3ba4dd8e8da312a79d4937707b5ad3e695c9",
+  "prompts": {},
+  "humans": {
+    "h_90988d5629fc41": {
+      "author": "Manoj Verma <71809372+manojvermamv@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_3c8657818f092c": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "f1d88eec-9e43-4d0e-9b92-8c8457611f53",
+        "model": "unknown"
+      },
+      "human_author": "Manoj Verma <71809372+manojvermamv@users.noreply.github.com>"
+    }
+  }
+}
