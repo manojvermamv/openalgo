@@ -1,0 +1,49 @@
+strategies/docs/PRACTICAL_TESTING_CHECKLIST.md
+  s_3c8657818f092c::t_7f9a17a3bcf3db 1-408
+strategies/docs/COMPREHENSIVE_AUDIT_FRAMEWORK.md
+  s_3c8657818f092c::t_2dc79113775ccb 1-573
+strategies/examples/BuyerEdgeStrategy.py
+  s_3c8657818f092c::t_24dc049e4771a6 833,835-837,839-845,872
+  s_3c8657818f092c::t_058815a4f0ae56 1236
+  s_3c8657818f092c::t_0337ec00a9c159 3178-3179
+  s_9c4136df33944b::t_8a9a938f3379ff 492-494,1525
+  s_3c8657818f092c::t_3a03ff3f0b5a79 1565
+  s_3c8657818f092c::t_af695cf1477e13 2089,2100,2106-2107,2109-2132,2136
+  s_3c8657818f092c::t_a293cb7b7ab61b 3490-3491,3496-3500,3522-3524
+  s_3c8657818f092c::t_026c72bec0e4c3 751-758,765-767,1039,1042-1068,1116-1119,1524,1529-1534,1536-1544,1546-1554,1556-1564,1567-1569
+  h_90988d5629fc41 190-191,838,1526-1528,1545,1555,2086-2088
+  s_3c8657818f092c::t_d4744e88c75a9f 846-865,867-870
+  s_3c8657818f092c::t_7f0d0dd8c7e195 1002-1003
+  s_3c8657818f092c::t_e6468921cc92f1 2073
+  s_3c8657818f092c::t_9ef6056d639444 3492-3495
+  s_3c8657818f092c::t_b2fb17e6eca7d7 2101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "81700f9f9df7335de9cd10965bc50c68fe9386db",
+  "prompts": {},
+  "humans": {
+    "h_90988d5629fc41": {
+      "author": "Manoj Verma <71809372+manojvermamv@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_3c8657818f092c": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "f1d88eec-9e43-4d0e-9b92-8c8457611f53",
+        "model": "unknown"
+      },
+      "human_author": "Manoj Verma <71809372+manojvermamv@users.noreply.github.com>"
+    },
+    "s_9c4136df33944b": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "73e6aca9-d96d-4e57-ae48-d9c3ca927a88",
+        "model": "gpt-5-mini"
+      },
+      "human_author": "Manoj Verma <71809372+manojvermamv@users.noreply.github.com>"
+    }
+  }
+}
