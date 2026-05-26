@@ -187,8 +187,8 @@ class BotConfig:
     max_daily_profit_amount: float = 0.0    # halt new entries when day P&L hits this; 0=off
 
     # ── Session Timing ─────────────────────────────────────────────────────────
-    no_new_trade_after: str = "15:10"   # no new BUY entries after this IST time (HH:MM)
-    square_off_time:    str = "15:15"   # force-exit all positions at this IST time
+    no_new_trade_after: str = "15:25"   # no new BUY entries after this IST time (HH:MM), e.g. "15:10"
+    square_off_time:    str = "15:30"   # force-exit all positions at this IST time, e.g. "15:15"
 
     # ── Max Hold Time ──────────────────────────────────────────────────────────
     max_hold_minutes: int = 0   # exit positions held > N minutes; 0=disabled
@@ -489,13 +489,13 @@ class OptionPosition:
     entry_premium:        float
     qty:                  int
     option_type:          str           # "CE" or "PE"
+    spot_symbol:          str
+    spot_entry:           float
+    reward_dist:          float
     entry_delta:          float | None  = None  # Actual delta at entry; used for SL/TP adaptation
     moneyness:            str           = "Unknown"  # "ATM" / "Sl-OTM" / "OTM" / "Deep-OTM"
     sl:                   float         = 0.0
     tgt:                  float         = 0.0
-    spot_symbol:          str
-    spot_entry:           float
-    reward_dist:          float
     trail_active:         bool          = False
     trail_peak:           float | None  = None
     trail_sl_spot:        float | None  = None
@@ -748,20 +748,23 @@ class SignalEngine:
         chain_rows: list[dict],
         atm_ce_ltp: float,
         atm_pe_ltp: float,
-        iv_rank: float | None,
-        straddle_price: float | None,
-        prev_straddle_price: float | None,
-        sf_ltp: float | None,
-        ce_bid: float | None,
-        ce_ask: float | None,
-        pe_bid: float | None,
-        pe_ask: float | None,
+        iv_rank: float | None = None,
+        straddle_price: float | None = None,
+        prev_straddle_price: float | None = None,
+        sf_ltp: float | None = None,
+        ce_bid: float | None = None,
+        ce_ask: float | None = None,
+        pe_bid: float | None = None,
+        pe_ask: float | None = None,
         ce_delta: float | None = None,
         pe_delta: float | None = None,
         gex_levels: dict[str, Any] | None = None,
         min_score_override: int | None = None,
         prev_spot: float | None = None,
         prev_sf_ltp: float | None = None,
+        ce_iv_rank: float | None = None,
+        pe_iv_rank: float | None = None,
+        best_fit_iv_side: str | None = None,
     ) -> SignalResult:
         """Compute composite directional score (−100 → +100) and trap_score (0 → 100)."""
         cfg = self.config
@@ -827,15 +830,46 @@ class SignalEngine:
                 if isinstance(df_spot.index, pd.DatetimeIndex)
                 else df_spot
             )
+            # Use today's data if >= 5 bars; fallback to last 5 bars overall (today + yesterday if needed)
             if len(df_today) >= 5:
-                vwap = ta.vwap(df_today["high"], df_today["low"], df_today["close"], df_today["volume"])
-                vv = vwap.iloc[-2]
-                if spot > vv:
-                    s4 = 1;  vwap_note = f"Spot {spot:.1f} above VWAP {vv:.1f}"
-                else:
-                    s4 = -1; vwap_note = f"Spot {spot:.1f} below VWAP {vv:.1f}"
+                df_vwap = df_today
+                source = "today"
+            elif len(df_spot) >= 5:
+                print(f"Spot Data: {df_spot.to_string()}")
+                df_vwap = df_spot.iloc[-5:]  # Last 5 bars across day boundary if needed
+                source = "rolling_5bar"
             else:
-                vwap_note = "VWAP insufficient bars for today"
+                df_vwap = None
+                source = "insufficient"
+            
+            if df_vwap is not None:
+                # Convert volume to numeric and filter out zero/NaN bars
+                df_vwap = df_vwap.copy()
+                df_vwap["volume"] = pd.to_numeric(df_vwap["volume"], errors='coerce')
+                
+                # Filter to bars with non-zero volume
+                df_valid_vol = df_vwap[df_vwap["volume"] > 0]
+                
+                if len(df_valid_vol) >= 5:
+                    # Use last 5 valid bars
+                    df_vwap_calc = df_valid_vol.iloc[-5:] if len(df_valid_vol) > 5 else df_valid_vol
+                    try:
+                        vwap = ta.vwap(df_vwap_calc["high"], df_vwap_calc["low"], df_vwap_calc["close"], df_vwap_calc["volume"])
+                        vv = vwap.iloc[-1]
+                        if spot > vv:
+                            s4 = 1;  vwap_note = f"Spot {spot:.1f} above VWAP {vv:.1f} ({source}, {len(df_vwap_calc)} valid bars)"
+                        else:
+                            s4 = -1; vwap_note = f"Spot {spot:.1f} below VWAP {vv:.1f} ({source}, {len(df_vwap_calc)} valid bars)"
+                    except Exception as e:
+                        vwap_note = f"VWAP calc error: {str(e)[:40]}"
+                        print(f"[VWAP] Error: {e} | valid_bars={len(df_valid_vol)}, total={len(df_vwap)}")
+                else:
+                    # Insufficient bars with volume
+                    zero_vol_count = (df_vwap["volume"] == 0).sum()
+                    vwap_note = f"VWAP insufficient volume ({len(df_valid_vol)}/5 have volume; {zero_vol_count} zero)"
+                    print(f"[VWAP] Low volume: valid={len(df_valid_vol)}, zero={zero_vol_count}, total={len(df_vwap)}, vol_range=[{df_vwap['volume'].min():.0f}, {df_vwap['volume'].max():.0f}]")
+            else:
+                vwap_note = "VWAP insufficient bars (need 5)"
         _c("Spot vs VWAP", s4, 1, _dir(s4), vwap_note)
 
         # ── LAYER 2: OI Flow Intelligence ────────────────────────────────────
@@ -965,8 +999,8 @@ class SignalEngine:
             pe_oi_chg = sum(float(r.get("pe_oi_chg", 0) or 0) for r in chain_rows)
             ce_oi_tot = sum(float(r.get("ce_oi", 0) or 0) for r in chain_rows)
             pe_oi_tot = sum(float(r.get("pe_oi", 0) or 0) for r in chain_rows)
-            ce_vel = ce_oi_chg / ce_oi_tot if ce_oi_tot > 0 else 0.0
-            pe_vel = pe_oi_chg / pe_oi_tot if pe_oi_tot > 0 else 0.0
+            ce_vel = (ce_oi_chg / ce_oi_tot * 100) if ce_oi_tot > 0 else 0.0
+            pe_vel = (pe_oi_chg / pe_oi_tot * 100) if pe_oi_tot > 0 else 0.0
             th = cfg.oi_velocity_threshold
 
             if ce_vel > th and s6 > 0:
@@ -1002,15 +1036,36 @@ class SignalEngine:
         _c("OI Velocity", s10b, 2, _dir(s10b), oi_vel_note)
 
         # ── LAYER 4: Straddle & IV ───────────────────────────────────────────
-        # L4-a: IV Regime
+        # L4-a: IV Regime (Separate CE/PE Analysis)
         s11 = 0
         iv_note = "IVR unavailable"
-        if iv_rank is not None:
-            if iv_rank < 20:       s11 = 1;    iv_note = f"IVR {iv_rank:.1f}% — structurally cheap, full buyer edge"
-            elif iv_rank < 40:     s11 = 0.5;  iv_note = f"IVR {iv_rank:.1f}% — moderate, mild buyer edge"
-            elif iv_rank > 60:     s11 = -1;   iv_note = f"IVR {iv_rank:.1f}% — structurally expensive, buyer disadvantage"
-            elif iv_rank > 50:     s11 = -0.5; iv_note = f"IVR {iv_rank:.1f}% — elevated, mild seller edge"
-            else:                  iv_note = f"IVR {iv_rank:.1f}% — neutral zone (40–50%)"
+        best_ivr = None
+        
+        # Use separate CE/PE IV Ranks if available, otherwise fall back to legacy single rank
+        if ce_iv_rank is not None and pe_iv_rank is not None:
+            # Both available: use best fit (lower = cheaper for buying)
+            best_ivr = min(ce_iv_rank, pe_iv_rank)
+            best_side = "CE" if ce_iv_rank <= pe_iv_rank else "PE"
+            iv_note = f"IVR: CE={ce_iv_rank:.1f}% / PE={pe_iv_rank:.1f}% → best={best_side}({best_ivr:.1f}%)"
+        elif ce_iv_rank is not None:
+            best_ivr = ce_iv_rank
+            iv_note = f"IVR: CE={ce_iv_rank:.1f}% (PE unavailable)"
+        elif pe_iv_rank is not None:
+            best_ivr = pe_iv_rank
+            iv_note = f"IVR: PE={pe_iv_rank:.1f}% (CE unavailable)"
+        elif iv_rank is not None:
+            # Legacy single-rank fallback
+            best_ivr = iv_rank
+            iv_note = f"IVR {iv_rank:.1f}% (legacy single-rank)"
+        
+        # Score based on best-fit IV Rank
+        if best_ivr is not None:
+            if best_ivr < 20:       s11 = 1;    iv_note += " — structurally cheap, full buyer edge"
+            elif best_ivr < 40:     s11 = 0.5;  iv_note += " — moderate, mild buyer edge"
+            elif best_ivr > 60:     s11 = -1;   iv_note += " — structurally expensive, buyer disadvantage"
+            elif best_ivr > 50:     s11 = -0.5; iv_note += " — elevated, mild seller edge"
+            else:                   iv_note += " — neutral zone (40–50%)"
+        
         _c("IV Regime (IVR)", s11, 1, _dir(s11), iv_note)
 
         # L4-b: Straddle Velocity
@@ -1058,7 +1113,10 @@ class SignalEngine:
         trap_reasons = []
         if straddle_vel == "Contracting":
             trap_score += 25; trap_reasons.append("Straddle contracting — IV crush trap")
-        if iv_rank is not None and iv_rank > 60:
+        # Use best-fit IVR for trap check
+        if best_ivr is not None and best_ivr > 60:
+            trap_score += 20; trap_reasons.append(f"High IVR {best_ivr:.1f}% — options structurally overpriced")
+        elif iv_rank is not None and iv_rank > 60:
             trap_score += 20; trap_reasons.append(f"High IVR {iv_rank:.1f}% — options structurally overpriced")
         if sf_ltp and spot and abs(sf_ltp - spot) > spot * 0.015:
             trap_score += 15; trap_reasons.append(f"SF basis divergence {abs(sf_ltp-spot)/spot*100:.2f}% — possible mispricing")
@@ -1175,6 +1233,7 @@ class DataFetcher:
                 parsed = {
                     "delta": float(greeks.get("delta", 0) or 0),
                     "gamma": float(greeks.get("gamma", 0) or 0),
+                    "iv": float(greeks.get("implied_volatility", 0) or 0),  # IV from greeks
                 }
                 while len(self._greeks_cache) >= self._greeks_cache_max_size:
                     self._greeks_cache.popitem(last=False)
@@ -1462,18 +1521,52 @@ class DataFetcher:
         levels["chain"] = gex_chain
         return levels
 
-    def fetch_iv_rank(self, spot_quote: dict) -> float | None:
+    def fetch_atm_iv_ranks(
+        self,
+        symbol: str,
+        ce_symbol: str | None = None,
+        pe_symbol: str | None = None,
+    ) -> dict[str, float | None]:
+        """Fetch separate IV Rank for ATM CE and PE.
+        Returns: {"ce_iv_rank": float|None, "pe_iv_rank": float|None, "best_fit": "CE"|"PE"|None}
+        Best fit = lower IVR (cheaper options for buying).
+        """
+        result = {"ce_iv_rank": None, "pe_iv_rank": None, "best_fit": None}
         try:
-            atm_iv = spot_quote.get("iv")
-            if atm_iv is None:
-                return None
-            current_iv = float(atm_iv)
-            if not math.isfinite(current_iv) or current_iv <= 0:
-                return None
-            return SignalEngine.iv_rank(current_iv, self.config.iv_52w_low, self.config.iv_52w_high)
+            # Fetch CE IVR
+            if ce_symbol:
+                ce_greeks = self._fetch_option_greeks_cached(symbol, ce_symbol)
+                if ce_greeks:
+                    ce_iv = ce_greeks.get("iv")
+                    if ce_iv is not None and float(ce_iv) > 0:
+                        result["ce_iv_rank"] = SignalEngine.iv_rank(
+                            float(ce_iv), self.config.iv_52w_low, self.config.iv_52w_high
+                        )
+            
+            # Fetch PE IVR
+            if pe_symbol:
+                pe_greeks = self._fetch_option_greeks_cached(symbol, pe_symbol)
+                if pe_greeks:
+                    pe_iv = pe_greeks.get("iv")
+                    if pe_iv is not None and float(pe_iv) > 0:
+                        result["pe_iv_rank"] = SignalEngine.iv_rank(
+                            float(pe_iv), self.config.iv_52w_low, self.config.iv_52w_high
+                        )
+            
+            # Determine best fit: lower IVR = cheaper = better for buying
+            ce_ivr = result["ce_iv_rank"]
+            pe_ivr = result["pe_iv_rank"]
+            if ce_ivr is not None and pe_ivr is not None:
+                result["best_fit"] = "CE" if ce_ivr <= pe_ivr else "PE"
+            elif ce_ivr is not None:
+                result["best_fit"] = "CE"
+            elif pe_ivr is not None:
+                result["best_fit"] = "PE"
+            
         except Exception as exc:
-            print(f"[DATA] IV rank error: {exc}")
-        return None
+            print(f"[DATA] IV ranks fetch error: {exc}")
+        
+        return result
 
     def fetch_target_expiry(self, symbol: str) -> str | None:
         if not hasattr(self.client, "expiry"):
@@ -1977,6 +2070,7 @@ class WebSocketManager:
         self._state = state
         self._exit_callback:      Callable[[str, str], None] | None = None
         self._sl_modify_callback: Callable[[str, float], None] | None = None
+        self._fetcher:            DataFetcher | None = None  # Set via set_fetcher() after construction
         self._ws_started     = threading.Event()
         self._subscriptions: set[tuple[str, str]] = set()   # (exchange, symbol) registry for reconnect
         self._subscribe_lock  = threading.Lock()
@@ -1989,6 +2083,10 @@ class WebSocketManager:
         # Thread pool to limit concurrent delta fetches (avoid spawning unlimited daemon threads)
         self._delta_executor = concurrent.futures.ThreadPoolExecutor(max_workers=3, thread_name_prefix="delta-pool")
 
+    def set_fetcher(self, fetcher: DataFetcher) -> None:
+        """Set DataFetcher reference to consolidate greeks API calls."""
+        self._fetcher = fetcher
+
     def _get_cached_delta(self, underlying: str, option_symbol: str, ttl: float = 30.0) -> float | None:
         """Return cached |delta| and refresh asynchronously when stale."""
         with self._delta_lock:
@@ -1999,31 +2097,43 @@ class WebSocketManager:
                 if len(self._delta_fetch_inflight) < self._delta_fetch_limit:
                     self._delta_fetch_inflight.add(option_symbol)
                     # Use thread pool instead of unlimited daemon spawn
-                    self._delta_executor.submit(self._fetch_and_cache_delta, underlying, option_symbol)
+                    # Pass fetcher to reuse cached greeks instead of duplicate API call
+                    self._delta_executor.submit(self._fetch_and_cache_delta, underlying, option_symbol, self._fetcher)
                 else:
                     print(f"[WS] Delta fetch suppressed because {len(self._delta_fetch_inflight)} requests are pending")
             return cached[0] if cached else None
 
-    def _fetch_and_cache_delta(self, underlying: str, option_symbol: str) -> None:
+    def _fetch_and_cache_delta(self, underlying: str, option_symbol: str, fetcher: DataFetcher | None = None) -> None:
+        """Reuse DataFetcher's cached greeks instead of duplicate optiongreeks API call."""
         try:
-            ul_exch = (
-                self.config.index_exchange
-                if underlying in self.config.index_underlyings
-                else self.config.spot_exchange
-            )
-            resp = self.client.optiongreeks(
-                symbol=option_symbol,
-                exchange=self.config.fno_exchange,
-                underlying_symbol=underlying,
-                underlying_exchange=ul_exch,
-            )
-            if resp and resp.get("status") == "success":
-                delta = resp.get("greeks", {}).get("delta")
-                if delta is not None:
+            if fetcher is None:
+                # Fallback: direct API call if fetcher unavailable (should not happen in normal flow)
+                ul_exch = (
+                    self.config.index_exchange
+                    if underlying in self.config.index_underlyings
+                    else self.config.spot_exchange
+                )
+                resp = self.client.optiongreeks(
+                    symbol=option_symbol,
+                    exchange=self.config.fno_exchange,
+                    underlying_symbol=underlying,
+                    underlying_exchange=ul_exch,
+                )
+                if resp and resp.get("status") == "success":
+                    delta = resp.get("greeks", {}).get("delta")
+                    if delta is not None:
+                        with self._delta_lock:
+                            while len(self._delta_cache) >= self._delta_cache_max_size:
+                                self._delta_cache.popitem(last=False)
+                            self._delta_cache[option_symbol] = (abs(float(delta)), time.time())
+            else:
+                # Use DataFetcher's cached greeks (consolidates API calls)
+                greeks = fetcher._fetch_option_greeks_cached(underlying, option_symbol)
+                if greeks and greeks.get("delta") is not None:
                     with self._delta_lock:
                         while len(self._delta_cache) >= self._delta_cache_max_size:
                             self._delta_cache.popitem(last=False)
-                        self._delta_cache[option_symbol] = (abs(float(delta)), time.time())
+                        self._delta_cache[option_symbol] = (abs(float(greeks["delta"])), time.time())
         except Exception:
             pass
         finally:
@@ -3065,7 +3175,8 @@ class OptionsBuyerEdgeBot:
         self.orders  = OrderManager(
             self.client, config, self.state, self.risk, self.ws, self.fetcher, self._send_telegram
         )
-        # Wire callbacks to break circular dependency
+        # Wire callbacks and dependencies to break circular dependency + consolidate API calls
+        self.ws.set_fetcher(self.fetcher)  # Reuse DataFetcher cache for delta in trailing SL
         self.ws.set_exit_callback(self.orders.place_exit)
         self.ws.set_sl_modify_callback(self.orders.modify_broker_sl)
 
@@ -3376,14 +3487,17 @@ class OptionsBuyerEdgeBot:
         pe_bid = float(atm_row.get("pe_bid", 0) or 0) or None
         pe_ask = float(atm_row.get("pe_ask", 0) or 0) or None
 
-        # IV rank
-        iv_rank_val = self.fetcher.fetch_iv_rank(spot_q)
-        if iv_rank_val is None:
-            iv_rank_val = self.scorer.iv_rank(
-                float(spot_q.get("iv", 0) or 0) or None,
-                cfg.iv_52w_low,
-                cfg.iv_52w_high,
-            )
+        # Fetch separate CE and PE IV Ranks (best fit = lower = cheaper for buying)
+        iv_ranks = self.fetcher.fetch_atm_iv_ranks(
+            symbol,
+            ce_symbol=atm_row.get("ce_symbol"),
+            pe_symbol=atm_row.get("pe_symbol"),
+        )
+        ce_iv_rank = iv_ranks.get("ce_iv_rank")
+        pe_iv_rank = iv_ranks.get("pe_iv_rank")
+        best_fit_iv_side = iv_ranks.get("best_fit")
+        # Legacy fallback for backward compatibility
+        iv_rank_val = ce_iv_rank if (ce_iv_rank is not None and pe_iv_rank is None) else (pe_iv_rank if pe_iv_rank is not None else None)
 
         result = self.scorer.score(
             spot=spot,
@@ -3405,6 +3519,9 @@ class OptionsBuyerEdgeBot:
             min_score_override=effective_min_score,
             prev_spot=prev_spot_ltp,
             prev_sf_ltp=prev_sf_ltp,
+            ce_iv_rank=ce_iv_rank,
+            pe_iv_rank=pe_iv_rank,
+            best_fit_iv_side=best_fit_iv_side,
         )
 
         # ── Formatted scoring panel ──────────────────────────────────────────
