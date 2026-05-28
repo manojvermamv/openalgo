@@ -25,7 +25,8 @@ import os
 import re
 import sys
 import threading
-import time
+import time as _time_mod
+time = _time_mod   # single canonical alias — use time.sleep / time.time / _time_mod.mktime interchangeably
 from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -214,10 +215,11 @@ class BotConfig:
         index_underlyings: frozenset[str] = frozenset(
             u.strip() for u in index_csv.split(",") if u.strip()
         )
-        host_server = os.getenv("HOST_SERVER", "http://127.0.0.1:5000")
+        defaults = cls()
+        host_server = os.getenv("HOST_SERVER", defaults.api_host)
 
         # WebSocket URL: explicit env var → auto-corrected → derived from host.
-        _ws_env    = os.getenv("WEBSOCKET_URL", "")
+        _ws_env    = os.getenv("WEBSOCKET_URL", defaults.ws_url)
         _ws_domain = host_server[8:].split("/")[0] if host_server.startswith("https://") else ""
 
         # Correct ws://hostname for HTTPS hosts to wss://domain/ws (port 80 → 301 breaks WS).
@@ -243,88 +245,88 @@ class BotConfig:
             _ws_env = "ws://127.0.0.1:8765"
 
         cfg = cls(
-            api_key=os.getenv("OPENALGO_API_KEY", "openalgo-apikey"),
+            api_key=os.getenv("OPENALGO_API_KEY", defaults.api_key),
             api_host=host_server,
             ws_url=_ws_env,
-            strategy_name=os.getenv("STRATEGY_NAME", "OptionsBuyerEdgeBot"),
+            strategy_name=os.getenv("STRATEGY_NAME", defaults.strategy_name),
             underlyings=underlyings,
             index_underlyings=index_underlyings,
-            spot_exchange=os.getenv("EXCHANGE", "NSE"),
-            fno_exchange=os.getenv("FNO_EXCHANGE", "NFO"),
-            index_exchange=os.getenv("INDEX_EXCHANGE", "NSE_INDEX"),
-            telegram_username=os.getenv("TELEGRAM_USERNAME", ""),
-            dte_min=int(os.getenv("DTE_MIN", "7")),
-            dte_max=int(os.getenv("DTE_MAX", "30")),
-            otm_offset=int(os.getenv("OTM_OFFSET", "1")),
-            strike_count=int(os.getenv("STRIKE_COUNT", "8")),
-            lot_multiplier=int(os.getenv("LOT_MULTIPLIER", "1")),
-            gex_enabled=os.getenv("GEX_ENABLED", "true").lower() in ("1", "true", "yes"),
-            min_score=int(os.getenv("MIN_SCORE", "15")),
-            max_trap=int(os.getenv("MAX_TRAP", "80")),
-            morning_session_end=os.getenv("MORNING_SESSION_END", "09:45"),
-            afternoon_power_start=os.getenv("AFTERNOON_POWER_START", "14:00"),
-            power_hour_score_factor=float(os.getenv("POWER_HOUR_SCORE_FACTOR", "0.80")),
-            morning_score_factor=float(os.getenv("MORNING_SCORE_FACTOR", "1.50")),
-            premium_stop_pts=float(os.getenv("PREMIUM_STOP_PTS", "30.0")),
-            premium_target_pts=float(os.getenv("PREMIUM_TARGET_PTS", "50.0")),
-            entry_sl_mode=os.getenv("ENTRY_SL_MODE", "fixed").strip().lower(),
-            dynamic_sl_atr_period=int(os.getenv("DYNAMIC_SL_ATR_PERIOD", "14")),
-            dynamic_sl_atr_mult=float(os.getenv("DYNAMIC_SL_ATR_MULT", "1.5")),
-            dynamic_sl_min_pts=float(os.getenv("DYNAMIC_SL_MIN_PTS", "15.0")),
-            dynamic_sl_max_pts=float(os.getenv("DYNAMIC_SL_MAX_PTS", "80.0")),
-            max_trades_per_session=int(os.getenv("MAX_TRADES_PER_SESSION", "5")),
-            max_consecutive_losses=int(os.getenv("MAX_CONSECUTIVE_LOSSES", "3")),
-            entry_cooldown_secs=int(os.getenv("ENTRY_COOLDOWN_SECS", "300")),
-            max_daily_loss_pct=float(os.getenv("MAX_DAILY_LOSS_PCT", "0.0")),
-            max_daily_loss_amount=float(os.getenv("MAX_DAILY_LOSS_AMOUNT", "2000.0")),
-            risk_percent=float(os.getenv("RISK_PERCENT", "1.0")),
-            trail_sl_mode=os.getenv("TRAIL_SL_MODE", "premium"),
-            spot_reward_pct=float(os.getenv("SPOT_REWARD_PCT", "1.0")),
-            trail_activate_at_pct=float(os.getenv("TRAIL_ACTIVATE_AT_PCT", "25.0")),
-            trail_step_rr_pct=float(os.getenv("TRAIL_STEP_RR_PCT", "10.0")),
-            long_only_mode=os.getenv("LONG_ONLY_MODE", "true").lower() in ("1", "true", "yes"),
-            broker_sl_orders=os.getenv("BROKER_SL_ORDERS", "true").lower() in ("1", "true", "yes"),
-            candle_interval=os.getenv("CANDLE_INTERVAL", "15m"),
-            lookback_days=int(os.getenv("LOOKBACK_DAYS", "5")),
-            fast_ema_period=int(os.getenv("FAST_EMA_PERIOD", "9")),
-            slow_ema_period=int(os.getenv("SLOW_EMA_PERIOD", "21")),
-            rsi_period=int(os.getenv("RSI_PERIOD", "14")),
-            signal_check_interval=int(os.getenv("SIGNAL_CHECK_INTERVAL", "60")),
-            lookback_bars=int(os.getenv("LOOKBACK_BARS", "5")),
-            iv_rank_max_entry=float(os.getenv("IV_RANK_MAX_ENTRY", "40.0")),
-            iv_52w_low=float(os.getenv("IV_52W_LOW", "8.72")),
-            iv_52w_high=float(os.getenv("IV_52W_HIGH", "28.91")),
-            min_oi_filter=float(os.getenv("MIN_OI_FILTER", "50000")),
-            min_vol_filter=float(os.getenv("MIN_VOL_FILTER", "10000")),
-            asym_score_threshold=float(os.getenv("ASYM_SCORE_THRESHOLD", "0.35")),
-            allow_checkpoint_fallback=os.getenv("ALLOW_CHECKPOINT_FALLBACK", "true").lower() in ("1", "true", "yes"),
-            delta_target_low=float(os.getenv("DELTA_TARGET_LOW", "0.25")),
-            delta_target_high=float(os.getenv("DELTA_TARGET_HIGH", "0.45")),
-            order_status_max_retries=int(os.getenv("ORDER_STATUS_MAX_RETRIES", "15")),
-            order_status_poll_interval=float(os.getenv("ORDER_STATUS_POLL_INTERVAL", "2.0")),
-            delta_exit_threshold=float(os.getenv("DELTA_EXIT_THRESHOLD", "0.10")),
-            oi_velocity_enabled=os.getenv("OI_VELOCITY_ENABLED", "true").lower() in ("1", "true", "yes"),
-            oi_velocity_threshold=float(os.getenv("OI_VELOCITY_THRESHOLD", "0.05")),
-            max_entry_spread_pct=float(os.getenv("MAX_ENTRY_SPREAD_PCT", "8.0")),
-            same_strike_reentry_guard_enabled=os.getenv("SAME_STRIKE_REENTRY_GUARD_ENABLED", "true").lower() in ("1", "true", "yes"),
-            max_same_strike_trades_per_day=int(os.getenv("MAX_SAME_STRIKE_TRADES_PER_DAY", "1")),
-            drawdown_rate_enabled=os.getenv("DRAWDOWN_RATE_ENABLED", "false").lower() in ("1", "true", "yes"),
-            drawdown_rate_window_mins=int(os.getenv("DRAWDOWN_RATE_WINDOW_MINS", "30")),
-            drawdown_rate_max_loss=float(os.getenv("DRAWDOWN_RATE_MAX_LOSS", "1000.0")),
-            preflight_spread_check=os.getenv("PREFLIGHT_SPREAD_CHECK", "true").lower() in ("1", "true", "yes"),
-            preflight_max_spread_pct=float(os.getenv("PREFLIGHT_MAX_SPREAD_PCT", "10.0")),
-            preflight_min_bid=float(os.getenv("PREFLIGHT_MIN_BID", "5.0")),
-            adaptive_sizing_enabled=os.getenv("ADAPTIVE_SIZING_ENABLED", "false").lower() in ("1", "true", "yes"),
-            adaptive_max_lot_mult=int(os.getenv("ADAPTIVE_MAX_LOT_MULT", "3")),
-            adaptive_win_streak_trigger=int(os.getenv("ADAPTIVE_WIN_STREAK_TRIGGER", "2")),
-            adaptive_win_streak_step=int(os.getenv("ADAPTIVE_WIN_STREAK_STEP", "1")),
-            paper_trade=os.getenv("PAPER_TRADE", "false").lower() in ("1", "true", "yes"),
-            max_daily_profit_amount=float(os.getenv("MAX_DAILY_PROFIT_AMOUNT", "0.0")),
-            no_new_trade_after=os.getenv("NO_NEW_TRADE_AFTER", "13:30"),
-            square_off_time=os.getenv("SQUARE_OFF_TIME", "15:15"),
-            max_hold_minutes=int(os.getenv("MAX_HOLD_MINUTES", "0")),
-            breakeven_at_gain_pct=float(os.getenv("BREAKEVEN_AT_GAIN_PCT", "80.0")),
-            trade_journal_path=os.getenv("TRADE_JOURNAL_PATH", ""),
+            spot_exchange=os.getenv("EXCHANGE", defaults.spot_exchange),
+            fno_exchange=os.getenv("FNO_EXCHANGE", defaults.fno_exchange),
+            index_exchange=os.getenv("INDEX_EXCHANGE", defaults.index_exchange),
+            telegram_username=os.getenv("TELEGRAM_USERNAME", defaults.telegram_username),
+            dte_min=int(os.getenv("DTE_MIN", str(defaults.dte_min))),
+            dte_max=int(os.getenv("DTE_MAX", str(defaults.dte_max))),
+            otm_offset=int(os.getenv("OTM_OFFSET", str(defaults.otm_offset))),
+            strike_count=int(os.getenv("STRIKE_COUNT", str(defaults.strike_count))),
+            lot_multiplier=int(os.getenv("LOT_MULTIPLIER", str(defaults.lot_multiplier))),
+            gex_enabled=os.getenv("GEX_ENABLED", str(defaults.gex_enabled)).lower() in ("1", "true", "yes"),
+            min_score=int(os.getenv("MIN_SCORE", str(defaults.min_score))),
+            max_trap=int(os.getenv("MAX_TRAP", str(defaults.max_trap))),
+            morning_session_end=os.getenv("MORNING_SESSION_END", defaults.morning_session_end),
+            afternoon_power_start=os.getenv("AFTERNOON_POWER_START", defaults.afternoon_power_start),
+            power_hour_score_factor=float(os.getenv("POWER_HOUR_SCORE_FACTOR", str(defaults.power_hour_score_factor))),
+            morning_score_factor=float(os.getenv("MORNING_SCORE_FACTOR", str(defaults.morning_score_factor))),
+            premium_stop_pts=float(os.getenv("PREMIUM_STOP_PTS", str(defaults.premium_stop_pts))),
+            premium_target_pts=float(os.getenv("PREMIUM_TARGET_PTS", str(defaults.premium_target_pts))),
+            entry_sl_mode=os.getenv("ENTRY_SL_MODE", defaults.entry_sl_mode).strip().lower(),
+            dynamic_sl_atr_period=int(os.getenv("DYNAMIC_SL_ATR_PERIOD", str(defaults.dynamic_sl_atr_period))),
+            dynamic_sl_atr_mult=float(os.getenv("DYNAMIC_SL_ATR_MULT", str(defaults.dynamic_sl_atr_mult))),
+            dynamic_sl_min_pts=float(os.getenv("DYNAMIC_SL_MIN_PTS", str(defaults.dynamic_sl_min_pts))),
+            dynamic_sl_max_pts=float(os.getenv("DYNAMIC_SL_MAX_PTS", str(defaults.dynamic_sl_max_pts))),
+            max_trades_per_session=int(os.getenv("MAX_TRADES_PER_SESSION", str(defaults.max_trades_per_session))),
+            max_consecutive_losses=int(os.getenv("MAX_CONSECUTIVE_LOSSES", str(defaults.max_consecutive_losses))),
+            entry_cooldown_secs=int(os.getenv("ENTRY_COOLDOWN_SECS", str(defaults.entry_cooldown_secs))),
+            max_daily_loss_pct=float(os.getenv("MAX_DAILY_LOSS_PCT", str(defaults.max_daily_loss_pct))),
+            max_daily_loss_amount=float(os.getenv("MAX_DAILY_LOSS_AMOUNT", str(defaults.max_daily_loss_amount))),
+            risk_percent=float(os.getenv("RISK_PERCENT", str(defaults.risk_percent))),
+            trail_sl_mode=os.getenv("TRAIL_SL_MODE", defaults.trail_sl_mode),
+            spot_reward_pct=float(os.getenv("SPOT_REWARD_PCT", str(defaults.spot_reward_pct))),
+            trail_activate_at_pct=float(os.getenv("TRAIL_ACTIVATE_AT_PCT", str(defaults.trail_activate_at_pct))),
+            trail_step_rr_pct=float(os.getenv("TRAIL_STEP_RR_PCT", str(defaults.trail_step_rr_pct))),
+            long_only_mode=os.getenv("LONG_ONLY_MODE", str(defaults.long_only_mode)).lower() in ("1", "true", "yes"),
+            broker_sl_orders=os.getenv("BROKER_SL_ORDERS", str(defaults.broker_sl_orders)).lower() in ("1", "true", "yes"),
+            candle_interval=os.getenv("CANDLE_INTERVAL", defaults.candle_interval),
+            lookback_days=int(os.getenv("LOOKBACK_DAYS", str(defaults.lookback_days))),
+            fast_ema_period=int(os.getenv("FAST_EMA_PERIOD", str(defaults.fast_ema_period))),
+            slow_ema_period=int(os.getenv("SLOW_EMA_PERIOD", str(defaults.slow_ema_period))),
+            rsi_period=int(os.getenv("RSI_PERIOD", str(defaults.rsi_period))),
+            signal_check_interval=int(os.getenv("SIGNAL_CHECK_INTERVAL", str(defaults.signal_check_interval))),
+            lookback_bars=int(os.getenv("LOOKBACK_BARS", str(defaults.lookback_bars))),
+            iv_rank_max_entry=float(os.getenv("IV_RANK_MAX_ENTRY", str(defaults.iv_rank_max_entry))),
+            iv_52w_low=float(os.getenv("IV_52W_LOW", str(defaults.iv_52w_low))),
+            iv_52w_high=float(os.getenv("IV_52W_HIGH", str(defaults.iv_52w_high))),
+            min_oi_filter=float(os.getenv("MIN_OI_FILTER", str(defaults.min_oi_filter))),
+            min_vol_filter=float(os.getenv("MIN_VOL_FILTER", str(defaults.min_vol_filter))),
+            asym_score_threshold=float(os.getenv("ASYM_SCORE_THRESHOLD", str(defaults.asym_score_threshold))),
+            allow_checkpoint_fallback=os.getenv("ALLOW_CHECKPOINT_FALLBACK", str(defaults.allow_checkpoint_fallback)).lower() in ("1", "true", "yes"),
+            delta_target_low=float(os.getenv("DELTA_TARGET_LOW", str(defaults.delta_target_low))),
+            delta_target_high=float(os.getenv("DELTA_TARGET_HIGH", str(defaults.delta_target_high))),
+            order_status_max_retries=int(os.getenv("ORDER_STATUS_MAX_RETRIES", str(defaults.order_status_max_retries))),
+            order_status_poll_interval=float(os.getenv("ORDER_STATUS_POLL_INTERVAL", str(defaults.order_status_poll_interval))),
+            delta_exit_threshold=float(os.getenv("DELTA_EXIT_THRESHOLD", str(defaults.delta_exit_threshold))),
+            oi_velocity_enabled=os.getenv("OI_VELOCITY_ENABLED", str(defaults.oi_velocity_enabled)).lower() in ("1", "true", "yes"),
+            oi_velocity_threshold=float(os.getenv("OI_VELOCITY_THRESHOLD", str(defaults.oi_velocity_threshold))),
+            max_entry_spread_pct=float(os.getenv("MAX_ENTRY_SPREAD_PCT", str(defaults.max_entry_spread_pct))),
+            same_strike_reentry_guard_enabled=os.getenv("SAME_STRIKE_REENTRY_GUARD_ENABLED", str(defaults.same_strike_reentry_guard_enabled)).lower() in ("1", "true", "yes"),
+            max_same_strike_trades_per_day=int(os.getenv("MAX_SAME_STRIKE_TRADES_PER_DAY", str(defaults.max_same_strike_trades_per_day))),
+            drawdown_rate_enabled=os.getenv("DRAWDOWN_RATE_ENABLED", str(defaults.drawdown_rate_enabled)).lower() in ("1", "true", "yes"),
+            drawdown_rate_window_mins=int(os.getenv("DRAWDOWN_RATE_WINDOW_MINS", str(defaults.drawdown_rate_window_mins))),
+            drawdown_rate_max_loss=float(os.getenv("DRAWDOWN_RATE_MAX_LOSS", str(defaults.drawdown_rate_max_loss))),
+            preflight_spread_check=os.getenv("PREFLIGHT_SPREAD_CHECK", str(defaults.preflight_spread_check)).lower() in ("1", "true", "yes"),
+            preflight_max_spread_pct=float(os.getenv("PREFLIGHT_MAX_SPREAD_PCT", str(defaults.preflight_max_spread_pct))),
+            preflight_min_bid=float(os.getenv("PREFLIGHT_MIN_BID", str(defaults.preflight_min_bid))),
+            adaptive_sizing_enabled=os.getenv("ADAPTIVE_SIZING_ENABLED", str(defaults.adaptive_sizing_enabled)).lower() in ("1", "true", "yes"),
+            adaptive_max_lot_mult=int(os.getenv("ADAPTIVE_MAX_LOT_MULT", str(defaults.adaptive_max_lot_mult))),
+            adaptive_win_streak_trigger=int(os.getenv("ADAPTIVE_WIN_STREAK_TRIGGER", str(defaults.adaptive_win_streak_trigger))),
+            adaptive_win_streak_step=int(os.getenv("ADAPTIVE_WIN_STREAK_STEP", str(defaults.adaptive_win_streak_step))),
+            paper_trade=os.getenv("PAPER_TRADE", str(defaults.paper_trade)).lower() in ("1", "true", "yes"),
+            max_daily_profit_amount=float(os.getenv("MAX_DAILY_PROFIT_AMOUNT", str(defaults.max_daily_profit_amount))),
+            no_new_trade_after=os.getenv("NO_NEW_TRADE_AFTER", defaults.no_new_trade_after),
+            square_off_time=os.getenv("SQUARE_OFF_TIME", defaults.square_off_time),
+            max_hold_minutes=int(os.getenv("MAX_HOLD_MINUTES", str(defaults.max_hold_minutes))),
+            breakeven_at_gain_pct=float(os.getenv("BREAKEVEN_AT_GAIN_PCT", str(defaults.breakeven_at_gain_pct))),
+            trade_journal_path=os.getenv("TRADE_JOURNAL_PATH", defaults.trade_journal_path),
         )
         _known_equity = {"RELIANCE", "HDFCBANK", "ICICIBANK", "SBIN", "INFY", "TCS"}
         _unclassified = [
@@ -578,10 +580,51 @@ class BotState:
             self._traded_today.clear()
 
 
-def _field_trend(oldest: dict, newest: dict, fld: str) -> int:
-    """Return +1 (rising), 0 (flat), or -1 (falling) for a chain field across oldest→newest snapshot."""
-    diff = float(newest.get(fld) or 0) - float(oldest.get(fld) or 0)
-    return 1 if diff > 0 else (-1 if diff < 0 else 0)
+def get_ist_now() -> datetime:
+    """Return current IST datetime, works regardless of system timezone.
+    Uses _time_mod to compute offset if system is not IST.
+    """
+    try:
+        # Compute offset between local time and UTC
+        _tz_off = (_time_mod.mktime(_time_mod.localtime()) - _time_mod.mktime(_time_mod.gmtime())) / 3600
+        if abs(_tz_off - 5.5) < 0.1:
+            return datetime.now()
+        else:
+            return datetime.utcnow() + timedelta(hours=5.5)
+    except Exception:
+        return datetime.now()
+
+
+def _effective_min_score(now: datetime, cfg: "BotConfig") -> tuple[int, str]:
+    """Return the session-adjusted minimum composite score and a reason label.
+
+    Implements U-C (Session-Aware Min Score):
+      • Morning  (09:15 – morning_session_end)  : score threshold raised by morning_score_factor
+        — higher bar because early-session volatility is noisy and traps are common.
+      • Power-hour (afternoon_power_start – no_new_trade_after): threshold eased by power_hour_score_factor
+        — institutional momentum flows are cleaner; lower bar improves participation.
+      • Mid-session: standard min_score applies.
+
+    Args:
+        now: Current IST datetime (use get_ist_now()).
+        cfg: Resolved BotConfig instance.
+
+    Returns:
+        (effective_score, session_label) tuple.
+    """
+    now_hm = now.strftime("%H:%M")
+    if cfg.morning_session_end and now_hm < cfg.morning_session_end:
+        score = max(1, int(cfg.min_score * cfg.morning_score_factor))
+        return score, f"morning-gate(raised→{score})"
+    if (
+        cfg.afternoon_power_start
+        and cfg.no_new_trade_after
+        and cfg.afternoon_power_start <= now_hm < cfg.no_new_trade_after
+    ):
+        score = max(1, int(cfg.min_score * cfg.power_hour_score_factor))
+        return score, f"power-hour(eased→{score})"
+    return cfg.min_score, "mid-session"
+
 
 
 # ===============================================================================
@@ -835,7 +878,6 @@ class SignalEngine:
                 df_vwap = df_today
                 source = "today"
             elif len(df_spot) >= 5:
-                print(f"Spot Data: {df_spot.to_string()}")
                 df_vwap = df_spot.iloc[-5:]  # Last 5 bars across day boundary if needed
                 source = "rolling_5bar"
             else:
@@ -862,12 +904,10 @@ class SignalEngine:
                             s4 = -1; vwap_note = f"Spot {spot:.1f} below VWAP {vv:.1f} ({source}, {len(df_vwap_calc)} valid bars)"
                     except Exception as e:
                         vwap_note = f"VWAP calc error: {str(e)[:40]}"
-                        print(f"[VWAP] Error: {e} | valid_bars={len(df_valid_vol)}, total={len(df_vwap)}")
                 else:
                     # Insufficient bars with volume
                     zero_vol_count = (df_vwap["volume"] == 0).sum()
                     vwap_note = f"VWAP insufficient volume ({len(df_valid_vol)}/5 have volume; {zero_vol_count} zero)"
-                    print(f"[VWAP] Low volume: valid={len(df_valid_vol)}, zero={zero_vol_count}, total={len(df_vwap)}, vol_range=[{df_vwap['volume'].min():.0f}, {df_vwap['volume'].max():.0f}]")
             else:
                 vwap_note = "VWAP insufficient bars (need 5)"
         _c("Spot vs VWAP", s4, 1, _dir(s4), vwap_note)
@@ -1883,18 +1923,18 @@ class RiskManager:
         self.config  = config
         self._state  = state
 
-        self._session_date               = datetime.now().strftime("%Y-%m-%d")
+        self._session_date               = get_ist_now().strftime("%Y-%m-%d")
         self._session_trade_count        = 0
         self._session_consecutive_losses = 0
         self._session_consecutive_wins   = 0
-        self._last_entry_times: dict[str, datetime] = {}
+        self._last_entry_times: dict[str, float] = {}
         self._daily_pnl                  = 0.0
 
         self._funds_cache:       float = 0.0   # last broker-reported available capital
         self._funds_cache_time:  float = 0.0
         self._funds_cache_ttl:   float = 60.0  # re-poll interval; between refreshes uses pnl delta
         self._pnl_at_last_fetch: float = 0.0
-        self._pnl_history: list[tuple[float, float]] = []  # (unix_timestamp, cumulative_pnl)
+        self._pnl_history: deque[tuple[float, float]] = deque()  # (unix_timestamp, cumulative_pnl)
 
     def available_capital(self) -> float:
         """Cached funds() call: re-polls broker every _funds_cache_ttl seconds.
@@ -1927,7 +1967,7 @@ class RiskManager:
         return 0.0
 
     def _maybe_reset_daily_state(self):
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = get_ist_now().strftime("%Y-%m-%d")
         with self._state.state_lock:
             if today != self._session_date:
                 print(f"[RISK] New trading day {today} — resetting session state")
@@ -1968,10 +2008,13 @@ class RiskManager:
             )
         if cfg.entry_cooldown_secs > 0 and symbol:
             if last_entry_time is not None:
-                elapsed = (datetime.now() - last_entry_time).total_seconds()
+                elapsed = time.monotonic() - last_entry_time
                 if elapsed < cfg.entry_cooldown_secs:
                     remaining = int(cfg.entry_cooldown_secs - elapsed)
                     return False, f"Entry cooldown active for {symbol} ({remaining}s remaining)"
+        # ── Timing gate: no new entries after configured time (IST) ──────────
+        # get_ist_now() is TZ-safe: returns IST regardless of Docker/UTC host.
+        _now_ist = get_ist_now()
         if cfg.max_daily_loss_pct > 0:
             capital = self.available_capital()
             max_loss_amt = capital * (cfg.max_daily_loss_pct / 100.0)
@@ -1998,7 +2041,7 @@ class RiskManager:
                 f"(target ₹{cfg.max_daily_profit_amount:.0f}) — locking in gains for the day"
             )
         if cfg.no_new_trade_after:
-            now_hm = datetime.now().strftime("%H:%M")
+            now_hm = _now_ist.strftime("%H:%M")
             if now_hm >= cfg.no_new_trade_after:
                 return False, (
                     f"No new entries after {cfg.no_new_trade_after} IST "
@@ -2010,15 +2053,17 @@ class RiskManager:
         """Call after a confirmed entry fill."""
         with self._state.state_lock:
             self._session_trade_count += 1
-            self._last_entry_times[symbol] = datetime.now()
+            self._last_entry_times[symbol] = time.monotonic()
 
     def record_exit(self, pnl: float):
         """Call after a confirmed exit fill. Updates daily P&L and loss streak."""
         with self._state.state_lock:
             self._daily_pnl += pnl
-            self._pnl_history.append((time.time(), self._daily_pnl))
-            cutoff = time.time() - (self.config.drawdown_rate_window_mins * 60)
-            self._pnl_history = [(t, p) for t, p in self._pnl_history if t >= cutoff]
+            now_ts = time.time()
+            self._pnl_history.append((now_ts, self._daily_pnl))
+            cutoff = now_ts - (self.config.drawdown_rate_window_mins * 60)
+            while self._pnl_history and self._pnl_history[0][0] < cutoff:
+                self._pnl_history.popleft()
             if pnl < 0:
                 self._session_consecutive_losses += 1
                 self._session_consecutive_wins = 0
@@ -2070,11 +2115,13 @@ class WebSocketManager:
         self._state = state
         self._exit_callback:      Callable[[str, str], None] | None = None
         self._sl_modify_callback: Callable[[str, float], None] | None = None
+        self._notify_callback:    Callable[[str, int], None] | None = None   # U-G: wired after init
         self._fetcher:            DataFetcher | None = None  # Set via set_fetcher() after construction
         self._ws_started     = threading.Event()
         self._subscriptions: set[tuple[str, str]] = set()   # (exchange, symbol) registry for reconnect
         self._subscribe_lock  = threading.Lock()
         self._last_tick_time: float = 0.0                   # updated on every valid tick; used by watchdog
+        self._ws_stale_alerted: bool = False                # U-G: rate-limit 30s WARNING log to once per stale window
         self._delta_cache: OrderedDict[str, tuple[float, float]] = OrderedDict()
         self._delta_cache_max_size: int = 200  # Prevent unbounded growth
         self._delta_fetch_inflight: set[str] = set()
@@ -2086,6 +2133,10 @@ class WebSocketManager:
     def set_fetcher(self, fetcher: DataFetcher) -> None:
         """Set DataFetcher reference to consolidate greeks API calls."""
         self._fetcher = fetcher
+
+    def set_notify_callback(self, cb: Callable[[str, int], None]) -> None:
+        """Wire the orchestrator's Telegram notify function into the WS watchdog (U-G)."""
+        self._notify_callback = cb
 
     def _get_cached_delta(self, underlying: str, option_symbol: str, ttl: float = 30.0) -> float | None:
         """Return cached |delta| and refresh asynchronously when stale."""
@@ -2399,16 +2450,32 @@ class WebSocketManager:
                                     )
                             except Exception as _re_exc:
                                 print(f"[WS] Re-subscribe error {exch}:{sym}: {_re_exc}")
-                    while True:  # watchdog: force reconnect if feed silent > 120s in market hours
-                        time.sleep(60)
+                    while True:  # watchdog: graduated alerts then force-reconnect if feed silent
+                        time.sleep(30)
                         elapsed = time.time() - self._last_tick_time
-                        hm = int(datetime.now().strftime("%H%M"))
-                        if self._last_tick_time and MARKET_HOURS_START <= hm <= MARKET_HOURS_END and elapsed > 120:
+                        hm = int(get_ist_now().strftime("%H%M"))
+                        in_market = self._last_tick_time and MARKET_HOURS_START <= hm <= MARKET_HOURS_END
+                        if in_market and elapsed > 30 and not self._ws_stale_alerted:
                             print(
-                                f"[WS] Feed silent {int(elapsed)}s during market hours — "
-                                f"forcing hard reconnect..."
+                                f"[WS] WARNING: Stale tick feed — no ticks in {int(elapsed)}s "
+                                f"(market hours active)"
                             )
+                            self._ws_stale_alerted = True
+                        if in_market and elapsed > 120:
+                            _msg = (
+                                f"⚠️ WS Feed STALE: No ticks for {int(elapsed)}s during market hours.\n"
+                                f"Forcing reconnect — check broker/VPS connectivity."
+                            )
+                            if self._notify_callback:
+                                try:
+                                    self._notify_callback(_msg, 9)
+                                except Exception:
+                                    pass
+                            print(f"[WS] Feed silent {int(elapsed)}s — forcing hard reconnect...")
+                            self._ws_stale_alerted = False   # reset for next connection window
                             break   # exit watchdog → outer loop reconnects immediately
+                        if not in_market:
+                            self._ws_stale_alerted = False   # reset outside market hours
                     continue        # skip backoff sleep — reconnect without delay
                 consecutive_failures += 1
                 print(f"[WS] Connection failed ({ws_url}), attempt {consecutive_failures}/{max_consecutive_failures}")
@@ -2693,6 +2760,7 @@ class OrderManager:
             spot_symbol=underlying,
             spot_entry=spot,
             reward_dist=reward_dist,
+            entry_time=get_ist_now(),
         )
         with self._state.state_lock:
             self._state.positions[underlying] = pos
@@ -3041,7 +3109,7 @@ class OrderManager:
         """Reconcile stale pending entry orders. WC-09: post-cutoff entries queue immediate exit."""
         with self._state.state_lock:
             pending = list(self._state.pending_entries.items())
-        now_hm = datetime.now().strftime("%H:%M")
+        now_hm = get_ist_now().strftime("%H:%M")
         square_off_hm = self.config.square_off_time
         for underlying, pending_entry in pending:
             order_id = pending_entry.order_id
@@ -3176,9 +3244,10 @@ class OptionsBuyerEdgeBot:
             self.client, config, self.state, self.risk, self.ws, self.fetcher, self._send_telegram
         )
         # Wire callbacks and dependencies to break circular dependency + consolidate API calls
-        self.ws.set_fetcher(self.fetcher)  # Reuse DataFetcher cache for delta in trailing SL
+        self.ws.set_fetcher(self.fetcher)       # Reuse DataFetcher cache for delta in trailing SL
         self.ws.set_exit_callback(self.orders.place_exit)
         self.ws.set_sl_modify_callback(self.orders.modify_broker_sl)
+        self.ws.set_notify_callback(self._send_telegram)  # U-G: WS watchdog Telegram alert
 
     def _send_telegram(self, message: str, priority: int = 1) -> None:
         if not self.config.telegram_username:
@@ -3262,6 +3331,7 @@ class OptionsBuyerEdgeBot:
                     spot_symbol=underlying,
                     spot_entry=restored_spot,
                     reward_dist=restored_spot * (cfg.spot_reward_pct / 100.0),
+                    entry_time=get_ist_now(),
                 )
                 # Query SL/TGT order IDs from orderbook
                 for order in open_orders:
@@ -3287,7 +3357,7 @@ class OptionsBuyerEdgeBot:
         cfg = self.config
         if cfg.max_hold_minutes <= 0:
             return
-        now = datetime.now()
+        now = get_ist_now()
         with self.state.state_lock:
             positions = list(self.state.positions.items())
         for ul, pos in positions:
@@ -3306,7 +3376,7 @@ class OptionsBuyerEdgeBot:
                 self.orders.place_exit(ul, f"MaxHoldTime({cfg.max_hold_minutes}m)")
 
     def _is_market_hours(self) -> bool:
-        hm = int(datetime.now().strftime("%H%M"))
+        hm = int(get_ist_now().strftime("%H%M"))
         return MARKET_HOURS_START <= hm <= MARKET_HOURS_END
 
     def _print_startup_info(self) -> None:
@@ -3359,14 +3429,30 @@ class OptionsBuyerEdgeBot:
         # Keep greeks cache scoped to this scan cycle for fresh yet deduplicated API calls.
         self.fetcher.clear_greeks_cache(symbol)
 
-        def _log_greeks_perf(stage: str) -> None:
+        def _log_greeks_perf(
+            stage:     str,
+            sep_count: int = 0,
+            sep_char:  str = "━",
+        ) -> None:
+            """Log greeks cache performance for this scan-cycle stage.
+
+            Args:
+                stage:     Execution stage label  (e.g. 'no-execute', 'entry-order').
+                sep_count: When > 0 prints a closing separator of this many `sep_char`
+                           characters directly after the perf line, letting callers
+                           consolidate  ``_log_greeks_perf(...)``  +  separator  into
+                           one call instead of two.
+                sep_char:  Separator character (default: ━).
+            """
             perf = self.fetcher.greeks_perf_snapshot(symbol)
             print(
-                f"[PERF] {symbol} [{stage}] greeks: "
+                f"  [PERF] {symbol} [{stage}] greeks: "
                 f"hit={perf['hits']} miss={perf['misses']} "
                 f"api_calls={perf['api_calls']} hit_rate={perf['hit_rate']}% "
                 f"cache_size={perf['cache_size']}"
             )
+            if sep_count > 0:
+                print(f"  {sep_char * sep_count}\n")
 
         if symbol in state.positions:
             return
@@ -3376,22 +3462,11 @@ class OptionsBuyerEdgeBot:
             print(f"[SCAN] {symbol} blocked by risk gate: {gate_reason}")
             return
 
-        now_hm = datetime.now().strftime("%H:%M")
-        effective_min_score = cfg.min_score
-        if cfg.morning_session_end and now_hm < cfg.morning_session_end:
-            effective_min_score = max(1, int(cfg.min_score * cfg.morning_score_factor))
-            print(
-                f"[SCAN] {symbol}: morning volatility gate — min_score raised to "
-                f"{effective_min_score}"
-            )
-        elif (
-            cfg.afternoon_power_start
-            and cfg.afternoon_power_start <= now_hm < cfg.no_new_trade_after
-        ):
-            effective_min_score = max(1, int(cfg.min_score * cfg.power_hour_score_factor))
-            print(
-                f"[SCAN] {symbol}: power hour — min_score eased to {effective_min_score}"
-            )
+        # U-C: Session-Aware Min Score — use global helper for clean, testable logic
+        _ist_now          = get_ist_now()
+        effective_min_score, _session_label = _effective_min_score(_ist_now, cfg)
+        if _session_label != "mid-session":
+            print(f"[SCAN] {symbol}: session regime [{_session_label}]")
 
         spot_q = self.fetcher.fetch_quote(symbol, self.fetcher.underlying_exchange(symbol))
         spot   = float(spot_q.get("ltp", 0) or 0)
@@ -3532,8 +3607,12 @@ class OptionsBuyerEdgeBot:
         _sig_ico  = "✔" if _signal == "EXECUTE" else ("⚡" if _signal == "WATCH" else "✘")
         _nfill    = int(abs(_s) / 100 * 16)
         _score_bar = "█" * _nfill + "░" * (16 - _nfill)
-        _sep      = "─" * 79
-        print(f"  ── SCAN · {symbol}  {'─' * max(1, 68 - len(symbol))}")
+        _sep        = "━" * 79
+        _now_hdr    = get_ist_now()   # TZ-safe IST — works on Docker/UTC and local hosts
+        _time_str   = _now_hdr.strftime("%H:%M:%S")
+        _spot_fmt   = f"{spot:,.0f}" if spot else ""
+        _header_txt = f"  ━━ SCAN · {symbol} · {_spot_fmt} · {_time_str}  "
+        print(_header_txt + "━" * max(1, 79 - len(_header_txt)))
         print(f"      {_dir_ico} {result.label:<10}  score {_s:+d}/100  {_score_bar}  trap {_trap}/100   {_sig_ico} {_signal}")
         print(f"  {_sep}")
         _cbar_w = 8
@@ -3541,25 +3620,26 @@ class OptionsBuyerEdgeBot:
             _cfill = int(abs(c.score) / max(c.score_max, 0.01) * _cbar_w)
             _cbar  = "█" * _cfill + "░" * (_cbar_w - _cfill)
             print(f"     {c.score:+.0f}/{c.score_max:.0f}  {_cbar}  {c.label:<20} {c.note}")
-        print(f"  {_sep}")
         if result.trap_reasons:
             print(f"  ⚠ TRAP {_trap}  ·  {'  ·  '.join(result.trap_reasons)}")
+
         if _signal != "EXECUTE":
             print(
                 f"  {_sig_ico} {_signal}  —  not executing  "
                 f"(score {abs(_s)}/100, min {effective_min_score})"
             )
-            _log_greeks_perf("no-execute")
-            print()
+            _log_greeks_perf("no-execute", sep_count=79)
             return
+
+        # ✔ EXECUTE path — separator printed AFTER every blocking guard below
         print(f"  ✔ EXECUTE  {_dir_ico}  {result.direction}")
-        print()
+
         direction = result.direction
         if cfg.long_only_mode and direction not in ("CE", "PE"):
-            _log_greeks_perf("blocked-direction")
+            _log_greeks_perf("blocked-direction", sep_count=79)
             return
         if direction is None:
-            _log_greeks_perf("neutral-direction")
+            _log_greeks_perf("neutral-direction", sep_count=79)
             return
 
         best = self.strikes.select_best(
@@ -3573,14 +3653,14 @@ class OptionsBuyerEdgeBot:
                     print(f"[SCAN] {symbol}: using simple OTM fallback strike {best.get('strike')}")
             if best is None:
                 print(f"[SCAN] {symbol}: no qualifying strike found — skip")
-                _log_greeks_perf("no-strike")
+                _log_greeks_perf("no-strike", sep_count=79)
                 return
 
         opt_key    = "ce_symbol" if direction == "CE" else "pe_symbol"
         opt_symbol = best.get(opt_key)
         if not opt_symbol:
             print(f"[SCAN] {symbol}: strike {best.get('strike')} has no {direction} symbol — skip")
-            _log_greeks_perf("missing-option-symbol")
+            _log_greeks_perf("missing-option-symbol", sep_count=79)
             return
 
         if cfg.same_strike_reentry_guard_enabled:
@@ -3590,7 +3670,7 @@ class OptionsBuyerEdgeBot:
                     f"[SCAN] {symbol}: {opt_symbol} {direction} already traded "
                     f"{traded_count}x today (max {cfg.max_same_strike_trades_per_day}) — skip"
                 )
-                _log_greeks_perf("reentry-guard")
+                _log_greeks_perf("reentry-guard", sep_count=79)
                 return
 
         if cfg.max_entry_spread_pct > 0:
@@ -3606,7 +3686,7 @@ class OptionsBuyerEdgeBot:
                         f"[SCAN] {symbol}: entry blocked — spread {live_spread_pct:.1f}% "
                         f"> max {cfg.max_entry_spread_pct:.1f}% (bid={bid:.2f}, ask={ask:.2f})"
                     )
-                    _log_greeks_perf("hard-spread-block")
+                    _log_greeks_perf("hard-spread-block", sep_count=79)
                     return
 
         entry_sl_pts, entry_sl_source = self.sl_policy.resolve_entry_sl_points(
@@ -3643,9 +3723,11 @@ class OptionsBuyerEdgeBot:
                 f"risk cap ₹{risk_cap:.0f} @ {cfg.risk_percent}% of ₹{available:.0f} available; "
                 f"need RISK_PERCENT≥{min_risk_pct:.1f}%)"
             )
-            _log_greeks_perf("qty-zero")
+            _log_greeks_perf("qty-zero", sep_count=79)
             return
 
+        # All guards passed — close the scan block then log intent
+        _log_greeks_perf("entry-preflight", sep_count=79)
         print(
             f"[SCAN] {symbol}: placing {direction} entry | strike {best.get('strike')} "
             f"| {opt_symbol} x{qty}"
@@ -3672,7 +3754,7 @@ class OptionsBuyerEdgeBot:
                     self.orders.check_broker_order_fills()
 
                 if cfg.square_off_time:
-                    now_hm = datetime.now().strftime("%H:%M")
+                    now_hm = get_ist_now().strftime("%H:%M")
                     if now_hm >= cfg.square_off_time:
                         with self.state.state_lock:
                             open_positions = list(self.state.positions.keys())

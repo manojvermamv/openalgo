@@ -1,0 +1,2348 @@
+=== Strategy Started at 2026-05-27 13:56:16 IST ===
+=== Platform: linux ===
+
+[CONFIG] All configuration values validated OK
+[STARTUP] ⚠️  Strategy 'BuyerEdgeStrategyBot' not found in strategy configs.
+[STARTUP]    Run: python3 /app/strategies/register_strategy.py
+[STARTUP]    Then restart this script.
+[STARTUP] Continuing anyway (may cause runtime errors)...
+
+======================================================================
+  BuyerEdgeStrategyBot
+======================================================================
+  API Host        : https://oadev.karm8boost.online
+  WebSocket URL   : wss://oadev.karm8boost.online/ws
+  Underlyings     : NIFTY
+  FNO Exchange    : NFO
+  Min Score       : 15 | Max Trap: 80
+  SL Points       : 30.0 | TGT Points: 50.0
+  Entry SL Mode   : fixed
+  Dynamic SL ATR  : period=14, mult=1.5, min=15.0, max=80.0
+  Trail Mode      : premium
+  Breakeven SL    : 80% of target gain
+  Long Only Mode  : True
+  Broker SL Orders: True
+  DTE Range       : 7 – 30 days
+  Candle Interval : 15m
+  Check Interval  : 60s
+----------------------------------------------------------------------
+  [RISK GATES]
+  Max Trades/Day  : 5
+  Max Consec Loss : 3
+  Daily Loss Limit: ₹2000
+  Daily Profit Tgt: disabled
+  Entry Cooldown  : 300s per underlying
+  [TIMING]
+  No New Entries  : after 13:30 IST
+  EOD Square-Off  : 15:15 IST
+  Max Hold Time   : disabled
+======================================================================
+[WS-TEST] REST API key OK (orderbook: 2 order(s))
+[WS-TEST] Testing wss://oadev.karm8boost.online/ws ...
+[WS-TEST] Transport OK — WebSocket handshake succeeded
+[WS-TEST] Auth OK
+[WS-TEST] Subscribed NSE_INDEX:Nifty 50
+[WS-TEST] Tick #1 — ltp=?
+[WS-TEST] (no tick yet, 15s remaining...)
+[WS-TEST] (no tick yet, 10s remaining...)
+[WS-TEST] (no tick yet, 5s remaining...)
+[WS-TEST] PASS — received 1 tick(s) ✓
+[WS] WebSocket thread starting...
+[STRATEGY] Strategy scan thread started
+[BOT] BuyerEdgeStrategyBot running. Press Ctrl+C to stop.
+[WS] `client.connect()` using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -23/100  ███░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 40.6 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     +0/2  ░░░░░░░░  Call OI Flow         CE Neutral
+     +0/2  ░░░░░░░░  Put OI Flow          PE Neutral
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.025 — mild CE dominance   (CE +0.512 / PE -0.487)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -34987); nearest downside punch 23900 from spot 23912
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +0/1  ░░░░░░░░  Synthetic Futures    SF snapshot only (no prior bar): basis +43.3 (normal) — score 0
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -23 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -34/100  █████░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 40.6 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     +0/2  ░░░░░░░░  Call OI Flow         CE Neutral
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.023 — mild CE dominance   (CE +0.511 / PE -0.489)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -34884); nearest downside punch 23900 from spot 23909
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.2%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +42.3, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Best asymmetry score 0.341 < threshold 0.35 (medium_signal) — no qualifying strike
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=41 miss=38 api_calls=38 hit_rate=51.9% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -26/100  ████░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 40.6 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     -1/2  ████░░░░  Call OI Flow         CE Long Unwinding — moderately bearish
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +1/1  ████████  Greeks Bias (Δ)      LTP proxy Δ +0.231 — CE premium heavy (bullish)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +11250) — dealer hedging tends to dampen directional follow-through | gamma flip 23500
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +45.4, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -26 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=30 miss=42 api_calls=42 hit_rate=41.7% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -7/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 40.6 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.035 — mild CE dominance   (CE +0.516 / PE -0.482)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -42942); nearest downside punch 23900 from spot 23912
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +51.2, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 7/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=25 miss=47 api_calls=47 hit_rate=34.7% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -7/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 40.6 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.038 — mild CE dominance   (CE +0.518 / PE -0.480)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -29078); nearest downside punch 23900 from spot 23916
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +45.0, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 7/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=21 miss=51 api_calls=51 hit_rate=29.2% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -15/100  ██░░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 45.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     +0/2  ░░░░░░░░  Call OI Flow         CE Neutral
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.037 — mild CE dominance   (CE +0.518 / PE -0.481)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -11188); nearest downside punch 23900 from spot 23922 | gamma flip 23559
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +39.4, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -15 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=21 miss=51 api_calls=51 hit_rate=29.2% cache_size=26
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ◆ Neutral     score +0/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 45.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.035 — mild CE dominance   (CE +0.517 / PE -0.482)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -33830); nearest downside punch 23900 from spot 23917
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +47.1, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 0/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -15/100  ██░░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 45.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     +0/2  ░░░░░░░░  Call OI Flow         CE Neutral
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.037 — mild CE dominance   (CE +0.517 / PE -0.481)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -20561); nearest downside punch 23900 from spot 23921
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +42.8, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -15 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=26 miss=46 api_calls=46 hit_rate=36.1% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▲ Neutral     score +5/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 45.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.030 — mild CE dominance   (CE +0.515 / PE -0.484)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +14262) — dealer hedging tends to dampen directional follow-through | gamma flip 24190
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +40.1, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 5/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=26 miss=46 api_calls=46 hit_rate=36.1% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -31/100  ████░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 45.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     +0/2  ░░░░░░░░  Put OI Flow          PE Neutral
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.031 — mild CE dominance   (CE +0.515 / PE -0.484)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -16378); nearest downside punch 23900 from spot 23919
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +41.1, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Best asymmetry score 0.340 < threshold 0.35 (medium_signal) — no qualifying strike
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=32 miss=47 api_calls=47 hit_rate=40.5% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -10/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 45.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.037 — mild CE dominance   (CE +0.518 / PE -0.481)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +10096) — dealer hedging tends to dampen directional follow-through | gamma flip 24245
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +41.6, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 10/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=20 miss=52 api_calls=52 hit_rate=27.8% cache_size=22
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -42/100  ██████░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 45.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.033 — mild CE dominance   (CE +0.516 / PE -0.483)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -35332); nearest downside punch 23900 from spot 23916
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +48.0, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Best asymmetry score 0.341 < threshold 0.35 (medium_signal) — no qualifying strike
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=41 miss=38 api_calls=38 hit_rate=51.9% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▲ Neutral     score +10/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 45.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.039 — mild CE dominance   (CE +0.518 / PE -0.480)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +26294) — dealer hedging tends to dampen directional follow-through | gamma flip 24102
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +45.3, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 10/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=33 miss=39 api_calls=39 hit_rate=45.8% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▲ Neutral     score +10/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 45.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.029 — mild CE dominance   (CE +0.514 / PE -0.485)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +3319) — dealer hedging tends to dampen directional follow-through | gamma flip 24285
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +43.5, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 10/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=33 miss=39 api_calls=39 hit_rate=45.8% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -44/100  ███████░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 45.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.015 — balanced (CE +0.507 / PE -0.492)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -16991); nearest downside punch 23900 from spot 23907
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +43.1, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Best asymmetry score 0.342 < threshold 0.35 (medium_signal) — no qualifying strike
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=37 miss=43 api_calls=43 hit_rate=46.2% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -44/100  ███████░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 45.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.020 — balanced (CE +0.509 / PE -0.489)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -36738); nearest downside punch 23900 from spot 23907
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +46.9, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Best asymmetry score 0.342 < threshold 0.35 (medium_signal) — no qualifying strike
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=39 miss=41 api_calls=41 hit_rate=48.8% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -34/100  █████░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 45.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     -1/2  ████░░░░  Call OI Flow         CE Long Unwinding — moderately bearish
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.005 — balanced (CE +0.503 / PE -0.498)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -18098); nearest downside punch 23900 from spot 23904
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +40.1, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Best asymmetry score 0.342 < threshold 0.35 (medium_signal) — no qualifying strike
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=29 miss=51 api_calls=51 hit_rate=36.2% cache_size=27
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -23/100  ███░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 45.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.004 — balanced (CE +0.503 / PE -0.499)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -36166); nearest upside punch 23900 from spot 23896
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +48.2, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -23 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -18/100  ██░░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 45.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.004 — balanced (CE +0.503 / PE -0.499)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -45441); nearest upside punch 23900 from spot 23896
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +43.9, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -18 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=30 miss=42 api_calls=42 hit_rate=41.7% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -23/100  ███░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 45.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.010 — balanced (CE +0.504 / PE -0.494)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -16209); nearest upside punch 23900 from spot 23898
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +48.4, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -23 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=28 miss=44 api_calls=44 hit_rate=38.9% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -44/100  ███████░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 42.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.015 — balanced (CE +0.508 / PE -0.493)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -35947); nearest downside punch 23900 from spot 23901
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +45.5, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Best asymmetry score 0.343 < threshold 0.35 (medium_signal) — no qualifying strike
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=36 miss=44 api_calls=44 hit_rate=45.0% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -2/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 42.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.014 — balanced (CE +0.508 / PE -0.494)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -10309); nearest downside punch 23900 from spot 23902
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +43.1, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 2/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=23 miss=49 api_calls=49 hit_rate=31.9% cache_size=27
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -2/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 42.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.013 — balanced (CE +0.507 / PE -0.494)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -33877); nearest downside punch 23900 from spot 23902
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +47.2, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 2/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -2/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 42.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.009 — balanced (CE +0.505 / PE -0.495)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -33758); nearest downside punch 23900 from spot 23902
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +38.8, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 2/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=21 miss=51 api_calls=51 hit_rate=29.2% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -44/100  ███████░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 42.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.012 — balanced (CE +0.507 / PE -0.494)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -32333); nearest downside punch 23900 from spot 23902
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +42.8, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Best asymmetry score 0.343 < threshold 0.35 (medium_signal) — no qualifying strike
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=29 miss=51 api_calls=51 hit_rate=36.2% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -2/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 42.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.020 — balanced (CE +0.510 / PE -0.490)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -32105); nearest downside punch 23900 from spot 23907
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +46.8, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 2/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=21 miss=51 api_calls=51 hit_rate=29.2% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -10/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 42.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +0/2  ░░░░░░░░  Put OI Flow          PE Neutral
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.030 — mild CE dominance   (CE +0.515 / PE -0.484)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -62502); nearest downside punch 23900 from spot 23915
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +45.2, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 10/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=21 miss=51 api_calls=51 hit_rate=29.2% cache_size=29
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ◆ Neutral     score +0/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 42.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.031 — mild CE dominance   (CE +0.514 / PE -0.484)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -32130); nearest downside punch 23900 from spot 23916
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +45.9, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 0/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=22 miss=50 api_calls=50 hit_rate=30.6% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ◆ Neutral     score +0/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 42.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.037 — mild CE dominance   (CE +0.517 / PE -0.481)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -31187); nearest downside punch 23900 from spot 23920
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +37.5, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 0/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=22 miss=50 api_calls=50 hit_rate=30.6% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -18/100  ██░░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 42.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     +0/2  ░░░░░░░░  Call OI Flow         CE Neutral
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +1/1  ████████  Greeks Bias (Δ)      LTP proxy Δ +0.228 — CE premium heavy (bullish)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -57441); nearest downside punch 23900 from spot 23903
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     -1/1  ████████  Synthetic Futures    SF co-movement bearish: spot Δ-16.8, SF Δ-10.6 — confirming
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -18 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=19 miss=53 api_calls=53 hit_rate=26.4% cache_size=27
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -23/100  ███░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 42.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.006 — balanced (CE +0.503 / PE -0.498)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -37518); nearest upside punch 23900 from spot 23896
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +46.5, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -23 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -23/100  ███░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 42.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.004 — balanced (CE +0.503 / PE -0.499)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -13718); nearest upside punch 23900 from spot 23895
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +44.2, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -23 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=30 miss=42 api_calls=42 hit_rate=41.7% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -23/100  ███░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 42.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.004 — balanced (CE +0.499 / PE -0.503)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -39171); nearest upside punch 23900 from spot 23889
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +49.8, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -23 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=30 miss=42 api_calls=42 hit_rate=41.7% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -23/100  ███░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 42.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.006 — balanced (CE +0.498 / PE -0.504)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -35932); nearest upside punch 23900 from spot 23890
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +42.2, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -23 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -23/100  ███░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 42.6 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.011 — balanced (CE +0.495 / PE -0.506)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -38176); nearest upside punch 23900 from spot 23885
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +42.8, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -23 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=5 miss=67 api_calls=67 hit_rate=6.9% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -26/100  ████░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 41.5 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.012 — balanced (CE +0.496 / PE -0.507)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -37622); nearest upside punch 23900 from spot 23886
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +44.0, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -26 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=5 miss=67 api_calls=67 hit_rate=6.9% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -26/100  ████░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 41.5 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +1/1  ████████  Greeks Bias (Δ)      LTP proxy Δ +0.133 — CE premium heavy (bullish)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +28412) — dealer hedging tends to dampen directional follow-through | gamma flip 23551
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +44.2, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -26 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=3 miss=69 api_calls=69 hit_rate=4.2% cache_size=14
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -28/100  ████░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 41.5 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     -0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum -0.022 — mild PE dominance   (CE +0.490 / PE -0.512)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -37333); nearest upside punch 23900 from spot 23876
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +43.5, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -28 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -39/100  ██████░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 41.5 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.043 — mild CE dominance   (CE +0.520 / PE -0.477)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -1016); nearest downside punch 23850 from spot 23874 | gamma flip 23560
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +44.0, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Best asymmetry score 0.343 < threshold 0.35 (medium_signal) — no qualifying strike
+[SCAN] NIFTY: using simple OTM fallback strike 23800.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=41 miss=39 api_calls=39 hit_rate=51.2% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -39/100  ██████░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 41.5 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.030 — mild CE dominance   (CE +0.515 / PE -0.484)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -45758); nearest downside punch 23850 from spot 23870
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +38.9, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Best asymmetry score 0.340 < threshold 0.35 (medium_signal) — no qualifying strike
+[SCAN] NIFTY: using simple OTM fallback strike 23800.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=32 miss=49 api_calls=49 hit_rate=39.5% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -39/100  ██████░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 41.5 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.024 — mild CE dominance   (CE +0.512 / PE -0.488)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -47985); nearest downside punch 23850 from spot 23860
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.2%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +45.0, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Best asymmetry score 0.339 < threshold 0.35 (medium_signal) — no qualifying strike
+[SCAN] NIFTY: using simple OTM fallback strike 23800.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=33 miss=48 api_calls=48 hit_rate=40.7% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -31/100  ████░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 41.5 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +1/1  ████████  Greeks Bias (Δ)      LTP proxy Δ +0.279 — CE premium heavy (bullish)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -35751); nearest downside punch 23850 from spot 23870
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.2%)
+     +1/1  ████████  Synthetic Futures    SF co-movement bullish: spot Δ+9.4, SF Δ+11.2 — confirming
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Best asymmetry score 0.341 < threshold 0.35 (medium_signal) — no qualifying strike
+[SCAN] NIFTY: using simple OTM fallback strike 23800.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=31 miss=50 api_calls=50 hit_rate=38.3% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -7/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 41.5 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.02
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      LTP proxy Δ +0.064 — mild CE premium
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +53988) — dealer hedging tends to dampen directional follow-through | gamma flip 23653
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +34.4, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 7/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=22 miss=50 api_calls=50 hit_rate=30.6% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -7/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 41.5 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.02
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      LTP proxy Δ +0.060 — mild CE premium
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -18596); nearest upside punch 23900 from spot 23881
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +36.6, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 7/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=24 miss=48 api_calls=48 hit_rate=33.3% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▲ Neutral     score +10/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 41.5 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.013 — balanced (CE +0.495 / PE -0.508)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -25568); nearest upside punch 23900 from spot 23884
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.2%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +40.3, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 10/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=25 miss=47 api_calls=47 hit_rate=34.7% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ◆ Neutral     score +0/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 41.5 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.00
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.018 — balanced (CE +0.492 / PE -0.510)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +5118) — dealer hedging tends to dampen directional follow-through | gamma flip 24275
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.2%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +37.3, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 0/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=18 miss=54 api_calls=54 hit_rate=25.0% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -34/100  █████░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 41.5 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.00
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.042 — mild CE dominance   (CE +0.519 / PE -0.477)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +30859) — dealer hedging tends to dampen directional follow-through | gamma flip 23504
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +48.0, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Best asymmetry score 0.341 < threshold 0.35 (medium_signal) — no qualifying strike
+[SCAN] NIFTY: using simple OTM fallback strike 23800.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=20 miss=62 api_calls=62 hit_rate=24.4% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -13/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 41.5 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.00
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +0/2  ░░░░░░░░  Put OI Flow          PE Neutral
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.043 — mild CE dominance   (CE +0.521 / PE -0.477)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -22637); nearest downside punch 23850 from spot 23875
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +47.7, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 13/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=11 miss=62 api_calls=62 hit_rate=15.1% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -18/100  ██░░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 41.5 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.00
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     -0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum -0.022 — mild PE dominance   (CE +0.491 / PE -0.513)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +2770) — dealer hedging tends to dampen directional follow-through | gamma flip 24193
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +49.0, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -18 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=10 miss=63 api_calls=63 hit_rate=13.7% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -18/100  ██░░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 41.5 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.041 — mild CE dominance   (CE +0.519 / PE -0.479)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +16674) — dealer hedging tends to dampen directional follow-through | gamma flip 23550
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +49.2, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -18 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23800.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=8 miss=65 api_calls=65 hit_rate=11.0% cache_size=24
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -13/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 38.9 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.038 — mild CE dominance   (CE +0.519 / PE -0.480)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -58984); nearest downside punch 23850 from spot 23873
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.2%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +50.0, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 13/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=34 miss=39 api_calls=39 hit_rate=46.6% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -28/100  ████░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 38.9 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.036 — mild CE dominance   (CE +0.517 / PE -0.481)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -22967); nearest downside punch 23850 from spot 23868
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +53.8, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -28 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23800.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=27 miss=46 api_calls=46 hit_rate=37.0% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -39/100  ██████░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 38.9 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     -1/2  ████░░░░  Call OI Flow         CE Long Unwinding — moderately bearish
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.043 — mild CE dominance   (CE +0.521 / PE -0.478)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -18119); nearest downside punch 23850 from spot 23870
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +55.0, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Best asymmetry score 0.339 < threshold 0.35 (medium_signal) — no qualifying strike
+[SCAN] NIFTY: using simple OTM fallback strike 23800.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=32 miss=50 api_calls=50 hit_rate=39.0% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▲ Neutral     score +10/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 38.9 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.02
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.018 — balanced (CE +0.493 / PE -0.510)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -37550); nearest upside punch 23900 from spot 23879
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +52.0, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 10/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=27 miss=46 api_calls=46 hit_rate=37.0% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▲ Neutral     score +10/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 38.9 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.02
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.014 — balanced (CE +0.495 / PE -0.509)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -47765); nearest upside punch 23900 from spot 23879
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +49.8, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 10/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=5 miss=68 api_calls=68 hit_rate=6.8% cache_size=28
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▲ Neutral     score +5/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 38.9 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     +0/2  ░░░░░░░░  Call OI Flow         CE Neutral
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.017 — balanced (CE +0.493 / PE -0.510)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -21660); nearest upside punch 23900 from spot 23879
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +49.2, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 5/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=29 miss=44 api_calls=44 hit_rate=39.7% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▲ Neutral     score +10/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 38.9 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.020 — balanced (CE +0.493 / PE -0.512)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -34163); nearest upside punch 23900 from spot 23877
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +56.3, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 10/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=30 miss=43 api_calls=43 hit_rate=41.1% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -15/100  ██░░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 38.9 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.00
+     -1/2  ████░░░░  Call OI Flow         CE Long Unwinding — moderately bearish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +1/1  ████████  Greeks Bias (Δ)      ATM Δ sum +0.052 — CE ITM, net bullish  (CE +0.524 / PE -0.472)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -9632); nearest downside punch 23850 from spot 23872
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +62.5, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -15 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23800.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=17 miss=56 api_calls=56 hit_rate=23.3% cache_size=29
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▲ Neutral     score +10/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 38.9 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.00
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.014 — balanced (CE +0.495 / PE -0.509)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -22216); nearest upside punch 23900 from spot 23881
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +1/1  ████████  Synthetic Futures    SF co-movement bullish: spot Δ+9.7, SF Δ+9.3 — confirming
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 10/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=23 miss=50 api_calls=50 hit_rate=31.5% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▲ Neutral     score +15/100  ██░░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 38.9 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.00
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.011 — balanced (CE +0.497 / PE -0.508)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -9573); nearest upside punch 23900 from spot 23883
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +57.8, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▲  CE
+
+[STRIKE] Signal score 15 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23950.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=19 miss=54 api_calls=54 hit_rate=26.0% cache_size=27
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▲ Neutral     score +15/100  ██░░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 38.9 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.00
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.007 — balanced (CE +0.498 / PE -0.505)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -42072); nearest upside punch 23900 from spot 23888
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +59.5, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▲  CE
+
+[STRIKE] Signal score 15 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23950.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=34 miss=39 api_calls=39 hit_rate=46.6% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -5/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 38.9 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +1/1  ████████  Greeks Bias (Δ)      LTP proxy Δ +0.175 — CE premium heavy (bullish)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -22115); nearest downside punch 23850 from spot 23892
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.2%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +61.8, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 5/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=30 miss=43 api_calls=43 hit_rate=41.1% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▲ Neutral     score +10/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 38.9 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.00
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.006 — balanced (CE +0.503 / PE -0.497)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -40767); nearest upside punch 23900 from spot 23897
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +58.0, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 10/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ◆ Neutral     score +0/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 38.9 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.00
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +0/2  ░░░░░░░░  Put OI Flow          PE Neutral
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.001 — balanced (CE +0.500 / PE -0.502)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -40311); nearest upside punch 23900 from spot 23897
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +49.5, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 0/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -26/100  ████░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 38.9 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     -1/2  ████░░░░  Call OI Flow         CE Long Unwinding — moderately bearish
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.011 — balanced (CE +0.496 / PE -0.507)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -34774); nearest upside punch 23900 from spot 23885
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.2%)
+     -1/1  ████████  Synthetic Futures    SF co-movement bearish: spot Δ-12.2, SF Δ-10.9 — confirming
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -26 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=14 miss=58 api_calls=58 hit_rate=19.4% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -23/100  ███░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 44.4 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.005 — balanced (CE +0.499 / PE -0.504)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -39426); nearest upside punch 23900 from spot 23891
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +47.7, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -23 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=14 miss=58 api_calls=58 hit_rate=19.4% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -23/100  ███░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 44.4 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.011 — balanced (CE +0.496 / PE -0.507)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -4974); nearest upside punch 23900 from spot 23883 | gamma flip 23552
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +53.8, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -23 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=14 miss=58 api_calls=58 hit_rate=19.4% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -23/100  ███░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 44.4 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.006 — balanced (CE +0.498 / PE -0.505)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -1000); nearest upside punch 23900 from spot 23894 | gamma flip 23620
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +43.2, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -23 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=14 miss=58 api_calls=58 hit_rate=19.4% cache_size=26
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -13/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 44.4 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     +0/2  ░░░░░░░░  Put OI Flow          PE Neutral
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.007 — balanced (CE +0.498 / PE -0.505)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -38546); nearest upside punch 23900 from spot 23888
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +52.0, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 13/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -23/100  ███░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 44.4 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.014 — balanced (CE +0.495 / PE -0.509)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -35846); nearest upside punch 23900 from spot 23887
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +50.2, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -23 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=20 miss=52 api_calls=52 hit_rate=27.8% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -2/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 44.4 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.001 — balanced (CE +0.500 / PE -0.501)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -62061); nearest upside punch 23900 from spot 23889
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +51.7, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 2/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=11 miss=61 api_calls=61 hit_rate=15.3% cache_size=23
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▲ Neutral     score +2/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 44.4 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.004 — balanced (CE +0.503 / PE -0.499)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -35682); nearest upside punch 23900 from spot 23893
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +47.8, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 2/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▲ Bullish     score +18/100  ██░░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 44.4 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.00
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.009 — balanced (CE +0.505 / PE -0.496)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -2131); nearest upside punch 23900 from spot 23890
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +58.0, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▲  CE
+
+[STRIKE] Signal score 18 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23950.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=31 miss=41 api_calls=41 hit_rate=43.1% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▲ Neutral     score +7/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 44.4 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.00
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.010 — balanced (CE +0.506 / PE -0.495)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +3038) — dealer hedging tends to dampen directional follow-through | gamma flip 24199
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.2%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +48.2, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 7/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=31 miss=41 api_calls=41 hit_rate=43.1% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▲ Bullish     score +18/100  ██░░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 44.4 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.00
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.009 — balanced (CE +0.505 / PE -0.496)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -6653); nearest upside punch 23900 from spot 23899
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.3%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +49.6, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▲  CE
+
+[STRIKE] Signal score 18 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23950.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=27 miss=45 api_calls=45 hit_rate=37.5% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▲ Bullish     score +18/100  ██░░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 44.4 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.00
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.004 — balanced (CE +0.502 / PE -0.499)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -38353); nearest upside punch 23900 from spot 23892
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +57.3, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▲  CE
+
+[STRIKE] Signal score 18 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23950.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=17 miss=55 api_calls=55 hit_rate=23.6% cache_size=26
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -2/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 44.4 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.00
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.014 — balanced (CE +0.508 / PE -0.493)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -37322); nearest downside punch 23900 from spot 23904
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +49.9, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 2/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -7/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 44.4 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.008 — balanced (CE +0.505 / PE -0.497)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -39698); nearest upside punch 23900 from spot 23900
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +54.2, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 7/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -5/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 44.4 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.022 — mild CE dominance   (CE +0.511 / PE -0.489)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -38074); nearest downside punch 23900 from spot 23904
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +67.0, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 5/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=19 miss=53 api_calls=53 hit_rate=26.4% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -10/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 46.1 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.022 — mild CE dominance   (CE +0.512 / PE -0.490)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -45654); nearest downside punch 23900 from spot 23912
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.2%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +61.3, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 10/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=19 miss=53 api_calls=53 hit_rate=26.4% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▲ Neutral     score +5/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 46.1 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.032 — mild CE dominance   (CE +0.516 / PE -0.484)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +22935) — dealer hedging tends to dampen directional follow-through | gamma flip 23557
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +55.3, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 5/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=16 miss=56 api_calls=56 hit_rate=22.2% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -15/100  ██░░░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 46.1 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +0/2  ░░░░░░░░  Put OI Flow          PE Neutral
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.029 — mild CE dominance   (CE +0.514 / PE -0.485)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -28362); nearest downside punch 23900 from spot 23914 | gamma flip 23539
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +57.2, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -15 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=16 miss=56 api_calls=56 hit_rate=22.2% cache_size=25
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -5/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 46.1 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.035 — mild CE dominance   (CE +0.516 / PE -0.481)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -50736); nearest downside punch 23900 from spot 23918
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +74.7, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 5/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -5/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 46.1 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.02
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.038 — mild CE dominance   (CE +0.517 / PE -0.479)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -50961); nearest downside punch 23900 from spot 23920
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +78.4, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 5/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -10/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 46.1 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.02
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.040 — mild CE dominance   (CE +0.518 / PE -0.478)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -82174); nearest downside punch 23900 from spot 23922
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +77.9, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 10/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=13 miss=59 api_calls=59 hit_rate=18.1% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -10/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 46.1 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 0.99
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +0/2  ░░░░░░░░  Put OI Flow          PE Neutral
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     -0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum -0.028 — mild PE dominance   (CE +0.490 / PE -0.518)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +12053) — dealer hedging tends to dampen directional follow-through | gamma flip 24263
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +71.2, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 10/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=7 miss=67 api_calls=67 hit_rate=9.5% cache_size=25
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -5/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 46.1 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.00
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.042 — mild CE dominance   (CE +0.519 / PE -0.477)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -52494); nearest downside punch 23900 from spot 23924
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +76.9, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 5/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=34 miss=39 api_calls=39 hit_rate=46.6% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -5/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 46.1 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.00
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.037 — mild CE dominance   (CE +0.519 / PE -0.481)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -27098); nearest downside punch 23900 from spot 23923
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.2%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +73.6, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 5/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=24 miss=49 api_calls=49 hit_rate=32.9% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -26/100  ████░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 46.1 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.00
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.034 — mild CE dominance   (CE +0.515 / PE -0.481)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -57922); nearest downside punch 23900 from spot 23916
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +84.1, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -26 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=25 miss=48 api_calls=48 hit_rate=34.2% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -26/100  ████░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 46.1 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.01
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.044 — mild CE dominance   (CE +0.519 / PE -0.475)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -47104); nearest downside punch 23900 from spot 23922
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +80.1, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -26 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=13 miss=60 api_calls=60 hit_rate=17.8% cache_size=28
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -26/100  ████░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 46.1 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.037 — mild CE dominance   (CE +0.517 / PE -0.480)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -84539); nearest downside punch 23900 from spot 23921
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +79.8, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -26 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -5/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 46.1 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.05
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.040 — mild CE dominance   (CE +0.518 / PE -0.479)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -41012); nearest downside punch 23900 from spot 23921
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.2%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +78.8, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 5/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=25 miss=47 api_calls=47 hit_rate=34.7% cache_size=30
+
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Bearish     score -26/100  ████░░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 46.1 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.05
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.035 — mild CE dominance   (CE +0.516 / PE -0.481)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -53937); nearest downside punch 23900 from spot 23920
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +67.8, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✔ EXECUTE  ▼  PE
+
+[STRIKE] Signal score -26 < 40 — insufficient edge to trade
+[SCAN] NIFTY: using simple OTM fallback strike 23850.0
+[SCAN] NIFTY: entry SL mode=fixed source=fixed -> pts=30.00
+[SCAN] NIFTY: qty=0 — 1 lot risk exceeds cap (stop ₹30.00 pts × 65 units = ₹1950/lot, risk cap ₹1000 @ 1.0% of ₹100000 available; need RISK_PERCENT≥1.9%)
+[PERF] NIFTY [qty-zero] greeks: hit=25 miss=47 api_calls=47 hit_rate=34.7% cache_size=30
+[VWAP] Low volume: valid=0, zero=5, total=5, vol_range=[0, 0]
+  ── SCAN · NIFTY  ───────────────────────────────────────────────────────────────
+      ▼ Neutral     score -7/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ───────────────────────────────────────────────────────────────────────────────
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 46.1 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.05
+     -1/2  ████░░░░  Call OI Flow         CE Long Unwinding — moderately bearish
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 24000 (put wall 23500 far) — mild bearish
+     +1/1  ████████  Greeks Bias (Δ)      LTP proxy Δ +0.399 — CE premium heavy (bullish)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -27359); nearest upside punch 23950 from spot 23921
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.3%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +67.3, normal)
+  ───────────────────────────────────────────────────────────────────────────────
+  ✘ NO_TRADE  —  not executing  (score 7/100, min 15)
+[PERF] NIFTY [no-execute] greeks: hit=22 miss=50 api_calls=50 hit_rate=30.6% cache_size=30
+
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
