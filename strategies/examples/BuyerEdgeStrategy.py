@@ -49,6 +49,8 @@ if hasattr(sys.stderr, "reconfigure"):
 MARKET_HOURS_START = 915   # 09:15 IST
 MARKET_HOURS_END   = 1530  # 15:30 IST
 
+SCORE_SCALING_FACTOR = 200  # Multiplier to normalize score based on practical alignment limit
+
 
 # ===============================================================================
 # CONFIGURATION — BotConfig dataclass
@@ -85,8 +87,8 @@ class BotConfig:
     gex_enabled:    bool = True
 
     # ── Signal Thresholds ──────────────────────────────────────────────────────
-    min_score: int = 15
-    max_trap:  int = 80
+    min_score: int = 40
+    max_trap:  int = 60
 
     # ── Session Regime Weighting (U8) ─────────────────────────────────────────
     morning_session_end:   str   = "09:45"
@@ -111,7 +113,7 @@ class BotConfig:
     entry_cooldown_secs:    int   = 300
     max_daily_loss_pct:     float = 0.0
     max_daily_loss_amount:  float = 2000.0
-    risk_percent:           float = 1.0
+    risk_percent:           float = 2.0
 
     # ── Trailing SL ────────────────────────────────────────────────────────────
     trail_sl_mode:         str   = "premium"
@@ -624,6 +626,13 @@ def _effective_min_score(now: datetime, cfg: "BotConfig") -> tuple[int, str]:
         score = max(1, int(cfg.min_score * cfg.power_hour_score_factor))
         return score, f"power-hour(eased→{score})"
     return cfg.min_score, "mid-session"
+
+
+
+def _field_trend(oldest: dict, newest: dict, fld: str) -> int:
+    """Return +1 (rising), 0 (flat), or -1 (falling) for a chain field across oldest→newest snapshot."""
+    diff = float(newest.get(fld) or 0) - float(oldest.get(fld) or 0)
+    return 1 if diff > 0 else (-1 if diff < 0 else 0)
 
 
 
@@ -1180,7 +1189,8 @@ class SignalEngine:
         # +Wall(1)+Delta(1)+Gamma(2)+IV(1)+Straddle(2)+SF(1) = 17
         MAX_RAW_SCORE = sum(c.score_max for c in components)
         raw_score  = sum(c.score for c in components)
-        base_score = (raw_score / MAX_RAW_SCORE) * 100 if MAX_RAW_SCORE > 0 else 0
+        # Multiply by SCORE_SCALING_FACTOR instead of 100 because practical max alignment is ~50% of MAX_RAW_SCORE
+        base_score = (raw_score / MAX_RAW_SCORE) * SCORE_SCALING_FACTOR if MAX_RAW_SCORE > 0 else 0
         final_score = int(max(-100, min(100, base_score)))
 
         for c in components:
@@ -1821,13 +1831,13 @@ class StrikeSelector:
             # High conviction: ATM-leaning
             target_delta_low, target_delta_high = 0.40, 0.50
             reason_suffix = "(strong_signal)"
-        elif abs_score >= 40:
-            # Medium conviction: slight OTM
+        elif abs_score >= cfg.min_score:
+            # Minimum conviction: slight OTM
             target_delta_low, target_delta_high = 0.30, 0.42
-            reason_suffix = "(medium_signal)"
+            reason_suffix = "(minimum_signal)"
         else:
             # Low conviction: insufficient edge
-            print(f"[STRIKE] Signal score {signal_score:.0f} < 40 — insufficient edge to trade")
+            print(f"[STRIKE] Signal score {signal_score:.0f} < {cfg.min_score} — insufficient edge to trade")
             return None
 
         if direction == "CE":
