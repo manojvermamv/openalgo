@@ -49,7 +49,62 @@ if hasattr(sys.stderr, "reconfigure"):
 MARKET_HOURS_START = 915   # 09:15 IST
 MARKET_HOURS_END   = 1530  # 15:30 IST
 
-SCORE_SCALING_FACTOR = 200  # Multiplier to normalize score based on practical alignment limit
+# ── Layer 1: Score Generation ──────────────────────────────────────────────────
+# PRACTICAL_ALIGNMENT_FACTOR: defines what fraction of MAX_RAW_SCORE is treated as
+# the "practical ceiling" for a 100-point conviction score. Market signals rarely
+# achieve 100% component alignment; this factor acknowledges that reality.
+#
+# Calibration guide — run a distribution audit across N scans and observe:
+#   If 95th percentile raw_score ≈ 0.50 × MAX_RAW_SCORE → set to 0.50
+#   If 95th percentile raw_score ≈ 0.75 × MAX_RAW_SCORE → set to 0.75
+#   Until confirmed by live data, keep at 1.00 (no compression, full gradient).
+PRACTICAL_ALIGNMENT_FACTOR = 1.00
+
+# ── Layer 2: Trade Selection ────────────────────────────────────────────────────
+# WATCH_FACTOR: the score band below EXECUTE that marks a setup worth monitoring.
+# watch_threshold = effective_min_score × WATCH_FACTOR
+#
+# Session thresholds (set via BotConfig / ENV):
+#   morning_gate  → typically 45  (stricter pre-market discipline)
+#   normal_hours  → typically 30  (baseline execution bar)
+#   power_hour    → typically 20  (relaxed, momentum-driven)
+#
+# Example at normal_hours (effective_min_score=30):
+#   abs_score >= 30  → EXECUTE
+#   abs_score >= 22  → WATCH  (30 × 0.75 = 22.5 → 22)
+#   abs_score  < 22  → NO_TRADE
+WATCH_FACTOR = 0.75
+
+# ── Layer 3: Strike Selection (conviction-driven) ──────────────────────────────
+# All strike-selection parameters are driven by a single `conviction` scalar
+# derived from abs(signal_score) / 100.0.  This eliminates hard regime jumps.
+#
+# Delta targeting — continuous linear mapping:
+#   conviction=0.0 (score=0)   → target_delta = STRIKE_DELTA_BASE
+#   conviction=1.0 (score=100) → target_delta = STRIKE_DELTA_BASE + STRIKE_DELTA_RANGE
+# i.e. weak signal = deeper OTM; strong signal = closer ATM.
+STRIKE_DELTA_BASE  = 0.15   # delta at zero conviction (deepest OTM allowed; cheap optionality)
+STRIKE_DELTA_RANGE = 0.35   # extra delta added at full conviction (0.15+0.35 = 0.50 ATM)
+
+# Delta band half-width — how wide to search around the target delta.
+# e.g. 0.08 means [target-0.08, target+0.08].
+STRIKE_DELTA_BAND = 0.08
+
+# Maximum acceptable delta gap in the fallback strike selection.
+# If the nearest available delta is farther than this from the target, the
+# fallback is considered pathological and the delta filter is bypassed entirely,
+# falling back to pure liquidity ranking instead of picking a wildly OTM strike.
+MAX_DELTA_GAP = 0.15
+
+# Dynamic asym_score weighting — delta vs liquidity tradeoff:
+#   conviction=0.0 → delta_weight = STRIKE_DELTA_WEIGHT_BASE          (favour liquidity)
+#   conviction=1.0 → delta_weight = STRIKE_DELTA_WEIGHT_BASE + RANGE  (favour delta fit)
+STRIKE_DELTA_WEIGHT_BASE  = 0.10   # weight at zero conviction
+STRIKE_DELTA_WEIGHT_RANGE = 0.20   # extra weight added at full conviction (max 0.30)
+
+# Maximum strike search window as a fraction of spot price (each side).
+# e.g. 0.05 = ±5% → CE: [spot, spot*1.05]; PE: [spot*0.95, spot].
+STRIKE_RANGE_PCT = 0.05
 
 
 # ===============================================================================
@@ -1189,8 +1244,11 @@ class SignalEngine:
         # +Wall(1)+Delta(1)+Gamma(2)+IV(1)+Straddle(2)+SF(1) = 17
         MAX_RAW_SCORE = sum(c.score_max for c in components)
         raw_score  = sum(c.score for c in components)
-        # Multiply by SCORE_SCALING_FACTOR instead of 100 because practical max alignment is ~50% of MAX_RAW_SCORE
-        base_score = (raw_score / MAX_RAW_SCORE) * SCORE_SCALING_FACTOR if MAX_RAW_SCORE > 0 else 0
+        
+        # We cap expected alignment to PRACTICAL_ALIGNMENT_FACTOR, so achieving this threshold yields a 100 score.
+        effective_max = MAX_RAW_SCORE * PRACTICAL_ALIGNMENT_FACTOR
+        base_score = (raw_score / effective_max) * 100 if effective_max > 0 else 0
+        
         final_score = int(max(-100, min(100, base_score)))
 
         for c in components:
@@ -1210,7 +1268,7 @@ class SignalEngine:
                 reasons.insert(0, f"⚠ High trap risk: {trap_reasons[0]}")
         elif abs_score >= effective_min_score:
             signal = "EXECUTE"
-        elif abs_score >= 30:
+        elif abs_score >= int(effective_min_score * WATCH_FACTOR):
             signal = "WATCH"
         else:
             signal = "NO_TRADE"
@@ -1810,44 +1868,62 @@ class StrikeSelector:
         signal_score: float = 50.0,
     ) -> dict | None:
         """
-        Select the best entry strike using signal strength + liquidity + asymmetry.
-        signal_score: −100 to +100; higher = stronger conviction.
+        Conviction-driven strike selection.
+
+        All selection parameters (delta target, delta weight, asym threshold)
+        are derived from a single `conviction` scalar ∈ [0, 1] so that the
+        entire function behaves as a self-consistent system:
+
+            Low conviction  → conservative OTM strike, liquidity-weighted
+            High conviction → near-ATM strike, delta-weighted
+
         Returns None if no qualifying strike found.
         """
         cfg = self.config
+
+        # ── Guard: empty input ────────────────────────────────────────────────
         if not chain_rows or not spot:
             return None
+
+        # ── Guard: IVR too high for buyer edge ────────────────────────────────
         if iv_rank is not None and iv_rank >= cfg.iv_rank_max_entry:
-            print(f"[STRIKE] IVR {iv_rank:.1f}% >= max {cfg.iv_rank_max_entry:.1f}% - buyer edge rejected")
+            print(f"[STRIKE] IVR {iv_rank:.1f}% >= max {cfg.iv_rank_max_entry:.1f}% — buyer edge rejected")
             return None
 
-        # Map signal strength to target delta
+        # ── Guard: insufficient signal conviction ─────────────────────────────
         abs_score = abs(signal_score)
-        if abs_score >= 80:
-            # Very high conviction: ATM
-            target_delta_low, target_delta_high = 0.45, 0.55
-            reason_suffix = "(very_strong_signal)"
-        elif abs_score >= 60:
-            # High conviction: ATM-leaning
-            target_delta_low, target_delta_high = 0.40, 0.50
-            reason_suffix = "(strong_signal)"
-        elif abs_score >= cfg.min_score:
-            # Minimum conviction: slight OTM
-            target_delta_low, target_delta_high = 0.30, 0.42
-            reason_suffix = "(minimum_signal)"
-        else:
-            # Low conviction: insufficient edge
-            print(f"[STRIKE] Signal score {signal_score:.0f} < {cfg.min_score} — insufficient edge to trade")
+        if abs_score < cfg.min_score:
+            print(f"[STRIKE] Signal score {signal_score:.0f} < min {cfg.min_score} — insufficient edge")
             return None
 
-        if direction == "CE":
-            lo, hi = spot, spot * 1.05
-        else:
-            lo, hi = spot * 0.95, spot
+        # ── Conviction scalar ─────────────────────────────────────────────────
+        # Maps [min_score, 100] → [0.0, 1.0] so STRIKE_DELTA_BASE is the actual
+        # minimum delta at the weakest tradeable signal, not a theoretical floor
+        # at score=0 which can never be reached after the min_score gate above.
+        conviction = min(
+            (abs_score - cfg.min_score) / max(100.0 - cfg.min_score, 1.0),
+            1.0,
+        )
 
+        # ── Continuous delta target (No regime jumps) ─────────────────────────
+        target_delta = STRIKE_DELTA_BASE + conviction * STRIKE_DELTA_RANGE
+        target_delta_low  = max(0.01, target_delta - STRIKE_DELTA_BAND)
+        target_delta_high = min(0.99, target_delta + STRIKE_DELTA_BAND)
+        print(
+            f"[STRIKE] conviction={conviction:.2f} "
+            f"target_delta={target_delta:.3f} "
+            f"band=[{target_delta_low:.2f},{target_delta_high:.2f}]"
+        )
+
+        # ── Stage 1: Price-range filter ───────────────────────────────────────
+        # Window scales from config; avoids hardcoding ±5%.
+        lo = spot if direction == "CE" else spot * (1 - STRIKE_RANGE_PCT)
+        hi = spot * (1 + STRIKE_RANGE_PCT) if direction == "CE" else spot
         oi_key  = "ce_oi"     if direction == "CE" else "pe_oi"
         vol_key = "ce_volume" if direction == "CE" else "pe_volume"
+        opt_key = "ce_symbol" if direction == "CE" else "pe_symbol"
 
+        # ── Stage 2: Liquidity filter ─────────────────────────────────────────
         candidates: list[dict] = []
         for row in chain_rows:
             strike = row.get("strike", 0)
@@ -1864,58 +1940,120 @@ class StrikeSelector:
         if not candidates:
             return None
 
-        opt_key = "ce_symbol" if direction == "CE" else "pe_symbol"
+        # ── Stage 3: Delta filter (optional — only when greeks available) ─────
+        # Single-pass: fetch delta ONCE and annotate every candidate immediately.
+        # The fallback path reads _abs_delta from the annotated list — zero re-fetches.
         delta_checked: list[dict] = []
         delta_available = False
+        annotated: list[dict] = []
         for row in candidates:
             abs_delta = self.fetcher.fetch_option_delta(symbol, row.get(opt_key))
-            if abs_delta is None:
-                continue
-            delta_available = True
-            if target_delta_low <= abs_delta <= target_delta_high:
-                row = dict(row)
+            row = dict(row)                         # copy — safe to annotate
+            if abs_delta is not None:
                 row["_abs_delta"] = abs_delta
-                delta_checked.append(row)
+                delta_available = True
+                if target_delta_low <= abs_delta <= target_delta_high:
+                    delta_checked.append(row)
+            annotated.append(row)
+
         if delta_available:
             if not delta_checked:
                 print(
-                    f"[STRIKE] No candidate delta in target range "
-                    f"{target_delta_low:.2f}-{target_delta_high:.2f} {reason_suffix}"
+                    f"[STRIKE] No candidate delta in "
+                    f"[{target_delta_low:.2f}, {target_delta_high:.2f}] "
+                    f"— conviction={conviction:.2f}, relaxing to closest available"
                 )
-                return None
-            candidates = delta_checked
+                # Fallback: nearest-delta candidate — reads cached _abs_delta (no re-fetch)
+                best_fallback: dict | None = None
+                best_gap = float("inf")
+                for row in annotated:
+                    ad = row.get("_abs_delta")
+                    if ad is None:
+                        continue
+                    gap = abs(ad - target_delta)
+                    if gap < best_gap:
+                        best_gap = gap
+                        best_fallback = row
+                if best_fallback and best_gap <= MAX_DELTA_GAP:
+                    candidates = [best_fallback]
+                else:
+                    # Gap too large — pathological fallback; bypass delta filter
+                    if best_fallback:
+                        print(
+                            f"[STRIKE] Fallback gap {best_gap:.2f} > MAX_DELTA_GAP {MAX_DELTA_GAP:.2f} "
+                            f"— delta filter bypassed, using liquidity ranking only"
+                        )
+                    candidates = annotated
+            else:
+                candidates = delta_checked
+        else:
+            candidates = annotated  # delta unavailable: all liquidity candidates proceed (no silent skip)
 
-        ivr        = iv_rank if iv_rank is not None else 50.0
-        total_oi   = sum(float(r.get(oi_key,  0) or 0) for r in chain_rows) or 1.0
-        total_vol  = sum(float(r.get(vol_key, 0) or 0) for r in chain_rows) or 1.0
-        delta_mid  = (target_delta_low + target_delta_high) / 2.0
+        # ── Stage 4: Conviction-driven asymmetry scoring ──────────────────────
+        # IV weight: lower IV = better buyer conditions.
+        # IVR missing → do NOT penalize; skip IV component (set ivr_weight to 0).
+        ivr_known    = iv_rank is not None
+        ivr_val      = iv_rank if ivr_known else 0.0
+        iv_score_raw = (1 - ivr_val / 100) if ivr_known else None
+
+        # Delta weight scales with conviction; liquidity gets the remainder.
+        delta_weight = STRIKE_DELTA_WEIGHT_BASE + conviction * STRIKE_DELTA_WEIGHT_RANGE
+        # Distribute remaining weight across IV, OI, Volume proportionally:
+        #   baseline split:  IV 40%, OI 30%, Vol 20%  → total 90%
+        #   when IVR missing drop IV weight, redistribute to OI+Vol
+        liq_total  = 1.0 - delta_weight
+        if ivr_known:
+            iv_w   = liq_total * (4/9)  # ~44.44% of total
+            oi_w   = liq_total * (3/9)  # ~33.33% of total
+            vol_w  = liq_total * (2/9)  # ~22.22% of total
+        else:
+            iv_w   = 0.0
+            oi_w   = liq_total * 0.60
+            vol_w  = liq_total * 0.40
+
+        # Pre-compute chain-level maxima ONCE — O(n), not O(n²) per candidate.
+        max_oi  = max(float(r.get(oi_key,  0) or 0) for r in chain_rows) or 1.0
+        max_vol = max(float(r.get(vol_key, 0) or 0) for r in chain_rows) or 1.0
+
         best_row: dict | None = None
-        best_score = -1.0
+        best_asym = -1.0
 
         for row in candidates:
             strike_oi  = float(row.get(oi_key,  0) or 0)
             strike_vol = float(row.get(vol_key, 0) or 0)
-            oi_conc    = min(strike_oi  / total_oi,  1.0)
-            vol_conc   = min(strike_vol / total_vol, 1.0)
-            abs_delta  = row.get("_abs_delta")
-            if abs_delta is not None:
-                delta_score = max(0.0, 1.0 - abs(abs_delta - delta_mid) / max(delta_mid, 0.01))
-            else:
-                delta_score = 0.5
-            asym_score = (
-                (1 - ivr / 100) * 0.40 +   # IV regime: lower IV = better buyer edge
-                oi_conc          * 0.30 +   # OI concentration: liquidity depth at strike
-                vol_conc         * 0.20 +   # Volume concentration: intraday activity
-                delta_score      * 0.10     # Delta proximity to target range centre
-            )
-            if asym_score > best_score:
-                best_score = asym_score
-                best_row   = row
+            # OI / Vol concentration normalized to best-in-chain strike
+            oi_conc    = min(strike_oi / max_oi, 1.0)
+            vol_conc   = min(strike_vol / max_vol, 1.0)
 
-        if best_score < cfg.asym_score_threshold:
+            abs_delta = row.get("_abs_delta")
+            if abs_delta is not None:
+                # smoother decay: half the band on each side
+                delta_score = max(0.0, 1.0 - abs(abs_delta - target_delta) / max(2 * STRIKE_DELTA_BAND, 0.01))
+            else:
+                delta_score = 0.5  # neutral when no greeks
+
+            iv_component = (iv_score_raw * iv_w) if ivr_known else 0.0
+            asym_score = (
+                iv_component
+                + oi_conc    * oi_w
+                + vol_conc   * vol_w
+                + delta_score * delta_weight
+            )
+            if asym_score > best_asym:
+                best_asym = asym_score
+                best_row  = row
+
+        # ── Stage 5: Conviction-scaled minimum quality gate ───────────────────
+        # Institutional logic: strong signal → more willing to execute on a
+        # slightly imperfect strike.  Weak signal → insist on cleaner setup.
+        # Scales between [threshold * 0.80, threshold * 1.00]:
+        #   conviction=0.0 → min = threshold × 1.00  (strictest)
+        #   conviction=1.0 → min = threshold × 0.80  (relaxed 20%)
+        min_asym = cfg.asym_score_threshold * (1.00 - conviction * 0.20)
+        if best_asym < min_asym:
             print(
-                f"[STRIKE] Best asymmetry score {best_score:.3f} < threshold "
-                f"{cfg.asym_score_threshold} {reason_suffix} — no qualifying strike"
+                f"[STRIKE] Best asym {best_asym:.3f} < conviction-scaled min "
+                f"{min_asym:.3f} (conviction={conviction:.2f}) — no qualifying strike"
             )
             return None
         return best_row
@@ -2262,8 +2400,14 @@ class WebSocketManager:
         """
         if not isinstance(data, dict):
             return
-        symbol = data.get("symbol", "")
-        ltp    = data.get("ltp")
+            
+        # OpenAlgo SDK encapsulates actual market data inside a nested 'data' dictionary.
+        # Fallback to root level just in case.
+        inner_data = data.get("data") if isinstance(data.get("data"), dict) else data
+        
+        symbol = inner_data.get("symbol") or data.get("symbol", "")
+        ltp    = inner_data.get("ltp") or data.get("ltp")
+        
         if ltp is None:
             return
         try:
@@ -2430,7 +2574,6 @@ class WebSocketManager:
             ).start()
 
     def _ws_thread(self) -> None:
-        client = self.client
         print("[WS] WebSocket thread starting...")
         self._ws_started.set()
         ws_url = self.config.ws_url or "(SDK default)"
@@ -2440,9 +2583,21 @@ class WebSocketManager:
         max_consecutive_failures = 36  # ~3 hours of retries before circuit break
         while True:
             try:
-                ok = client.connect()
-                _actual_url = getattr(client, 'ws_url', ws_url)
-                print(f"[WS] `client.connect()` using {_actual_url} (expected {ws_url})")
+                # Re-instantiate the client in the retry loop.
+                # If the SDK caches a failed broker-auth state, this forces a clean start.
+                # verbose=True enables Basic logging ([WS], [AUTH], [SUB]) for deep visibility.
+                api_kwargs = dict(
+                    api_key=self.config.api_key, 
+                    host=self.config.api_host, 
+                    verbose=True
+                )
+                if self.config.ws_url:
+                    api_kwargs["ws_url"] = self.config.ws_url
+                self.client = api(**api_kwargs)
+
+                ok = self.client.connect()
+                _actual_url = getattr(self.client, 'ws_url', ws_url)
+                print(f"[WS] `self.client.connect()` using {_actual_url} (expected {ws_url})")
                 if ok:
                     print(f"[WS] Connected to {_actual_url} — SDK managing reconnects automatically")
                     backoff_secs = 5  # Reset backoff on successful connect
@@ -2454,7 +2609,7 @@ class WebSocketManager:
                         for (exch, sym) in subs:
                             try:
                                 with self._subscribe_lock:
-                                    client.subscribe_ltp(
+                                    self.client.subscribe_ltp(
                                         [{"exchange": exch, "symbol": sym}],
                                         on_data_received=self._on_ws_data,
                                     )
@@ -2483,6 +2638,10 @@ class WebSocketManager:
                                     pass
                             print(f"[WS] Feed silent {int(elapsed)}s — forcing hard reconnect...")
                             self._ws_stale_alerted = False   # reset for next connection window
+                            try:
+                                self.client.disconnect()
+                            except Exception:
+                                pass
                             break   # exit watchdog → outer loop reconnects immediately
                         if not in_market:
                             self._ws_stale_alerted = False   # reset outside market hours
