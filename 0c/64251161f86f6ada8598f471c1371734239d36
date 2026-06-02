@@ -1,0 +1,29 @@
+strategies/examples/BuyerEdgeStrategy.py
+  s_beb2708cb56192::t_e847cfe098b3a2 2076
+  s_beb2708cb56192::t_6f501d781bb7cf 1993-2004
+  s_beb2708cb56192::t_cca8cb5d327867 755
+  s_beb2708cb56192::t_4045f1e77e41f6 2012-2032
+  s_beb2708cb56192::t_f6b10048dc0660 2105-2119
+  s_beb2708cb56192::t_6beee9c8c13b0f 2065-2075
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "0c64251161f86f6ada8598f471c1371734239d36",
+  "prompts": {},
+  "humans": {
+    "h_90988d5629fc41": {
+      "author": "Manoj Verma <71809372+manojvermamv@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_beb2708cb56192": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e87a2-0950-7e01-a54c-5e791995a729",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Manoj Verma <71809372+manojvermamv@users.noreply.github.com>"
+    }
+  }
+}
