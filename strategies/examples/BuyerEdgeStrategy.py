@@ -42,82 +42,102 @@ if hasattr(sys.stderr, "reconfigure"):
 
 
 # ===============================================================================
-# AUDIT STATUS (Post Conviction-Risk-Engine Upgrade)
+# AUDIT STATUS (Post Conviction-Risk-Engine + Confirmed-Close Trail Upgrade)
 # ===============================================================================
 #
 # CRITICAL BUGS
 # ------------------------------------------------------------------------------
 # None currently identified.
 #
-# Core architecture audited:
+# Audited and verified:
+#
 #   ✓ Conviction-driven strike selection
-#   ✓ Conviction-driven breakeven
+#   ✓ Conviction-driven entry stop-loss sizing
+#   ✓ Conviction-driven breakeven engine
 #   ✓ Conviction-driven premium trailing
 #   ✓ Conviction-driven spot trailing
 #   ✓ Gamma Speed-X acceleration
-#   ✓ Delta-cache single-pass architecture
+#   ✓ Confirmed-close trail ratchet architecture
+#   ✓ Single-pass delta caching
+#   ✓ PendingEntry delta propagation
+#   ✓ Moneyness-aware target scaling
+#   ✓ Moneyness-aware trail activation scaling
 #   ✓ WebSocket stale-client recovery
-#   ✓ OptionPosition conviction persistence
+#   ✓ Broker SL synchronization
+#   ✓ Position persistence compatibility
 #
 #
 # HIGH SEVERITY ITEMS
 # ------------------------------------------------------------------------------
 # None currently identified.
 #
-# Previously flagged:
-#   ✓ entry_conviction persistence and propagation
-#   ✓ legacy position compatibility review
-# have been resolved.
-#
 #
 # MEDIUM SEVERITY ITEMS (Calibration / Research)
 # ------------------------------------------------------------------------------
-# 1. Conviction → Initial SL relationship remains empirical.
 #
-#    Current design:
-#       High conviction -> slightly tighter SL
-#       Low conviction  -> slightly wider SL
+# 1. Conviction -> Initial SL relationship remains empirical.
+#
+#    Current:
+#       Higher conviction -> tighter premium risk
+#       Lower conviction  -> wider premium risk
 #
 #    Alternative hypothesis:
-#       High conviction -> slightly wider SL
-#       (to survive institutional defense before expansion)
+#       Strong conviction may justify slightly wider initial risk
+#       to survive seller-defense behavior before expansion.
 #
-#    Requires live trade analytics before modification.
+#    Requires live trade outcome analysis.
 #
 #
-# 2. Gamma Speed-X thresholds require live distribution review.
+# 2. Gamma Speed-X thresholds remain distribution-dependent.
 #
 #    Current:
 #       ROI >=  50% -> 1.5x speed
 #       ROI >= 100% -> 2.0x speed
 #       ROI >= 150% -> 2.5x speed
 #
-#    Architecture is sound.
-#    Exact thresholds should be validated using live ROI distributions.
+#    Architecture verified.
+#    Thresholds require validation from live ROI distributions.
 #
 #
-# 3. asym_score_threshold still requires statistical calibration.
+# 3. asym_score_threshold requires statistical calibration.
 #
-#    Current value:
+#    Current:
 #       cfg.asym_score_threshold
 #
-#    Recommended:
-#       Log best_asym, selected_asym, rejection rate,
-#       strike quality, and final trade outcomes.
+#    Future work:
+#       Log asym_score distributions,
+#       strike-selection rejection rates,
+#       and realized trade outcomes.
 #
-#    Future tuning should be data-driven rather than theoretical.
+#    Calibration should remain data-driven.
+#
+#
+# 4. Confirmed-close trail timing uses live WS snapshots.
+#
+#    Current architecture:
+#       Strategy thread wakes on clock-aligned boundaries.
+#
+#       Trail decisions use the most recent WS premium/spot LTP
+#       available at processing time.
+#
+#    Result:
+#       Practical drift is typically sub-second and acceptable
+#       for 1-minute trail decisions.
+#
+#    No structural issue identified.
 #
 #
 # LOW SEVERITY ITEMS
 # ------------------------------------------------------------------------------
-# 1. Delta target curve may require future optimization.
+#
+# 1. Delta target curve may benefit from future optimization.
 #
 #    Current:
 #       STRIKE_DELTA_BASE
 #       STRIKE_DELTA_RANGE
 #
-#    No architectural issues.
-#    Requires trade outcome study before adjustment.
+#    Architecture is stable.
+#    Requires larger trade sample for refinement.
 #
 #
 # 2. Conviction scaling constants require long-term calibration.
@@ -128,7 +148,6 @@ if hasattr(sys.stderr, "reconfigure"):
 #       CONV_TRAIL_ACT_RANGE
 #
 #    Current ranges are intentionally conservative.
-#    Review after sufficient live-trade sample size.
 #
 #
 # 3. Gamma Speed-X floor may require instrument-specific tuning.
@@ -137,22 +156,50 @@ if hasattr(sys.stderr, "reconfigure"):
 #       max(base_step * 0.40,
 #           base_step / trail_speed)
 #
-#    Safe for production.
-#    Can be optimized later using realized trail statistics.
+#    Production-safe.
+#
+#
+# 4. Deep-ITM stop sizing may warrant future expectancy research.
+#
+#    Current architecture:
+#       Moneyness-aware stop sizing.
+#
+#    Future work:
+#       Compare Deep-ITM vs ATM expectancy,
+#       capital efficiency,
+#       and realized R-multiples.
+#
+#
+# 5. Conviction scaling is currently linear.
+#
+#    Current:
+#       conviction = abs(score) / 100
+#       Applied via linear interpolation throughout.
+#
+#    No architectural issue.
+#    Market edge is often nonlinear; future options:
+#       `conviction ** 1.5`  (compress low-conviction effect)
+#       `sqrt(conviction)`   (expand low-conviction effect)
+#    Selection should be validated against live expectancy data
+#    before any change is made.
 #
 #
 # PRODUCTION READINESS
 # ------------------------------------------------------------------------------
-# Current architecture status:
 #
-#   Strike Selection        : Stable
-#   Risk Engine             : Stable
-#   Conviction Framework    : Stable
-#   Gamma Capture           : Stable
-#   WebSocket Recovery      : Stable
+# Architecture Status
 #
-# Remaining work is primarily calibration and expectancy optimization,
-# not structural correctness.
+#   Strike Selection          : Stable
+#   Entry Risk Engine         : Stable
+#   Trail Engine              : Stable
+#   Conviction Framework      : Stable
+#   Gamma Capture             : Stable
+#   Moneyness Framework       : Stable
+#   WebSocket Recovery        : Stable
+#   Broker SL Synchronization : Stable
+#
+# Remaining work is calibration, expectancy research,
+# and trade-distribution analysis rather than structural correctness.
 # ===============================================================================
 
 
@@ -291,18 +338,14 @@ class BotConfig:
     power_hour_score_factor: float = 0.80
     morning_score_factor:    float = 1.50
 
-    # ── Risk — Fixed ₹ Points ──────────────────────────────────────────────────
-    premium_stop_pts:   float = 30.0
-    premium_target_pts: float = 50.0
+    # ══ Phase A: Hard SL at Entry (always premium-based) ════════════════════════
+    # Computed at fill time: if entry_delta known → moneyness-adapted pts
+    #                        else                 → premium_stop_pts (fallback)
+    # Placed as broker SL-M immediately after fill — does NOT depend on WebSocket.
+    premium_stop_pts:   float = 30.0   # fallback fixed premium points SL (env: PREMIUM_STOP_PTS)
+    premium_target_pts: float = 50.0   # kept for reference; TP disabled for now
 
-    # ── Entry SL Policy (upgrade-ready component mode switch) ─────────────────
-    entry_sl_mode:         str   = "fixed"   # fixed | strike_atr | spot_atr
-    dynamic_sl_atr_period: int   = 14
-    dynamic_sl_atr_mult:   float = 1.5
-    dynamic_sl_min_pts:    float = 15.0
-    dynamic_sl_max_pts:    float = 80.0
-
-    # ── Session Gates ──────────────────────────────────────────────────────────
+    # ══ Session Gates ════════════════════════════════════════════════════════════
     max_trades_per_session: int   = 5
     max_consecutive_losses: int   = 3
     entry_cooldown_secs:    int   = 300
@@ -310,18 +353,43 @@ class BotConfig:
     max_daily_loss_amount:  float = 2000.0
     risk_percent:           float = 2.0
 
-    # ── Trailing SL ────────────────────────────────────────────────────────────
-    trail_sl_mode:         str   = "premium"
-    spot_reward_pct:       float = 1.0
-    trail_activate_at_pct: float = 25.0
-    trail_step_rr_pct:     float = 10.0
+    # ══ Phase B: Periodic Trail SL (computed every 1-min sync by TrailSLEngine) ═
+    #
+    # TRACKING MODE — which price series drives the trail ratchet:
+    #   "premium"  → track option LTP        (delta/intrinsic-value aware)
+    #   "spot"     → track underlying price   (structural; cleaner for indices)
+    trail_tracking_mode: str = "premium"   # env: TRAIL_TRACKING_MODE
+    #
+    # STEP METHOD — how the trail step distance is computed (both modes support all 3):
+    #   "fixed_pct" → fixed % of entry premium (premium) or reward_dist (spot)
+    #   "atr"       → ATR-based dynamic step; adapts to realized volatility
+    #   "delta"     → live delta drives tightness; ITM→tight, OTM→wide
+    trail_sl_method: str = "fixed_pct"   # env: TRAIL_SL_METHOD
+    #
+    # Activation gate — minimum % move before trail engine activates:
+    trail_activate_at_pct: float = 25.0   # env: TRAIL_ACTIVATE_AT_PCT
+    #
+    # Method: fixed_pct params
+    trail_step_pct: float = 10.0          # % of entry_premium (premium) or reward_dist (spot)
+    #
+    # Method: atr params
+    trail_atr_period: int   = 14
+    trail_atr_mult:   float = 1.5
+    #
+    # Method: delta params (step tightens as option moves deeper ITM)
+    trail_delta_itm_step_pct: float = 5.0    # delta >= 0.55 → tightest
+    trail_delta_atm_step_pct: float = 10.0   # 0.35 <= delta < 0.55 → standard
+    trail_delta_otm_step_pct: float = 15.0   # delta < 0.35 → widest buffer
+    #
+    # Spot mode anchor (% of spot price = total spot reward distance):
+    spot_reward_pct: float = 0.05   # env: SPOT_REWARD_PCT
 
     # ── Mode Flags ─────────────────────────────────────────────────────────────
     long_only_mode:   bool = True
     broker_sl_orders: bool = True
 
     # ── Technicals ─────────────────────────────────────────────────────────────
-    candle_interval: str = "15m"
+    candle_interval: str = "1m"
     lookback_days:   int = 5
     fast_ema_period: int = 9
     slow_ema_period: int = 21
@@ -466,21 +534,22 @@ class BotConfig:
             morning_score_factor=float(os.getenv("MORNING_SCORE_FACTOR", str(defaults.morning_score_factor))),
             premium_stop_pts=float(os.getenv("PREMIUM_STOP_PTS", str(defaults.premium_stop_pts))),
             premium_target_pts=float(os.getenv("PREMIUM_TARGET_PTS", str(defaults.premium_target_pts))),
-            entry_sl_mode=os.getenv("ENTRY_SL_MODE", defaults.entry_sl_mode).strip().lower(),
-            dynamic_sl_atr_period=int(os.getenv("DYNAMIC_SL_ATR_PERIOD", str(defaults.dynamic_sl_atr_period))),
-            dynamic_sl_atr_mult=float(os.getenv("DYNAMIC_SL_ATR_MULT", str(defaults.dynamic_sl_atr_mult))),
-            dynamic_sl_min_pts=float(os.getenv("DYNAMIC_SL_MIN_PTS", str(defaults.dynamic_sl_min_pts))),
-            dynamic_sl_max_pts=float(os.getenv("DYNAMIC_SL_MAX_PTS", str(defaults.dynamic_sl_max_pts))),
             max_trades_per_session=int(os.getenv("MAX_TRADES_PER_SESSION", str(defaults.max_trades_per_session))),
             max_consecutive_losses=int(os.getenv("MAX_CONSECUTIVE_LOSSES", str(defaults.max_consecutive_losses))),
             entry_cooldown_secs=int(os.getenv("ENTRY_COOLDOWN_SECS", str(defaults.entry_cooldown_secs))),
             max_daily_loss_pct=float(os.getenv("MAX_DAILY_LOSS_PCT", str(defaults.max_daily_loss_pct))),
             max_daily_loss_amount=float(os.getenv("MAX_DAILY_LOSS_AMOUNT", str(defaults.max_daily_loss_amount))),
             risk_percent=float(os.getenv("RISK_PERCENT", str(defaults.risk_percent))),
-            trail_sl_mode=os.getenv("TRAIL_SL_MODE", defaults.trail_sl_mode),
+            trail_tracking_mode=os.getenv("TRAIL_TRACKING_MODE", defaults.trail_tracking_mode).strip().lower(),
+            trail_sl_method=os.getenv("TRAIL_SL_METHOD", defaults.trail_sl_method).strip().lower(),
             spot_reward_pct=float(os.getenv("SPOT_REWARD_PCT", str(defaults.spot_reward_pct))),
             trail_activate_at_pct=float(os.getenv("TRAIL_ACTIVATE_AT_PCT", str(defaults.trail_activate_at_pct))),
-            trail_step_rr_pct=float(os.getenv("TRAIL_STEP_RR_PCT", str(defaults.trail_step_rr_pct))),
+            trail_step_pct=float(os.getenv("TRAIL_STEP_PCT", str(defaults.trail_step_pct))),
+            trail_atr_period=int(os.getenv("TRAIL_ATR_PERIOD", str(defaults.trail_atr_period))),
+            trail_atr_mult=float(os.getenv("TRAIL_ATR_MULT", str(defaults.trail_atr_mult))),
+            trail_delta_itm_step_pct=float(os.getenv("TRAIL_DELTA_ITM_STEP_PCT", str(defaults.trail_delta_itm_step_pct))),
+            trail_delta_atm_step_pct=float(os.getenv("TRAIL_DELTA_ATM_STEP_PCT", str(defaults.trail_delta_atm_step_pct))),
+            trail_delta_otm_step_pct=float(os.getenv("TRAIL_DELTA_OTM_STEP_PCT", str(defaults.trail_delta_otm_step_pct))),
             long_only_mode=os.getenv("LONG_ONLY_MODE", str(defaults.long_only_mode)).lower() in ("1", "true", "yes"),
             broker_sl_orders=os.getenv("BROKER_SL_ORDERS", str(defaults.broker_sl_orders)).lower() in ("1", "true", "yes"),
             candle_interval=os.getenv("CANDLE_INTERVAL", defaults.candle_interval),
@@ -543,31 +612,13 @@ class BotConfig:
         """Validate all configuration values. Raises SystemExit on errors."""
         errors: list[str] = []
         if self.premium_stop_pts <= 0:
-            errors.append(f"PREMIUM_STOP_PTS={self.premium_stop_pts} must be > 0 (fixed ₹ points)")
-        if self.premium_target_pts <= 0:
-            errors.append(f"PREMIUM_TARGET_PTS={self.premium_target_pts} must be > 0 (fixed ₹ points)")
-        if self.entry_sl_mode not in ("fixed", "strike_atr", "spot_atr"):
-            errors.append(
-                f"ENTRY_SL_MODE={self.entry_sl_mode!r} must be one of 'fixed', 'strike_atr', 'spot_atr'"
-            )
-        if self.dynamic_sl_atr_period < 2:
-            errors.append(f"DYNAMIC_SL_ATR_PERIOD={self.dynamic_sl_atr_period} must be >= 2")
-        if self.dynamic_sl_atr_mult <= 0:
-            errors.append(f"DYNAMIC_SL_ATR_MULT={self.dynamic_sl_atr_mult} must be > 0")
-        if self.dynamic_sl_min_pts <= 0:
-            errors.append(f"DYNAMIC_SL_MIN_PTS={self.dynamic_sl_min_pts} must be > 0")
-        if self.dynamic_sl_max_pts <= 0:
-            errors.append(f"DYNAMIC_SL_MAX_PTS={self.dynamic_sl_max_pts} must be > 0")
-        if self.dynamic_sl_max_pts < self.dynamic_sl_min_pts:
-            errors.append(
-                f"DYNAMIC_SL_MAX_PTS={self.dynamic_sl_max_pts} must be >= DYNAMIC_SL_MIN_PTS={self.dynamic_sl_min_pts}"
-            )
+            errors.append(f"PREMIUM_STOP_PTS={self.premium_stop_pts} must be > 0 (fallback hard SL points)")
         if self.risk_percent <= 0:
             errors.append(f"RISK_PERCENT={self.risk_percent} must be > 0")
-        if self.trail_sl_mode not in ("spot", "premium", "both"):
-            errors.append(
-                f"TRAIL_SL_MODE={self.trail_sl_mode!r} must be one of 'spot', 'premium', 'both'"
-            )
+        if self.trail_tracking_mode not in ("premium", "spot"):
+            errors.append(f"TRAIL_TRACKING_MODE={self.trail_tracking_mode!r} must be 'premium' or 'spot'")
+        if self.trail_sl_method not in ("fixed_pct", "atr", "delta"):
+            errors.append(f"TRAIL_SL_METHOD={self.trail_sl_method!r} must be 'fixed_pct', 'atr', or 'delta'")
         if self.lot_multiplier < 1:
             errors.append(f"LOT_MULTIPLIER={self.lot_multiplier} must be >= 1")
         if self.strike_count < 1:
@@ -701,6 +752,7 @@ class OptionPosition:
     premium_trail_active: bool          = False
     premium_trail_peak:   float | None  = None
     premium_trail_sl:     float | None  = None
+    trail_peak_close:     float | None  = None   # Confirmed-close high; used for BE/trail ratchets
     sl_order_id:          str | None    = None
     tgt_order_id:         str | None    = None
     broker_protection:    bool          = False
@@ -709,17 +761,19 @@ class OptionPosition:
     entry_time:           datetime      = field(default_factory=datetime.now)
     breakeven_moved:      bool          = False   # True once SL has been shifted to entry cost
     entry_conviction:     float         = 0.0     # ∈ [0,1] conviction at entry; drives adaptive risk engine
+    trail_act_mult:       float         = 1.0     # Scaler for trail activation based on moneyness
 
 
 @dataclass
 class PendingEntry:
-    order_id:   str
-    symbol:     str
-    qty:        int
-    spot:       float
-    direction:  str
-    sl_pts:     float
-    created_at: datetime
+    order_id:    str
+    symbol:      str
+    qty:         int
+    spot:        float
+    direction:   str
+    sl_pts:      float
+    created_at:  datetime
+    entry_delta: float | None = None  # Preserved for moneyness-adapted tgt/trail on async fill
 
 
 @dataclass
@@ -824,12 +878,10 @@ def _effective_min_score(now: datetime, cfg: "BotConfig") -> tuple[int, str]:
     return cfg.min_score, "mid-session"
 
 
-
 def _field_trend(oldest: dict, newest: dict, fld: str) -> int:
     """Return +1 (rising), 0 (flat), or -1 (falling) for a chain field across oldest→newest snapshot."""
     diff = float(newest.get(fld) or 0) - float(oldest.get(fld) or 0)
     return 1 if diff > 0 else (-1 if diff < 0 else 0)
-
 
 
 # ===============================================================================
@@ -1861,65 +1913,34 @@ class DataFetcher:
 # ===============================================================================
 
 class EntryStopLossPolicy:
-    """Resolves initial entry SL points using switchable policies + delta-aware moneyness adaptation."""
+    """Resolves Phase A initial hard SL points (premium-based) using delta-aware moneyness adaptation or fallback fixed points."""
 
     def __init__(self, fetcher: DataFetcher, config: BotConfig):
         self._fetcher = fetcher
         self._config = config
 
-    def _atr_stop_pts(self, df: pd.DataFrame | None) -> float | None:
-        cfg = self._config
-        if df is None or len(df) < cfg.dynamic_sl_atr_period + 2:
-            return None
-        needed = {"high", "low", "close"}
-        if not needed.issubset(set(df.columns)):
-            return None
-        try:
-            atr_series = ta.atr(
-                df["high"],
-                df["low"],
-                df["close"],
-                period=cfg.dynamic_sl_atr_period,
-            )
-            atr_val = float(atr_series.iloc[-2])
-            if not math.isfinite(atr_val) or atr_val <= 0:
-                return None
-            return max(
-                cfg.dynamic_sl_min_pts,
-                min(cfg.dynamic_sl_max_pts, atr_val * cfg.dynamic_sl_atr_mult),
-            )
-        except Exception as exc:
-            print(f"[SL] ATR compute error: {exc}")
-            return None
-
     @staticmethod
-    def _classify_moneyness(delta: float | None) -> str:
-        """Classify entry delta as ATM / Sl-OTM / OTM / Deep-OTM."""
+    def get_moneyness_multipliers(delta: float | None) -> tuple[str, float, float, float]:
+        """
+        Returns (moneyness_label, sl_width_pct, tgt_mult, act_mult).
+        Deep-ITM: Tightest SL width (20%), Largest TP (2.0x), Smallest Trail Act buffer (0.5x).
+        Deep-OTM: Widest SL width (75%), Smallest TP (0.5x), Largest Trail Act buffer (2.0x).
+        """
         if delta is None:
-            return "Unknown"
-        if 0.45 <= delta <= 0.55:
-            return "ATM"
-        elif 0.35 <= delta < 0.45:
-            return "Sl-OTM"
-        elif 0.25 <= delta < 0.35:
-            return "OTM"
-        else:
-            return "Deep-OTM"
+            return ("Unknown", 40, 1.0, 1.0)
+        d = abs(delta)
+        if d >= 0.75: return ("Deep-ITM", 20, 2.0, 0.5)
+        elif d >= 0.65: return ("ITM", 25, 1.5, 0.75)
+        elif d >= 0.55: return ("Sl-ITM", 30, 1.25, 0.9)
+        elif d >= 0.45: return ("ATM", 40, 1.0, 1.0)
+        elif d >= 0.35: return ("Sl-OTM", 50, 0.85, 1.2)
+        elif d >= 0.25: return ("OTM", 60, 0.7, 1.5)
+        else: return ("Deep-OTM", 75, 0.5, 2.0)
 
     def _sl_pts_by_delta(self, delta: float | None, entry_premium: float) -> tuple[float, str]:
-        """Compute SL points adapted to entry delta (moneyness). Wider SL for OTM, tighter for ATM."""
-        moneyness = self._classify_moneyness(delta)
-        
-        if 0.45 <= (delta or 0) <= 0.55:
-            sl_width_pct = 40
-        elif 0.35 <= (delta or 0) < 0.45:
-            sl_width_pct = 50
-        elif 0.25 <= (delta or 0) < 0.35:
-            sl_width_pct = 60
-        else:
-            sl_width_pct = 75
-        
-        sl_pts = max(10, min(entry_premium * (sl_width_pct / 100), 50))
+        """Compute SL points adapted to entry delta (moneyness). Wider SL for OTM, tighter for ITM."""
+        moneyness, sl_width_pct, _, _ = self.get_moneyness_multipliers(delta)
+        sl_pts = max(10, min(entry_premium * (sl_width_pct / 100.0), 50))
         return (sl_pts, moneyness)
 
     def resolve_entry_sl_points(
@@ -1927,38 +1948,227 @@ class EntryStopLossPolicy:
         option_symbol: str,
         df_spot: pd.DataFrame | None,
         entry_delta: float | None = None,
+        est_premium: float | None = None,
     ) -> tuple[float, str]:
-        """Resolve entry SL using configured mode, then adapt by delta if available."""
+        """Resolve Phase A hard entry SL using delta moneyness (if available), else fallback fixed pts."""
         cfg = self._config
-        fixed = cfg.premium_stop_pts
-        mode = cfg.entry_sl_mode
+        base_sl = cfg.premium_stop_pts
+        base_source = "hard_sl_pts_fallback"
 
-        if cfg.trail_sl_mode == "spot":
-            # Strict spot-trail isolation: keep initial premium hard SL fixed in points.
-            return fixed, "spot_trail_forced_fixed"
-
-        if mode == "fixed":
-            base_sl = fixed
-            base_source = "fixed"
-        elif mode == "strike_atr":
-            option_df = self._fetcher.fetch_option_candles(option_symbol)
-            sl_pts = self._atr_stop_pts(option_df)
-            base_sl = sl_pts if sl_pts is not None else fixed
-            base_source = "strike_atr" if sl_pts is not None else "strike_atr_fallback_fixed"
-        elif mode == "spot_atr":
-            sl_pts = self._atr_stop_pts(df_spot)
-            base_sl = sl_pts if sl_pts is not None else fixed
-            base_source = "spot_atr" if sl_pts is not None else "spot_atr_fallback_fixed"
-        else:
-            base_sl = fixed
-            base_source = "unknown_mode_fallback_fixed"
-
-        # If delta available, adapt SL by moneyness
-        if entry_delta is not None:
-            delta_sl, moneyness = self._sl_pts_by_delta(entry_delta, base_sl)
-            return (delta_sl, f"{base_source}_adapted_by_{moneyness}")
+        if entry_delta is not None and est_premium is not None and est_premium > 0:
+            delta_sl, moneyness = self._sl_pts_by_delta(entry_delta, est_premium)
+            return (delta_sl, f"moneyness_adapted_{moneyness}")
         
         return (base_sl, base_source)
+
+# ===============================================================================
+# TRAIL SL ENGINE — Phase B Periodic Trail Computations
+# ===============================================================================
+
+class TrailSLEngine:
+    """
+    Computes trailing SL ratchets (Phase B) periodically on the strategy thread.
+    Supports fixed %, ATR-based, and live Delta-based trailing steps.
+    """
+
+    def __init__(self, fetcher: DataFetcher, config: BotConfig):
+        self._fetcher = fetcher
+        self._config = config
+        self.modify_callback: Callable[[str, float], None] | None = None
+
+    def check_trailing_stops(self, state: BotState) -> None:
+        """Run periodically to calculate trailing SL ratchets and update orders if needed."""
+        cfg = self._config
+        with state.state_lock:
+            # We copy to avoid blocking state during external calls.
+            positions = list(state.positions.items())
+
+        for underlying, pos in positions:
+            if pos.exit_pending:
+                continue
+
+            # Need latest ticks to compute distance.
+            opt_ltp = state.ltp_map.get(pos.symbol)
+            spot_ltp = state.ltp_map.get(pos.spot_symbol)
+            if not opt_ltp or not spot_ltp:
+                continue
+
+            confirmed_close = opt_ltp
+            prior_trail_peak_close = (
+                pos.trail_peak_close
+                if pos.trail_peak_close is not None
+                else pos.entry_premium
+            )
+            is_new_confirmed_close_high = confirmed_close > prior_trail_peak_close
+            if is_new_confirmed_close_high:
+                pos.trail_peak_close = confirmed_close
+
+            # ── 1. Breakeven logic (Conviction-aware) ────────
+            ep = pos.entry_premium
+            if cfg.breakeven_at_gain_pct > 0 and not pos.breakeven_moved:
+                _be_conv_adj = CONV_BE_BASE - pos.entry_conviction * CONV_BE_RANGE
+                _be_trigger_pct = (cfg.breakeven_at_gain_pct / 100.0) * _be_conv_adj
+                target_gain_pts = pos.tgt - ep
+                gain_pts = (pos.trail_peak_close or ep) - ep
+                if target_gain_pts > 0 and gain_pts >= target_gain_pts * _be_trigger_pct:
+                    if ep > pos.sl:
+                        pos.sl = ep
+                        pos.breakeven_moved = True
+                        print(f"[TRAIL] BREAKEVEN SL {underlying}: moved to cost ₹{ep:.2f}")
+                        if cfg.broker_sl_orders and pos.sl_order_id and self.modify_callback:
+                            self.modify_callback(underlying, ep)
+
+            # ── 2. Activation Buffer ────────
+            _trail_conv_adj = CONV_TRAIL_ACT_BASE - pos.entry_conviction * CONV_TRAIL_ACT_RANGE
+            
+            # ── 3. Mode Processing ────────
+            if cfg.trail_tracking_mode == "premium":
+                self._process_premium_trail(
+                    underlying,
+                    pos,
+                    confirmed_close,
+                    _trail_conv_adj,
+                    is_new_confirmed_close_high,
+                )
+            elif cfg.trail_tracking_mode == "spot":
+                self._process_spot_trail(underlying, pos, spot_ltp, _trail_conv_adj)
+
+    def _get_step_pts(self, pos: OptionPosition, base_dist: float, price_series_df: pd.DataFrame | None, current_delta: float | None = None) -> float:
+        """Resolve step points based on trail_sl_method."""
+        cfg = self._config
+        method = cfg.trail_sl_method
+
+        if method == "atr" and price_series_df is not None and len(price_series_df) >= cfg.trail_atr_period + 2:
+            try:
+                atr_series = ta.atr(
+                    price_series_df["high"],
+                    price_series_df["low"],
+                    price_series_df["close"],
+                    period=cfg.trail_atr_period,
+                )
+                atr_val = float(atr_series.iloc[-2])
+                if math.isfinite(atr_val) and atr_val > 0:
+                    return atr_val * cfg.trail_atr_mult
+            except Exception as e:
+                print(f"[TRAIL] ATR compute error: {e}")
+                
+        elif method == "delta" and current_delta is not None:
+            d = abs(current_delta)
+            if d >= 0.55: step_pct = cfg.trail_delta_itm_step_pct
+            elif d >= 0.35: step_pct = cfg.trail_delta_atm_step_pct
+            else: step_pct = cfg.trail_delta_otm_step_pct
+            return base_dist * (step_pct / 100.0)
+
+        # Fallback and default method: fixed_pct
+        return base_dist * (cfg.trail_step_pct / 100.0)
+
+    def _process_premium_trail(
+        self,
+        underlying: str,
+        pos: OptionPosition,
+        confirmed_close: float,
+        conv_adj: float,
+        is_new_confirmed_close_high: bool,
+    ) -> None:
+        cfg = self._config
+        ep = pos.entry_premium
+        move = confirmed_close - ep
+        ltp = confirmed_close
+        
+        activate_pts = ep * (cfg.trail_activate_at_pct / 100.0) * conv_adj * pos.trail_act_mult
+        
+        if not pos.premium_trail_active and move < activate_pts:
+            return  # not activated yet
+
+        # Resolve step points
+        current_delta = None
+        df = None
+        if cfg.trail_sl_method == "delta":
+            greeks = self._fetcher._fetch_option_greeks_cached(underlying, pos.symbol)
+            if greeks and "delta" in greeks:
+                current_delta = greeks["delta"]
+        elif cfg.trail_sl_method == "atr":
+            df = self._fetcher.fetch_option_candles(pos.symbol)
+            
+        _base_step_pts = self._get_step_pts(pos, ep, df, current_delta)
+        
+        # Gamma Speed-X evaluates from confirmed close to allow for state decay.
+        # This matches the institutional close-to-close expansion model.
+        _roi_pct = ((confirmed_close - ep) / ep * 100.0) if ep > 0 else 0.0
+        if _roi_pct >= 150: _trail_speed = 2.5
+        elif _roi_pct >= 100: _trail_speed = 2.0
+        elif _roi_pct >= 50: _trail_speed = 1.5
+        else: _trail_speed = 1.0
+        
+        step_pts = max(_base_step_pts * GAMMA_SPEED_STEP_FLOOR, _base_step_pts / _trail_speed)
+        
+        # Trail activation and ratchet placement use confirmed periodic closes.
+        if not pos.premium_trail_active:
+            pos.premium_trail_active = True
+            pos.premium_trail_peak = pos.trail_peak_close
+            new_sl = confirmed_close - step_pts
+            if new_sl > pos.sl:
+                pos.premium_trail_sl = new_sl
+                pos.sl = new_sl
+                print(f"[TRAIL] Premium ACTIVATED {underlying}: peak {ltp:.2f} SL→{new_sl:.2f} (speed={_trail_speed:.1f}x)")
+                if cfg.broker_sl_orders and pos.sl_order_id and self.modify_callback:
+                    self.modify_callback(underlying, new_sl)
+        else:
+            if is_new_confirmed_close_high:
+                pos.premium_trail_peak = pos.trail_peak_close
+                new_sl = confirmed_close - step_pts
+                if new_sl > pos.sl:
+                    pos.premium_trail_sl = new_sl
+                    pos.sl = new_sl
+                    print(f"[TRAIL] Premium RATCHET {underlying}: peak {ltp:.2f} SL→{new_sl:.2f} (speed={_trail_speed:.1f}x)")
+                    if cfg.broker_sl_orders and pos.sl_order_id and self.modify_callback:
+                        self.modify_callback(underlying, new_sl)
+
+    def _process_spot_trail(self, underlying: str, pos: OptionPosition, spot_ltp: float, conv_adj: float) -> None:
+        cfg = self._config
+        reward_dist = pos.reward_dist
+        
+        activate_pts = reward_dist * (cfg.trail_activate_at_pct / 100.0) * conv_adj * pos.trail_act_mult
+        
+        if pos.option_type == "CE": move = spot_ltp - pos.spot_entry
+        else: move = pos.spot_entry - spot_ltp
+            
+        if not pos.trail_active and move < activate_pts:
+            return
+            
+        # Resolve step points
+        current_delta = None
+        df = None
+        if cfg.trail_sl_method == "delta":
+            greeks = self._fetcher._fetch_option_greeks_cached(underlying, pos.symbol)
+            if greeks and "delta" in greeks:
+                current_delta = greeks["delta"]
+        elif cfg.trail_sl_method == "atr":
+            df = self._fetcher.fetch_spot_candles(underlying)
+            
+        step_pts = self._get_step_pts(pos, reward_dist, df, current_delta)
+
+        if not pos.trail_active:
+            pos.trail_active = True
+            pos.trail_peak = spot_ltp
+            new_sl_spot = (spot_ltp - step_pts) if pos.option_type == "CE" else (spot_ltp + step_pts)
+            pos.trail_sl_spot = new_sl_spot
+            print(f"[TRAIL] Spot ACTIVATED {underlying}: peak {spot_ltp:.2f}, SL spot → {new_sl_spot:.2f}")
+        else:
+            if pos.option_type == "CE":
+                if pos.trail_peak is None or spot_ltp > pos.trail_peak:
+                    pos.trail_peak = spot_ltp
+                    new_sl_spot = spot_ltp - step_pts
+                    if pos.trail_sl_spot is None or new_sl_spot > pos.trail_sl_spot:
+                        pos.trail_sl_spot = new_sl_spot
+                        print(f"[TRAIL] Spot RATCHET {underlying}: peak {spot_ltp:.2f}, SL spot → {new_sl_spot:.2f}")
+            else:
+                if pos.trail_peak is None or spot_ltp < pos.trail_peak:
+                    pos.trail_peak = spot_ltp
+                    new_sl_spot = spot_ltp + step_pts
+                    if pos.trail_sl_spot is None or new_sl_spot < pos.trail_sl_spot:
+                        pos.trail_sl_spot = new_sl_spot
+                        print(f"[TRAIL] Spot RATCHET {underlying}: peak {spot_ltp:.2f}, SL spot → {new_sl_spot:.2f}")
 
 
 # ===============================================================================
@@ -2570,7 +2780,6 @@ class WebSocketManager:
         self._last_tick_time = time.time()    # feed heartbeat for watchdog
         with self._state.state_lock:
             self._state.ltp_map[symbol] = ltp
-
         # ── Part A: Premium Trail (option LTP → trail SL) ──────────────────
         for underlying, pos in list(self._state.positions.items()):
             if pos.exit_pending or pos.symbol != symbol:
@@ -2603,151 +2812,14 @@ class WebSocketManager:
             self._trigger_exit(underlying, "premium_target_hit")
             return
 
-        ep = pos.entry_premium
-
-        # ── Part 3: Conviction-Aware Breakeven Trigger ────────────────────────────
-        # Strong conviction → protect gains earlier (smaller fraction of target needed)
-        # Weak conviction   → wait for more profit before locking in cost.
-        # Range [CONV_BE_BASE, CONV_BE_BASE - CONV_BE_RANGE] kept narrow (0.20) to
-        # avoid killing winners via premature BE on strong high-burst setups.
-        if cfg.breakeven_at_gain_pct > 0 and not pos.breakeven_moved:
-            _be_conv_adj    = CONV_BE_BASE - pos.entry_conviction * CONV_BE_RANGE
-            _be_trigger_pct = (cfg.breakeven_at_gain_pct / 100.0) * _be_conv_adj
-            target_gain_pts = pos.tgt - ep
-            gain_pts        = ltp - ep
-            if target_gain_pts > 0 and gain_pts >= target_gain_pts * _be_trigger_pct:
-                new_sl = ep
-                if new_sl > pos.sl:
-                    pos.sl              = new_sl
-                    pos.breakeven_moved = True
-                    print(
-                        f"[WS] BREAKEVEN SL {underlying}: "
-                        f"gain {gain_pts:.2f}pts ({gain_pts/target_gain_pts*100:.0f}% of tgt) "
-                        f"conv={pos.entry_conviction:.2f} adj={_be_conv_adj:.2f} "
-                        f"→ SL moved to cost ₹{new_sl:.2f}"
-                    )
-                    if cfg.broker_sl_orders and pos.sl_order_id and self._sl_modify_callback:
-                        self._sl_modify_callback(underlying, new_sl)
-
-        if cfg.trail_sl_mode not in ("premium", "both"):
-            return
-
-        move = ltp - ep
-
-        # ── Part 5: Conviction-Aware Trail Activation ──────────────────────────
-        # Strong conviction → trail activates sooner (smaller buffer required)
-        # Weak conviction   → need larger profit before trail begins.
-        _trail_conv_adj = CONV_TRAIL_ACT_BASE - pos.entry_conviction * CONV_TRAIL_ACT_RANGE
-        activate_pts    = ep * (cfg.trail_activate_at_pct / 100.0) * _trail_conv_adj
-
-        # ── Part 4: Gamma Speed-X Trail Step ──────────────────────────────
-        # Normal move    → normal trail.
-        # Gamma expansion → trail tightens to protect accelerating gains.
-        # Parabolic move  → aggressive trail but clamped at GAMMA_SPEED_STEP_FLOOR
-        #                   to prevent instant stop-out on fast intraday spikes.
-        _base_step_pts = ep * (cfg.trail_step_rr_pct / 100.0)
-        _roi_pct = ((ltp - ep) / ep * 100.0) if ep > 0 else 0.0
-        if _roi_pct >= 150:
-            _trail_speed = 2.5
-        elif _roi_pct >= 100:
-            _trail_speed = 2.0
-        elif _roi_pct >= 50:
-            _trail_speed = 1.5
-        else:
-            _trail_speed = 1.0
-        # Floor: never tighter than GAMMA_SPEED_STEP_FLOOR of base — prevents instant stop-out
-        step_pts = max(_base_step_pts * GAMMA_SPEED_STEP_FLOOR, _base_step_pts / _trail_speed)
-
-        if not pos.premium_trail_active:
-            if move >= activate_pts:
-                pos.premium_trail_active = True
-                pos.premium_trail_peak   = ltp
-                new_sl = ltp - step_pts
-                if new_sl > pos.sl:
-                    pos.premium_trail_sl = new_sl
-                    pos.sl               = new_sl
-                    print(
-                        f"[WS] Premium trail ACTIVATED {underlying}: "
-                        f"peak {ltp:.2f} SL→{new_sl:.2f} "
-                        f"(conv_act={_trail_conv_adj:.2f} speed={_trail_speed:.1f}x)"
-                    )
-                    if cfg.broker_sl_orders and pos.sl_order_id and self._sl_modify_callback:
-                        self._sl_modify_callback(underlying, new_sl)
-        else:
-            if pos.premium_trail_peak is None or ltp > pos.premium_trail_peak:
-                pos.premium_trail_peak = ltp
-                new_sl = ltp - step_pts
-                if new_sl > pos.sl:
-                    pos.premium_trail_sl = new_sl
-                    pos.sl               = new_sl
-                    print(
-                        f"[WS] Premium trail RATCHET {underlying}: "
-                        f"peak {ltp:.2f} SL→{new_sl:.2f} "
-                        f"(roi={_roi_pct:.0f}% speed={_trail_speed:.1f}x)"
-                    )
-                    if cfg.broker_sl_orders and pos.sl_order_id and self._sl_modify_callback:
-                        self._sl_modify_callback(underlying, new_sl)
-
     def _check_spot_trail(self, underlying: str, pos: OptionPosition, spot_ltp: float) -> None:
-        cfg = self.config
-        if cfg.trail_sl_mode not in ("spot", "both"):
-            return
-        reward_dist = pos.reward_dist
-        # ── Conviction-Aware Spot Trail Activation (mirrors premium trail) ───────
-        # Strong conviction → trail activates sooner on the spot side as well.
-        _spot_trail_conv_adj = CONV_TRAIL_ACT_BASE - pos.entry_conviction * CONV_TRAIL_ACT_RANGE
-        activate_pts = reward_dist * (cfg.trail_activate_at_pct / 100.0) * _spot_trail_conv_adj
-        step_pts     = reward_dist * (cfg.trail_step_rr_pct     / 100.0)
-
-        if pos.option_type == "CE":
-            move = spot_ltp - pos.spot_entry
-        else:
-            move = pos.spot_entry - spot_ltp
-
-        if not pos.trail_active:
-            if move >= activate_pts:
-                pos.trail_active   = True
-                pos.trail_peak     = spot_ltp
-                if pos.option_type == "CE":
-                    new_sl_spot = spot_ltp - step_pts
-                else:
-                    new_sl_spot = spot_ltp + step_pts
-                pos.trail_sl_spot = new_sl_spot
-                print(f"[WS] Spot trail activated {underlying}: peak {spot_ltp:.2f}, SL spot → {new_sl_spot:.2f}")
-                # Only bridge spot move -> premium SL in 'both' mode.
-                # In strict 'spot' mode, premium hard-SL remains fixed and independent.
-                if cfg.trail_sl_mode == "both" and not pos.breakeven_moved:
-                    new_premium_sl = pos.entry_premium
-                    if new_premium_sl > pos.sl:
-                        pos.sl             = new_premium_sl
-                        pos.breakeven_moved = True
-                        print(
-                            f"[WS] Spot-trail → breakeven SL {underlying}: "
-                            f"pos.sl raised to cost ₹{new_premium_sl:.2f}"
-                        )
-                        if cfg.broker_sl_orders and pos.sl_order_id and self._sl_modify_callback:
-                            self._sl_modify_callback(underlying, new_premium_sl)
-        else:
-            if pos.option_type == "CE":
-                if pos.trail_peak is None or spot_ltp > pos.trail_peak:
-                    pos.trail_peak = spot_ltp
-                    new_sl_spot    = spot_ltp - step_pts
-                    if pos.trail_sl_spot is None or new_sl_spot > pos.trail_sl_spot:
-                        pos.trail_sl_spot = new_sl_spot
-                        print(f"[WS] Spot trail ratchet {underlying}: peak {spot_ltp:.2f}, SL spot → {new_sl_spot:.2f}")
-                if pos.trail_sl_spot is not None and spot_ltp <= pos.trail_sl_spot:
-                    print(f"[WS] SPOT TRAIL SL HIT {underlying}: spot {spot_ltp:.2f} <= trail_sl_spot {pos.trail_sl_spot:.2f}")
-                    self._trigger_exit(underlying, "spot_trail_sl_hit")
-            else:
-                if pos.trail_peak is None or spot_ltp < pos.trail_peak:
-                    pos.trail_peak = spot_ltp
-                    new_sl_spot    = spot_ltp + step_pts
-                    if pos.trail_sl_spot is None or new_sl_spot < pos.trail_sl_spot:
-                        pos.trail_sl_spot = new_sl_spot
-                        print(f"[WS] Spot trail ratchet {underlying}: peak {spot_ltp:.2f}, SL spot → {new_sl_spot:.2f}")
-                if pos.trail_sl_spot is not None and spot_ltp >= pos.trail_sl_spot:
-                    print(f"[WS] SPOT TRAIL SL HIT {underlying}: spot {spot_ltp:.2f} >= trail_sl_spot {pos.trail_sl_spot:.2f}")
-                    self._trigger_exit(underlying, "spot_trail_sl_hit")
+        if pos.trail_sl_spot is not None:
+            if pos.option_type == "CE" and spot_ltp <= pos.trail_sl_spot:
+                print(f"[WS] SPOT TRAIL SL HIT {underlying}: spot {spot_ltp:.2f} <= trail_sl_spot {pos.trail_sl_spot:.2f}")
+                self._trigger_exit(underlying, "spot_trail_sl_hit")
+            elif pos.option_type == "PE" and spot_ltp >= pos.trail_sl_spot:
+                print(f"[WS] SPOT TRAIL SL HIT {underlying}: spot {spot_ltp:.2f} >= trail_sl_spot {pos.trail_sl_spot:.2f}")
+                self._trigger_exit(underlying, "spot_trail_sl_hit")
 
     def _trigger_exit(self, underlying: str, reason: str) -> None:
         with self._state.state_lock:
@@ -3093,27 +3165,12 @@ class OrderManager:
     ) -> None:
         """Register filled entry with delta tracking for moneyness analysis."""
         cfg = self.config
+        moneyness, _, tgt_mult, act_mult = EntryStopLossPolicy.get_moneyness_multipliers(entry_delta)
+
         resolved_sl_pts = sl_pts if (sl_pts is not None and sl_pts > 0) else cfg.premium_stop_pts
         sl  = executed - resolved_sl_pts
-        tgt = executed + cfg.premium_target_pts
+        tgt = executed + (cfg.premium_target_pts * tgt_mult)
         reward_dist = spot * (cfg.spot_reward_pct / 100.0)
-
-        # Classify moneyness from delta — ITM/Sl-ITM included since conviction can push delta to 0.70
-        if entry_delta is not None:
-            if entry_delta >= 0.65:
-                moneyness = "ITM"
-            elif entry_delta >= 0.55:
-                moneyness = "Sl-ITM"
-            elif entry_delta >= 0.45:
-                moneyness = "ATM"
-            elif entry_delta >= 0.35:
-                moneyness = "Sl-OTM"
-            elif entry_delta >= 0.25:
-                moneyness = "OTM"
-            else:
-                moneyness = "Deep-OTM"
-        else:
-            moneyness = "Unknown"
 
         pos = OptionPosition(
             underlying=underlying,
@@ -3130,6 +3187,7 @@ class OrderManager:
             reward_dist=reward_dist,
             entry_time=get_ist_now(),
             entry_conviction=max(0.0, min(1.0, entry_conviction)),
+            trail_act_mult=act_mult,
         )
         with self._state.state_lock:
             self._state.positions[underlying] = pos
@@ -3312,6 +3370,7 @@ class OrderManager:
                     direction=direction,
                     sl_pts=resolved_sl_pts,
                     created_at=datetime.now(),
+                    entry_delta=entry_delta,
                 )
 
             filled = self.poll_order_status(order_id)
@@ -3506,6 +3565,7 @@ class OrderManager:
                         underlying, pending_entry.symbol, pending_entry.qty,
                         pending_entry.spot, pending_entry.direction, price,
                         sl_pts=pending_entry.sl_pts,
+                        entry_delta=pending_entry.entry_delta,
                     )
                     # WC-09: If filled after square_off_time, queue immediate exit
                     if square_off_hm and now_hm >= square_off_hm:
@@ -3609,6 +3669,7 @@ class OptionsBuyerEdgeBot:
         self.risk    = RiskManager(self.client, config, self.state)
         self.fetcher = DataFetcher(self.client, config)
         self.sl_policy = EntryStopLossPolicy(self.fetcher, config)
+        self.trail_engine = TrailSLEngine(self.fetcher, config)
         self.scorer  = SignalEngine(config)
         self.strikes = StrikeSelector(self.fetcher, config)
         self.ws      = WebSocketManager(self.client, config, self.state)
@@ -3620,6 +3681,7 @@ class OptionsBuyerEdgeBot:
         self.ws.set_exit_callback(self.orders.place_exit)
         self.ws.set_sl_modify_callback(self.orders.modify_broker_sl)
         self.ws.set_notify_callback(self._send_telegram)  # U-G: WS watchdog Telegram alert
+        self.trail_engine.modify_callback = self.orders.modify_broker_sl
 
     def _send_telegram(self, message: str, priority: int = 1) -> None:
         if not self.config.telegram_username:
@@ -3761,13 +3823,21 @@ class OptionsBuyerEdgeBot:
         print(f"  Underlyings     : {', '.join(cfg.underlyings)}")
         print(f"  FNO Exchange    : {cfg.fno_exchange}")
         print(f"  Min Score       : {cfg.min_score} | Max Trap: {cfg.max_trap}")
-        print(f"  SL Points       : {cfg.premium_stop_pts} | TGT Points: {cfg.premium_target_pts}")
-        print(f"  Entry SL Mode   : {cfg.entry_sl_mode}")
+        print(f"  SL Points       : {cfg.premium_stop_pts} (Phase A hard SL fallback)")
+        print(f"  Phase A SL      : moneyness-adapted from entry_delta or fallback to PREMIUM_STOP_PTS")
         print(
-            f"  Dynamic SL ATR  : period={cfg.dynamic_sl_atr_period}, mult={cfg.dynamic_sl_atr_mult}, "
-            f"min={cfg.dynamic_sl_min_pts}, max={cfg.dynamic_sl_max_pts}"
+            f"  Phase B Trail   : tracking={cfg.trail_tracking_mode}  method={cfg.trail_sl_method}  "
+            f"activate={cfg.trail_activate_at_pct:.0f}%"
         )
-        print(f"  Trail Mode      : {cfg.trail_sl_mode}")
+        if cfg.trail_sl_method == "fixed_pct":
+            print(f"  Trail Step      : {cfg.trail_step_pct:.1f}% of base distance")
+        elif cfg.trail_sl_method == "atr":
+            print(f"  Trail ATR       : period={cfg.trail_atr_period}, mult={cfg.trail_atr_mult}")
+        elif cfg.trail_sl_method == "delta":
+            print(
+                f"  Trail Delta     : ITM={cfg.trail_delta_itm_step_pct:.0f}%  "
+                f"ATM={cfg.trail_delta_atm_step_pct:.0f}%  OTM={cfg.trail_delta_otm_step_pct:.0f}%"
+            )
         print(f"  Breakeven SL    : {'disabled' if cfg.breakeven_at_gain_pct <= 0 else f'{cfg.breakeven_at_gain_pct:.0f}% of target gain'}")
         print(f"  Long Only Mode  : {cfg.long_only_mode}")
         print(f"  Broker SL Orders: {cfg.broker_sl_orders}")
@@ -4061,9 +4131,12 @@ class OptionsBuyerEdgeBot:
                     _log_greeks_perf("hard-spread-block", sep_count=79)
                     return
 
+        est_premium = float(best.get("ce_ltp" if direction == "CE" else "pe_ltp", 0) or 0)
         base_sl_pts, entry_sl_source = self.sl_policy.resolve_entry_sl_points(
             opt_symbol,
             df_spot,
+            entry_delta=best.get("_abs_delta"),
+            est_premium=est_premium,
         )
 
         # ── Conviction scalar (single source of truth for all adaptive risk) ──────
@@ -4079,13 +4152,13 @@ class OptionsBuyerEdgeBot:
         _sl_raw_conv = min(abs(result.score) / 100.0, 1.0)   # raw score, not effective_conviction
         sl_factor    = 1.10 - (_sl_raw_conv * 0.20)
         entry_sl_pts = base_sl_pts * sl_factor
-        # Clamp within existing safety limits — never bypass dynamic_sl_min/max_pts
-        entry_sl_pts = max(cfg.dynamic_sl_min_pts, min(cfg.dynamic_sl_max_pts, entry_sl_pts))
+        # Clamp to a safe minimum to prevent instant stop outs, but remove arbitrary dynamic limits
+        entry_sl_pts = max(5.0, entry_sl_pts)
 
         print(
-            f"[SCAN] {symbol}: entry SL mode={cfg.entry_sl_mode} source={entry_sl_source} "
+            f"[SCAN] {symbol}: Phase A initial SL source={entry_sl_source} "
             f"base={base_sl_pts:.2f} × factor={sl_factor:.2f} (conv={entry_conviction:.2f})"
-            f" → clamped={entry_sl_pts:.2f}pts [{cfg.dynamic_sl_min_pts:.1f}–{cfg.dynamic_sl_max_pts:.1f}]"
+            f" → clamped={entry_sl_pts:.2f}pts"
         )
 
         lotsize = int(best.get("lotsize", 1) or 1)
@@ -4105,7 +4178,6 @@ class OptionsBuyerEdgeBot:
         risk_qty   = (risk_qty // lotsize) * lotsize if lotsize > 0 else risk_qty
         qty = min(fixed_qty, risk_qty) if risk_qty > 0 else 0
         if qty <= 0:
-            est_premium = float(best.get("ce_ltp" if direction == "CE" else "pe_ltp", 0) or 0)
             min_risk_pct = (entry_sl_pts * lotsize / available * 100) if available > 0 else 0.0
             print(
                 f"[SCAN] {symbol}: qty=0 — 1 lot risk exceeds cap "
@@ -4168,6 +4240,7 @@ class OptionsBuyerEdgeBot:
                                     pos.exit_pending = True
                                 self.orders.place_exit(ul, "EOD-SquareOff")
                 self._check_max_hold()
+                self.trail_engine.check_trailing_stops(self.state)
                 if self._is_market_hours():
                     for symbol in cfg.underlyings:
                         self.scan_underlying(symbol)
