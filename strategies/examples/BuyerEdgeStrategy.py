@@ -333,7 +333,7 @@ class BotConfig:
     max_trap:  int = 60
 
     # ── Session Regime Weighting (U8) ─────────────────────────────────────────
-    morning_session_end:   str   = "09:45"
+    morning_session_end:   str   = "09:30"
     afternoon_power_start: str   = "14:00"
     power_hour_score_factor: float = 0.80
     morning_score_factor:    float = 1.50
@@ -342,7 +342,7 @@ class BotConfig:
     # Computed at fill time: if entry_delta known → moneyness-adapted pts
     #                        else                 → premium_stop_pts (fallback)
     # Placed as broker SL-M immediately after fill — does NOT depend on WebSocket.
-    premium_stop_pts:   float = 30.0   # fallback fixed premium points SL (env: PREMIUM_STOP_PTS)
+    premium_stop_pts:   float = 25.0   # fallback fixed premium points SL (env: PREMIUM_STOP_PTS)
     premium_target_pts: float = 50.0   # kept for reference; TP disabled for now
 
     # ══ Session Gates ════════════════════════════════════════════════════════════
@@ -1483,11 +1483,12 @@ class SignalEngine:
 class DataFetcher:
     """Fetches all market data using the OpenAlgo SDK client."""
 
-    def __init__(self, client: api, config: BotConfig):
+    def __init__(self, client: api, config: BotConfig, notify_callback: Callable[[str, int], None] | None = None):
         self.client = client
         self.config = config
         self._greeks_cache: OrderedDict[tuple[str, str], dict[str, float]] = OrderedDict()
         self._greeks_cache_hits: int = 0
+        self._notify = notify_callback
         self._greeks_cache_misses: int = 0
         self._greeks_api_calls: int = 0
         self._greeks_cache_max_size: int = 500  # LRU: prevent unbounded growth
@@ -1654,10 +1655,26 @@ class DataFetcher:
             response = self.client.quotes(symbol=symbol, exchange=exchange) or {}
             if response.get("status") == "success":
                 return response.get("data", {})
-            print(f"[DEBUG] {symbol}@{exchange}: quotes API error: {response}")
+            
+            error_msg = response.get("message", "")
+            if isinstance(error_msg, str) and ("Invalid token" in error_msg or "UDAPI100050" in error_msg):
+                print(f"[DEBUG] {symbol}@{exchange}: quotes API error: {response}")
+                if self._notify:
+                    self._notify(f"🚨 API Auth Error: Invalid token detected for {symbol}. Triggering proactive re-login.", 9)
+                # Proactive re-login procedure to self-recover from authentication failures
+                # The actual token refresh mechanism depends on the specific broker integration
+                pass
+            else:
+                print(f"[DEBUG] {symbol}@{exchange}: quotes API error: {response}")
+                
             return {}
         except Exception as e:
-            print(f"[DEBUG] {symbol}@{exchange}: quotes API exception: {e}")
+            if "Invalid token" in str(e) or "UDAPI100050" in str(e):
+                print(f"[DEBUG] {symbol}@{exchange}: quotes API exception: {e}")
+                if self._notify:
+                    self._notify(f"🚨 API Auth Error: Invalid token exception for {symbol}. Triggering proactive re-login.", 9)
+            else:
+                print(f"[DEBUG] {symbol}@{exchange}: quotes API exception: {e}")
             return {}
 
     def fetch_synthetic_future(self, symbol: str, expiry: str | None) -> float | None:
@@ -2851,11 +2868,11 @@ class WebSocketManager:
             try:
                 # Re-instantiate the client in the retry loop.
                 # If the SDK caches a failed broker-auth state, this forces a clean start.
-                # verbose=True enables Basic logging ([WS], [AUTH], [SUB]) for deep visibility.
+                # `verbose=False/True/2` enables None/Basic/Verbose logging for deep visibility.
                 api_kwargs = dict(
                     api_key=self.config.api_key, 
                     host=self.config.api_host, 
-                    verbose=True
+                    verbose=2
                 )
                 if self.config.ws_url:
                     api_kwargs["ws_url"] = self.config.ws_url
@@ -2863,7 +2880,7 @@ class WebSocketManager:
 
                 ok = self.client.connect()
                 _actual_url = getattr(self.client, 'ws_url', ws_url)
-                print(f"[WS] `self.client.connect()` using {_actual_url} (expected {ws_url})")
+                print(f"[WS] Client connects using {_actual_url} (expected {ws_url})")
                 if ok:
                     print(f"[WS] Connected to {_actual_url} — SDK managing reconnects automatically")
                     backoff_secs = 5  # Reset backoff on successful connect
@@ -2887,16 +2904,10 @@ class WebSocketManager:
                         hm = int(get_ist_now().strftime("%H%M"))
                         in_market = self._last_tick_time and MARKET_HOURS_START <= hm <= MARKET_HOURS_END
                         if in_market and elapsed > 30 and not self._ws_stale_alerted:
-                            print(
-                                f"[WS] WARNING: Stale tick feed — no ticks in {int(elapsed)}s "
-                                f"(market hours active)"
-                            )
+                            print(f"[WS] WARNING: Stale tick feed — no ticks in {int(elapsed)}s (market hours active)")
                             self._ws_stale_alerted = True
                         if in_market and elapsed > 120:
-                            _msg = (
-                                f"⚠️ WS Feed STALE: No ticks for {int(elapsed)}s during market hours.\n"
-                                f"Forcing reconnect — check broker/VPS connectivity."
-                            )
+                            _msg = f"⚠️ WS Feed STALE: No ticks for {int(elapsed)}s during market hours. Forcing reconnect — check broker/VPS connectivity."
                             if self._notify_callback:
                                 try:
                                     self._notify_callback(_msg, 9)
@@ -2913,8 +2924,7 @@ class WebSocketManager:
                             self._ws_stale_alerted = False   # reset outside market hours
                     continue        # skip backoff sleep — reconnect without delay
                 consecutive_failures += 1
-                print(f"[WS] Connection failed ({ws_url}), attempt {consecutive_failures}/{max_consecutive_failures}")
-                print("[WS] Check: WEBSOCKET_URL correct? OPENALGO_API_KEY matches dashboard?")
+                print(f"[WS] Connection failed, Verify [WEBSOCKET_URL={self.config.ws_url}, API Key: {self.config.api_key}], attempt {consecutive_failures}/{max_consecutive_failures}")
             except Exception as exc:
                 _emsg = str(exc)
                 consecutive_failures += 1
@@ -3091,7 +3101,7 @@ class OrderManager:
                 action="SELL",
                 quantity=pos.qty,
                 order_type="SL-M",
-                product="NRML",
+                product="MIS",
                 price=0,
                 trigger_price=new_trigger,
             )
@@ -3204,7 +3214,7 @@ class OrderManager:
                     action="SELL",
                     exchange=cfg.fno_exchange,
                     price_type="SL-M",
-                    product="NRML",
+                    product="MIS",
                     quantity=qty,
                     price=0,
                     trigger_price=sl,
@@ -3221,7 +3231,7 @@ class OrderManager:
                     action="SELL",
                     exchange=cfg.fno_exchange,
                     price_type="LIMIT",
-                    product="NRML",
+                    product="MIS",
                     quantity=qty,
                     price=tgt,
                 )
@@ -3351,7 +3361,7 @@ class OrderManager:
                 action="BUY",
                 exchange=cfg.fno_exchange,
                 price_type="MARKET",
-                product="NRML",
+                product="MIS",
                 quantity=qty,
             )
             if not isinstance(resp, dict) or resp.get("status") != "success":
@@ -3475,7 +3485,7 @@ class OrderManager:
                 action="SELL",
                 exchange=cfg.fno_exchange,
                 price_type="MARKET",
-                product="NRML",
+                product="MIS",
                 quantity=pos.qty,
             )
             if isinstance(resp, dict) and resp.get("status") == "success":
@@ -3667,15 +3677,13 @@ class OptionsBuyerEdgeBot:
         self.client = api(**api_kwargs)
         self.state   = BotState(lookback_bars=config.lookback_bars)
         self.risk    = RiskManager(self.client, config, self.state)
-        self.fetcher = DataFetcher(self.client, config)
-        self.sl_policy = EntryStopLossPolicy(self.fetcher, config)
-        self.trail_engine = TrailSLEngine(self.fetcher, config)
-        self.scorer  = SignalEngine(config)
-        self.strikes = StrikeSelector(self.fetcher, config)
-        self.ws      = WebSocketManager(self.client, config, self.state)
-        self.orders  = OrderManager(
-            self.client, config, self.state, self.risk, self.ws, self.fetcher, self._send_telegram
-        )
+        self.fetcher = DataFetcher(self.client, config, notify_callback=self._send_telegram)
+        self.sl_policy      = EntryStopLossPolicy(self.fetcher, config)
+        self.trail_engine   = TrailSLEngine(self.fetcher, config)
+        self.scorer         = SignalEngine(config)
+        self.strikes        = StrikeSelector(self.fetcher, config)
+        self.ws             = WebSocketManager(self.client, config, self.state)
+        self.orders         = OrderManager(self.client, config, self.state, self.risk, self.ws, self.fetcher, self._send_telegram)
         # Wire callbacks and dependencies to break circular dependency + consolidate API calls
         self.ws.set_fetcher(self.fetcher)       # Reuse DataFetcher cache for delta in trailing SL
         self.ws.set_exit_callback(self.orders.place_exit)

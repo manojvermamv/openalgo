@@ -1,0 +1,1612 @@
+# OpenAlgo Python Library
+
+A Python library for algorithmic trading using OpenAlgo's REST APIs and WebSocket feeds, with **100+ high-performance technical indicators powered by a Rust core**.
+
+- Python Library Docs: [https://docs.openalgo.in/trading-platform/python](https://docs.openalgo.in/trading-platform/python)
+- Technical Indicators (100+): [https://docs.openalgo.in/trading-platform/python/indicators](https://docs.openalgo.in/trading-platform/python/indicators)
+- WebSocket &amp; Verbose Control: [https://docs.openalgo.in/trading-platform/python/websockets-verbose-control](https://docs.openalgo.in/trading-platform/python/websockets-verbose-control)
+- API Reference: [https://docs.openalgo.in/api-documentation/v1](https://docs.openalgo.in/api-documentation/v1)
+- General Documentation: [https://docs.openalgo.in](https://docs.openalgo.in)
+- Source: [https://github.com/marketcalls/openalgo-python-library](https://github.com/marketcalls/openalgo-python-library)
+
+## What's New in 2.0.0
+
+Version 2.0.0 replaces the old Numba/JIT indicator engine with a **Rust core** (via PyO3):
+
+- **No optional extra, no Numba.** Indicators are compiled into the wheel. The legacy `pip install openalgo[indicators]` extra and the `numba`/`llvmlite` dependencies are removed; `pip install openalgo` is all you need.
+- **Python 3.12, 3.13 and 3.14** are all supported (abi3 wheels). Numba previously blocked newer Python/NumPy versions.
+- **New TA-Lib-compatible indicators:** `mom`, `rocp`, `rocr`, `rocr100`, `apo`, `midpoint`, `midprice`, `avgprice`, `medprice`, `typprice`, `wclprice`, `plus_dm`, `minus_dm`, `dx`, `adxr`, `stochf`, `linregangle`, `linregintercept`.
+- **Performance:** every indicator is O(n). Benchmarked head-to-head with TA-Lib on 924k bars, the regression/statistics family (`linreg`, `tsf`, `stddev`, `cci`, `macd`, ...) runs faster than TA-Lib; the rest are on par. See the [performance comparison](https://github.com/marketcalls/openalgo-python-library/blob/master/benchmark/TALIB_PERF_COMPARE.md) and [TA-Lib compatibility notes](https://github.com/marketcalls/openalgo-python-library/blob/master/docs/TALIB_COMPATIBILITY.md).
+- **Backward compatible:** the `from openalgo import ta` API is unchanged - existing code keeps working without modification.
+
+## Installation
+
+To install the OpenAlgo Python library, use pip:
+
+```
+pip install openalgo
+```
+
+The 100+ technical indicators are built in (powered by a Rust core); no extra install step or optional dependency is required.
+
+## Get the OpenAlgo apikey
+
+Make sure that your OpenAlgo Application is running. Login to OpenAlgo Application with valid credentials and get the OpenAlgo apikey.
+
+For detailed function parameters refer to the [API Documentation](https://docs.openalgo.in/api-documentation/v1).
+
+## Getting Started with OpenAlgo
+
+First, import the `api` class from the OpenAlgo library and initialize it with your API key:
+
+```
+from openalgo import api
+
+# Replace 'your_api_key_here' with your actual API key
+# Specify the host URL with your hosted domain or ngrok domain.
+# If running locally in windows then use the default host value.
+client = api(api_key='your_api_key_here', host='http://127.0.0.1:5000')
+```
+
+## Check OpenAlgo Version
+
+```
+import openalgo
+openalgo.__version__
+```
+
+## Technical Indicators (100+)
+
+OpenAlgo ships **100+ technical indicators** powered by a Rust core (via PyO3) — including trend, momentum, volatility, volume, oscillators, statistics, and hybrid indicators. They are built in; no optional dependency or extra install step:
+
+```
+pip install openalgo
+```
+
+Quick example:
+
+```
+import numpy as np
+from openalgo import ta
+
+close = np.array([100, 101, 102, 103, 104, 105, 106, 107, 108, 109], dtype=float)
+high  = close + 0.5
+low   = close - 0.5
+
+# Trend
+sma   = ta.sma(close, period=5)
+ema   = ta.ema(close, period=5)
+supertrend, direction = ta.supertrend(high, low, close, period=7, multiplier=3.0)
+
+# Momentum
+rsi   = ta.rsi(close, period=14)
+macd_line, signal_line, hist = ta.macd(close, fast=12, slow=26, signal=9)
+
+# Volatility
+atr   = ta.atr(high, low, close, period=14)
+upper, middle, lower = ta.bbands(close, period=20, std=2.0)
+```
+
+Many indicators are value-compatible with TA-Lib; where OpenAlgo intentionally follows TradingView/Pine conventions instead (EMA/ATR/ADX seeding, etc.), the differences are documented in the [TA-Lib compatibility notes](https://github.com/marketcalls/openalgo-python-library/blob/master/docs/TALIB_COMPATIBILITY.md).
+
+Full indicator catalog and parameter reference: [https://docs.openalgo.in/trading-platform/python/indicators](https://docs.openalgo.in/trading-platform/python/indicators)
+
+## WebSocket Verbose Control
+
+The streaming feed supports verbosity levels (`0` silent, `1` connection/auth/subscription info, `2` full debug with every tick):
+
+```
+client = api(
+    api_key="your_api_key",
+    host="http://127.0.0.1:5000",
+    ws_url="ws://127.0.0.1:8765",
+    verbose=1,                 # 0 / 1 / True / 2
+)
+```
+
+Details: [https://docs.openalgo.in/trading-platform/python/websockets-verbose-control](https://docs.openalgo.in/trading-platform/python/websockets-verbose-control)
+
+## Examples
+
+Please refer to the documentation on [order constants](https://docs.openalgo.in/api-documentation/v1/order-constants), and consult the API reference for details on optional parameters.
+
+### PlaceOrder example
+
+To place a new market order:
+
+```
+response = client.placeorder(
+    strategy="Python",
+    symbol="NHPC",
+    action="BUY",
+    exchange="NSE",
+    price_type="MARKET",
+    product="MIS",
+    quantity=1
+)
+print(response)
+```
+
+Place Market Order Response:
+
+```
+{"orderid": "250408000989443", "status": "success"}
+```
+
+To place a new limit order:
+
+```
+response = client.placeorder(
+    strategy="Python",
+    symbol="YESBANK",
+    action="BUY",
+    exchange="NSE",
+    price_type="LIMIT",
+    product="MIS",
+    quantity="1",
+    price="16",
+    trigger_price="0",
+    disclosed_quantity="0",
+)
+print(response)
+```
+
+Place Limit Order Response:
+
+```
+{"orderid": "250408001003813", "status": "success"}
+```
+
+### PlaceSmartOrder Example
+
+To place a smart order considering the current position size:
+
+```
+response = client.placesmartorder(
+    strategy="Python",
+    symbol="TATAMOTORS",
+    action="SELL",
+    exchange="NSE",
+    price_type="MARKET",
+    product="MIS",
+    quantity=1,
+    position_size=5
+)
+print(response)
+```
+
+Place Smart Market Order Response:
+
+```
+{"orderid": "250408000997543", "status": "success"}
+```
+
+### OptionsOrder Example
+
+To place an ATM options order:
+
+```
+response = client.optionsorder(
+    strategy="python",
+    underlying="NIFTY",
+    exchange="NSE_INDEX",
+    expiry_date="28OCT25",
+    offset="ATM",
+    option_type="CE",
+    action="BUY",
+    quantity=75,
+    pricetype="MARKET",
+    product="NRML",
+    splitsize=0
+)
+print(response)
+```
+
+Place Options Order Response:
+
+```
+{
+  "exchange": "NFO",
+  "offset": "ATM",
+  "option_type": "CE",
+  "orderid": "25102800000006",
+  "status": "success",
+  "symbol": "NIFTY28OCT2525950CE",
+  "underlying": "NIFTY28OCT25FUT",
+  "underlying_ltp": 25966.05
+}
+```
+
+To place an ITM options order:
+
+```
+response = client.optionsorder(
+    strategy="python",
+    underlying="NIFTY",
+    exchange="NSE_INDEX",
+    expiry_date="28OCT25",
+    offset="ITM4",
+    option_type="PE",
+    action="BUY",
+    quantity=75,
+    pricetype="MARKET",
+    product="NRML",
+    splitsize=0
+)
+print(response)
+```
+
+Place Options Order Response:
+
+```
+{
+  "exchange": "NFO",
+  "offset": "ITM4",
+  "option_type": "PE",
+  "orderid": "25102800000007",
+  "status": "success",
+  "symbol": "NIFTY28OCT2526150PE",
+  "underlying": "NIFTY28OCT25FUT",
+  "underlying_ltp": 25966.05
+}
+```
+
+To place an OTM options order:
+
+```
+response = client.optionsorder(
+    strategy="python",
+    underlying="NIFTY",
+    exchange="NSE_INDEX",
+    expiry_date="28OCT25",
+    offset="OTM5",
+    option_type="CE",
+    action="BUY",
+    quantity=75,
+    pricetype="MARKET",
+    product="NRML",
+    splitsize=0
+)
+print(response)
+```
+
+Place Options Order Response:
+
+```
+{
+  "exchange": "NFO",
+  "mode": "analyze",
+  "offset": "OTM5",
+  "option_type": "CE",
+  "orderid": "25102800000008",
+  "status": "success",
+  "symbol": "NIFTY28OCT2526200CE",
+  "underlying": "NIFTY28OCT25FUT",
+  "underlying_ltp": 25966.05
+}
+```
+
+### OptionsMultiOrder Example
+
+To place an Iron Condor (same expiry):
+
+```
+response = client.optionsmultiorder(
+    strategy="Iron Condor Test",
+    underlying="NIFTY",
+    exchange="NSE_INDEX",
+    expiry_date="25NOV25",
+    legs=[
+        {"offset": "OTM6", "option_type": "CE", "action": "BUY", "quantity": 75},
+        {"offset": "OTM6", "option_type": "PE", "action": "BUY", "quantity": 75},
+        {"offset": "OTM4", "option_type": "CE", "action": "SELL", "quantity": 75},
+        {"offset": "OTM4", "option_type": "PE", "action": "SELL", "quantity": 75}
+    ]
+)
+print(response)
+```
+
+Place OptionsMultiOrder Response:
+
+```
+{
+  "status": "success",
+  "underlying": "NIFTY",
+  "underlying_ltp": 26050.45,
+  "results": [
+    {
+      "action": "BUY",
+      "leg": 1,
+      "mode": "analyze",
+      "offset": "OTM6",
+      "option_type": "CE",
+      "orderid": "25111996859688",
+      "status": "success",
+      "symbol": "NIFTY25NOV2526350CE"
+    },
+    {
+      "action": "BUY",
+      "leg": 2,
+      "mode": "analyze",
+      "offset": "OTM6",
+      "option_type": "PE",
+      "orderid": "25111996042210",
+      "status": "success",
+      "symbol": "NIFTY25NOV2525750PE"
+    },
+    {
+      "action": "SELL",
+      "leg": 3,
+      "mode": "analyze",
+      "offset": "OTM4",
+      "option_type": "CE",
+      "orderid": "25111922189638",
+      "status": "success",
+      "symbol": "NIFTY25NOV2526250CE"
+    },
+    {
+      "action": "SELL",
+      "leg": 4,
+      "mode": "analyze",
+      "offset": "OTM4",
+      "option_type": "PE",
+      "orderid": "25111919252668",
+      "status": "success",
+      "symbol": "NIFTY25NOV2525850PE"
+    }
+  ]
+}
+```
+
+To place a Diagonal Spread (different expiry):
+
+```
+response = client.optionsmultiorder(
+    strategy="Diagonal Spread Test",
+    underlying="NIFTY",
+    exchange="NSE_INDEX",
+    legs=[
+        {"offset": "ITM2", "option_type": "CE", "action": "BUY", "quantity": 75, "expiry_date": "30DEC25"},
+        {"offset": "OTM2", "option_type": "CE", "action": "SELL", "quantity": 75, "expiry_date": "25NOV25"}
+    ]
+)
+print(response)
+```
+
+Place OptionsMultiOrder Response:
+
+```
+{
+  "results": [
+    {
+      "action": "BUY",
+      "leg": 1,
+      "mode": "analyze",
+      "offset": "ITM2",
+      "option_type": "CE",
+      "orderid": "25111933337854",
+      "status": "success",
+      "symbol": "NIFTY30DEC2525950CE"
+    },
+    {
+      "action": "SELL",
+      "leg": 2,
+      "mode": "analyze",
+      "offset": "OTM2",
+      "option_type": "CE",
+      "orderid": "25111957475473",
+      "status": "success",
+      "symbol": "NIFTY25NOV2526150CE"
+    }
+  ],
+  "status": "success",
+  "underlying": "NIFTY",
+  "underlying_ltp": 26052.65
+}
+```
+
+### BasketOrder example
+
+To place a new basket order:
+
+```
+basket_orders = [
+    {
+        "symbol": "BHEL",
+        "exchange": "NSE",
+        "action": "BUY",
+        "quantity": 1,
+        "pricetype": "MARKET",
+        "product": "MIS"
+    },
+    {
+        "symbol": "ZOMATO",
+        "exchange": "NSE",
+        "action": "SELL",
+        "quantity": 1,
+        "pricetype": "MARKET",
+        "product": "MIS"
+    }
+]
+response = client.basketorder(orders=basket_orders)
+print(response)
+```
+
+Basket Order Response:
+
+```
+{
+  "status": "success",
+  "results": [
+    {"symbol": "BHEL", "status": "success", "orderid": "250408000999544"},
+    {"symbol": "ZOMATO", "status": "success", "orderid": "250408000997545"}
+  ]
+}
+```
+
+### SplitOrder example
+
+To place a new split order:
+
+```
+response = client.splitorder(
+    symbol="YESBANK",
+    exchange="NSE",
+    action="SELL",
+    quantity=105,
+    splitsize=20,
+    price_type="MARKET",
+    product="MIS"
+)
+print(response)
+```
+
+SplitOrder Response:
+
+```
+{
+  "status": "success",
+  "split_size": 20,
+  "total_quantity": 105,
+  "results": [
+    {"order_num": 1, "orderid": "250408001021467", "quantity": 20, "status": "success"},
+    {"order_num": 2, "orderid": "250408001021459", "quantity": 20, "status": "success"},
+    {"order_num": 3, "orderid": "250408001021466", "quantity": 20, "status": "success"},
+    {"order_num": 4, "orderid": "250408001021470", "quantity": 20, "status": "success"},
+    {"order_num": 5, "orderid": "250408001021471", "quantity": 20, "status": "success"},
+    {"order_num": 6, "orderid": "250408001021472", "quantity": 5, "status": "success"}
+  ]
+}
+```
+
+### ModifyOrder Example
+
+To modify an existing order:
+
+```
+response = client.modifyorder(
+    order_id="250408001002736",
+    strategy="Python",
+    symbol="YESBANK",
+    action="BUY",
+    exchange="NSE",
+    price_type="LIMIT",
+    product="CNC",
+    quantity=1,
+    price=16.5
+)
+print(response)
+```
+
+Modify Order Response:
+
+```
+{"orderid": "250408001002736", "status": "success"}
+```
+
+### CancelOrder Example
+
+To cancel an existing order:
+
+```
+response = client.cancelorder(
+    order_id="250408001002736",
+    strategy="Python"
+)
+print(response)
+```
+
+Cancelorder Response:
+
+```
+{"orderid": "250408001002736", "status": "success"}
+```
+
+### CancelAllOrder Example
+
+To cancel all open orders and trigger pending orders:
+
+```
+response = client.cancelallorder(strategy="Python")
+print(response)
+```
+
+Cancelallorder Response:
+
+```
+{
+  "status": "success",
+  "message": "Canceled 5 orders. Failed to cancel 0 orders.",
+  "canceled_orders": [
+    "250408001042620",
+    "250408001042667",
+    "250408001042642",
+    "250408001043015",
+    "250408001043386"
+  ],
+  "failed_cancellations": []
+}
+```
+
+### ClosePosition Example
+
+To close all open positions across various exchanges:
+
+```
+response = client.closeposition(strategy="Python")
+print(response)
+```
+
+ClosePosition Response:
+
+```
+{"message": "All Open Positions Squared Off", "status": "success"}
+```
+
+### OrderStatus Example
+
+To get the current order status:
+
+```
+response = client.orderstatus(
+    order_id="250828000185002",
+    strategy="Test Strategy"
+)
+print(response)
+```
+
+Orderstatus Response:
+
+```
+{
+  "data": {
+    "action": "BUY",
+    "average_price": 18.95,
+    "exchange": "NSE",
+    "order_status": "complete",
+    "orderid": "250828000185002",
+    "price": 0,
+    "pricetype": "MARKET",
+    "product": "MIS",
+    "quantity": "1",
+    "symbol": "YESBANK",
+    "timestamp": "28-Aug-2025 09:59:10",
+    "trigger_price": 0
+  },
+  "status": "success"
+}
+```
+
+### OpenPosition Example
+
+To get the current open position:
+
+```
+response = client.openposition(
+    strategy="Test Strategy",
+    symbol="YESBANK",
+    exchange="NSE",
+    product="MIS"
+)
+print(response)
+```
+
+OpenPosition Response:
+
+```
+{"quantity": "-10", "status": "success"}
+```
+
+### Quotes Example
+
+```
+response = client.quotes(symbol="RELIANCE", exchange="NSE")
+print(response)
+```
+
+Quotes Response:
+
+```
+{
+  "status": "success",
+  "data": {
+    "open": 1172.0,
+    "high": 1196.6,
+    "low": 1163.3,
+    "ltp": 1187.75,
+    "ask": 1188.0,
+    "bid": 1187.85,
+    "prev_close": 1165.7,
+    "volume": 14414545
+  }
+}
+```
+
+### MultiQuotes Example
+
+```
+response = client.multiquotes(symbols=[
+    {"symbol": "RELIANCE", "exchange": "NSE"},
+    {"symbol": "TCS", "exchange": "NSE"},
+    {"symbol": "INFY", "exchange": "NSE"}
+])
+print(response)
+```
+
+MultiQuotes Response:
+
+```
+{
+  "status": "success",
+  "results": [
+    {
+      "symbol": "RELIANCE",
+      "exchange": "NSE",
+      "data": {
+        "open": 1542.3, "high": 1571.6, "low": 1540.5, "ltp": 1569.9,
+        "prev_close": 1539.7, "ask": 1569.9, "bid": 0, "oi": 0, "volume": 14054299
+      }
+    },
+    {
+      "symbol": "TCS",
+      "exchange": "NSE",
+      "data": {
+        "open": 3118.8, "high": 3178, "low": 3117, "ltp": 3162.9,
+        "prev_close": 3119.2, "ask": 0, "bid": 3162.9, "oi": 0, "volume": 2508527
+      }
+    },
+    {
+      "symbol": "INFY",
+      "exchange": "NSE",
+      "data": {
+        "open": 1532.1, "high": 1560.3, "low": 1532.1, "ltp": 1557.9,
+        "prev_close": 1530.6, "ask": 0, "bid": 1557.9, "oi": 0, "volume": 7575038
+      }
+    }
+  ]
+}
+```
+
+### Depth Example
+
+```
+response = client.depth(symbol="SBIN", exchange="NSE")
+print(response)
+```
+
+Depth Response:
+
+```
+{
+  "status": "success",
+  "data": {
+    "open": 760.0,
+    "high": 774.0,
+    "low": 758.15,
+    "ltp": 769.6,
+    "ltq": 205,
+    "prev_close": 746.9,
+    "volume": 9362799,
+    "oi": 161265750,
+    "totalbuyqty": 591351,
+    "totalsellqty": 835701,
+    "asks": [
+      {"price": 769.6,  "quantity": 767},
+      {"price": 769.65, "quantity": 115},
+      {"price": 769.7,  "quantity": 162},
+      {"price": 769.75, "quantity": 1121},
+      {"price": 769.8,  "quantity": 430}
+    ],
+    "bids": [
+      {"price": 769.4,  "quantity": 886},
+      {"price": 769.35, "quantity": 212},
+      {"price": 769.3,  "quantity": 351},
+      {"price": 769.25, "quantity": 343},
+      {"price": 769.2,  "quantity": 399}
+    ]
+  }
+}
+```
+
+### History Example
+
+Download data directly from broker API:
+
+```
+response = client.history(
+    symbol="SBIN",
+    exchange="NSE",
+    interval="5m",
+    start_date="2025-04-01",
+    end_date="2025-04-08",
+    source="api"
+)
+print(response)
+```
+
+Download data from Historify DuckDB (stored data):
+
+```
+response = client.history(
+    symbol="SBIN",
+    exchange="NSE",
+    interval="5m",
+    start_date="2025-04-01",
+    end_date="2025-04-08",
+    source="db"
+)
+print(response)
+```
+
+History Response:
+
+```
+                            close    high     low    open  volume
+timestamp
+2025-04-01 09:15:00+05:30  772.50  774.00  763.20  766.50  318625
+2025-04-01 09:20:00+05:30  773.20  774.95  772.10  772.45  197189
+2025-04-01 09:25:00+05:30  775.15  775.60  772.60  773.20  227544
+2025-04-01 09:30:00+05:30  777.35  777.50  774.85  775.15  134596
+2025-04-01 09:35:00+05:30  778.00  778.00  776.25  777.50  145385
+...                           ...     ...     ...     ...     ...
+2025-04-08 14:00:00+05:30  768.25  770.70  767.85  768.50  142478
+2025-04-08 14:05:00+05:30  769.10  769.80  766.60  768.15  128283
+2025-04-08 14:10:00+05:30  769.05  769.85  768.40  769.10  119084
+2025-04-08 14:15:00+05:30  770.05  770.50  769.05  769.05  158299
+2025-04-08 14:20:00+05:30  769.95  770.50  769.40  770.05  125485
+
+[437 rows x 5 columns]
+```
+
+### Intervals Example
+
+```
+response = client.intervals()
+print(response)
+```
+
+Intervals Response:
+
+```
+{
+  "status": "success",
+  "data": {
+    "months": [],
+    "weeks": [],
+    "days": ["D"],
+    "hours": ["1h"],
+    "minutes": ["10m", "15m", "1m", "30m", "3m", "5m"],
+    "seconds": []
+  }
+}
+```
+
+### OptionChain Example
+
+Note: To fetch the entire option chain for an expiry, omit the `strike_count` parameter.
+
+```
+chain = client.optionchain(
+    underlying="NIFTY",
+    exchange="NSE_INDEX",
+    expiry_date="30DEC25",
+    strike_count=10
+)
+```
+
+OptionChain Response:
+
+```
+{
+  "status": "success",
+  "underlying": "NIFTY",
+  "underlying_ltp": 26215.55,
+  "expiry_date": "30DEC25",
+  "atm_strike": 26200.0,
+  "chain": [
+    {
+      "strike": 26100.0,
+      "ce": {
+        "symbol": "NIFTY30DEC2526100CE", "label": "ITM2",
+        "ltp": 490, "bid": 490, "ask": 491,
+        "open": 540, "high": 571, "low": 444.75,
+        "prev_close": 496.8, "volume": 1195800, "oi": 0,
+        "lotsize": 75, "tick_size": 0.05
+      },
+      "pe": {
+        "symbol": "NIFTY30DEC2526100PE", "label": "OTM2",
+        "ltp": 193, "bid": 191.2, "ask": 193,
+        "open": 204.1, "high": 229.95, "low": 175.6,
+        "prev_close": 215.95, "volume": 1832700, "oi": 0,
+        "lotsize": 75, "tick_size": 0.05
+      }
+    },
+    {
+      "strike": 26200.0,
+      "ce": {
+        "symbol": "NIFTY30DEC2526200CE", "label": "ATM",
+        "ltp": 427, "bid": 425.05, "ask": 427,
+        "open": 449.95, "high": 503.5, "low": 384,
+        "prev_close": 433.2, "volume": 2994000, "oi": 0,
+        "lotsize": 75, "tick_size": 0.05
+      },
+      "pe": {
+        "symbol": "NIFTY30DEC2526200PE", "label": "ATM",
+        "ltp": 227.4, "bid": 227.35, "ask": 228.5,
+        "open": 251.9, "high": 269.15, "low": 205.95,
+        "prev_close": 251.9, "volume": 3745350, "oi": 0,
+        "lotsize": 75, "tick_size": 0.05
+      }
+    }
+  ]
+}
+```
+
+### Symbol Example
+
+```
+response = client.symbol(
+    symbol="NIFTY30DEC25FUT",
+    exchange="NFO"
+)
+print(response)
+```
+
+Symbol Response:
+
+```
+{
+  "data": {
+    "brexchange": "NSE_FO",
+    "brsymbol": "NIFTY FUT 30 DEC 25",
+    "exchange": "NFO",
+    "expiry": "30-DEC-25",
+    "freeze_qty": 1800,
+    "id": 57900,
+    "instrumenttype": "FUT",
+    "lotsize": 75,
+    "name": "NIFTY",
+    "strike": 0,
+    "symbol": "NIFTY30DEC25FUT",
+    "tick_size": 10,
+    "token": "NSE_FO|49543"
+  },
+  "status": "success"
+}
+```
+
+### Search Example
+
+```
+response = client.search(query="NIFTY 26000 DEC CE", exchange="NFO")
+print(response)
+```
+
+Search Response:
+
+```
+{
+  "data": [
+    {
+      "brexchange": "NSE_FO",
+      "brsymbol": "NIFTY 26000 CE 30 DEC 25",
+      "exchange": "NFO",
+      "expiry": "30-DEC-25",
+      "freeze_qty": 1800,
+      "instrumenttype": "CE",
+      "lotsize": 75,
+      "name": "NIFTY",
+      "strike": 26000,
+      "symbol": "NIFTY30DEC2526000CE",
+      "tick_size": 5,
+      "token": "NSE_FO|71399"
+    }
+  ],
+  "message": "Found 7 matching symbols",
+  "status": "success"
+}
+```
+
+### OptionSymbol Example
+
+ATM Option:
+
+```
+response = client.optionsymbol(
+    underlying="NIFTY",
+    exchange="NSE_INDEX",
+    expiry_date="30DEC25",
+    offset="ATM",
+    option_type="CE"
+)
+print(response)
+```
+
+OptionSymbol Response:
+
+```
+{
+  "status": "success",
+  "symbol": "NIFTY30DEC2525950CE",
+  "exchange": "NFO",
+  "lotsize": 75,
+  "tick_size": 5,
+  "freeze_qty": 1800,
+  "underlying_ltp": 25966.4
+}
+```
+
+ITM Option:
+
+```
+response = client.optionsymbol(
+    underlying="NIFTY",
+    exchange="NSE_INDEX",
+    expiry_date="30DEC25",
+    offset="ITM3",
+    option_type="PE"
+)
+print(response)
+```
+
+OptionSymbol Response:
+
+```
+{
+  "status": "success",
+  "symbol": "NIFTY30DEC2526100PE",
+  "exchange": "NFO",
+  "lotsize": 75,
+  "tick_size": 5,
+  "freeze_qty": 1800,
+  "underlying_ltp": 25966.4
+}
+```
+
+OTM Option:
+
+```
+response = client.optionsymbol(
+    underlying="NIFTY",
+    exchange="NSE_INDEX",
+    expiry_date="30DEC25",
+    offset="OTM4",
+    option_type="CE"
+)
+print(response)
+```
+
+OptionSymbol Response:
+
+```
+{
+  "status": "success",
+  "symbol": "NIFTY30DEC2526150CE",
+  "exchange": "NFO",
+  "lotsize": 75,
+  "tick_size": 5,
+  "freeze_qty": 1800,
+  "underlying_ltp": 25966.4
+}
+```
+
+### SyntheticFuture Example
+
+```
+response = client.syntheticfuture(
+    underlying="NIFTY",
+    exchange="NSE_INDEX",
+    expiry_date="25NOV25"
+)
+print(response)
+```
+
+SyntheticFuture Response:
+
+```
+{
+  "atm_strike": 25900.0,
+  "expiry": "25NOV25",
+  "status": "success",
+  "synthetic_future_price": 25980.05,
+  "underlying": "NIFTY",
+  "underlying_ltp": 25910.05
+}
+```
+
+### OptionGreeks Example
+
+```
+response = client.optiongreeks(
+    symbol="NIFTY25NOV2526000CE",
+    exchange="NFO",
+    interest_rate=0.00,
+    underlying_symbol="NIFTY",
+    underlying_exchange="NSE_INDEX"
+)
+print(response)
+```
+
+OptionGreeks Response:
+
+```
+{
+  "days_to_expiry": 28.5071,
+  "exchange": "NFO",
+  "expiry_date": "25-Nov-2025",
+  "greeks": {
+    "delta": 0.4967,
+    "gamma": 0.000352,
+    "rho": 9.733994,
+    "theta": -7.919,
+    "vega": 28.9489
+  },
+  "implied_volatility": 15.6,
+  "interest_rate": 0.0,
+  "option_price": 435,
+  "option_type": "CE",
+  "spot_price": 25966.05,
+  "status": "success",
+  "strike": 26000.0,
+  "symbol": "NIFTY25NOV2526000CE",
+  "underlying": "NIFTY"
+}
+```
+
+### Expiry Example
+
+```
+response = client.expiry(
+    symbol="NIFTY",
+    exchange="NFO",
+    instrumenttype="options"
+)
+print(response)
+```
+
+Expiry Response:
+
+```
+{
+  "data": [
+    "10-JUL-25", "17-JUL-25", "24-JUL-25", "31-JUL-25",
+    "07-AUG-25", "28-AUG-25", "25-SEP-25", "24-DEC-25",
+    "26-MAR-26", "25-JUN-26", "31-DEC-26", "24-JUN-27",
+    "30-DEC-27", "29-JUN-28", "28-DEC-28", "28-JUN-29",
+    "27-DEC-29", "25-JUN-30"
+  ],
+  "message": "Found 18 expiry dates for NIFTY options in NFO",
+  "status": "success"
+}
+```
+
+### Instruments Example
+
+```
+response = client.instruments(exchange="NSE")
+print(response.tail())
+```
+
+Instruments Response:
+
+```
+     brexchange           brsymbol exchange expiry instrumenttype  lotsize  \
+3041        NSE      NSE:NEOGEN-EQ      NSE   None             EQ        1
+3042        NSE     NSE:ALANKIT-EQ      NSE   None             EQ        1
+3043        NSE  NSE:EVERESTIND-EQ      NSE   None             EQ        1
+3044        NSE   NSE:VIKASLIFE-EQ      NSE   None             EQ        1
+3045        NSE    NSE:ONEPOINT-EQ      NSE   None             EQ        1
+
+                          name  strike      symbol  tick_size           token
+3041  NEOGEN CHEMICALS LIMITED    -1.0      NEOGEN       0.10  10100000009917
+3042           ALANKIT LIMITED    -1.0     ALANKIT       0.01  10100000009921
+3043    EVEREST INDUSTRIES LTD    -1.0  EVERESTIND       0.05   1010000000993
+3044    VIKAS LIFECARE LIMITED    -1.0   VIKASLIFE       0.01  10100000009931
+3045     ONE POINT ONE SOL LTD    -1.0    ONEPOINT       0.01  10100000009939
+```
+
+### Telegram Alert Example
+
+```
+response = client.telegram(
+    username="<openalgo_loginid>",
+    message="NIFTY crossed 26000!"
+)
+print(response)
+```
+
+Telegram Alert Response:
+
+```
+{
+  "message": "Notification sent successfully",
+  "status": "success"
+}
+```
+
+### Funds Example
+
+```
+response = client.funds()
+print(response)
+```
+
+Funds Response:
+
+```
+{
+  "status": "success",
+  "data": {
+    "availablecash": "320.66",
+    "collateral": "0.00",
+    "m2mrealized": "3.27",
+    "m2munrealized": "-7.88",
+    "utiliseddebits": "679.34"
+  }
+}
+```
+
+### Margin Example
+
+```
+response = client.margin(positions=[
+    {
+        "symbol": "NIFTY25NOV2525000CE",
+        "exchange": "NFO",
+        "action": "BUY",
+        "product": "NRML",
+        "pricetype": "MARKET",
+        "quantity": "75"
+    },
+    {
+        "symbol": "NIFTY25NOV2525500CE",
+        "exchange": "NFO",
+        "action": "SELL",
+        "product": "NRML",
+        "pricetype": "MARKET",
+        "quantity": "75"
+    }
+])
+```
+
+Margin Response:
+
+```
+{
+  "status": "success",
+  "data": {
+    "total_margin_required": 91555.7625,
+    "span_margin": 0.0,
+    "exposure_margin": 91555.7625
+  }
+}
+```
+
+### OrderBook Example
+
+```
+response = client.orderbook()
+print(response)
+```
+
+OrderBook Response:
+
+```
+{
+  "status": "success",
+  "data": {
+    "orders": [
+      {
+        "action": "BUY",
+        "symbol": "RELIANCE",
+        "exchange": "NSE",
+        "orderid": "250408000989443",
+        "product": "MIS",
+        "quantity": "1",
+        "price": 1186.0,
+        "pricetype": "MARKET",
+        "order_status": "complete",
+        "trigger_price": 0.0,
+        "timestamp": "08-Apr-2025 13:58:03"
+      },
+      {
+        "action": "BUY",
+        "symbol": "YESBANK",
+        "exchange": "NSE",
+        "orderid": "250408001002736",
+        "product": "MIS",
+        "quantity": "1",
+        "price": 16.5,
+        "pricetype": "LIMIT",
+        "order_status": "cancelled",
+        "trigger_price": 0.0,
+        "timestamp": "08-Apr-2025 14:13:45"
+      }
+    ],
+    "statistics": {
+      "total_buy_orders": 2.0,
+      "total_sell_orders": 0.0,
+      "total_completed_orders": 1.0,
+      "total_open_orders": 0.0,
+      "total_rejected_orders": 0.0
+    }
+  }
+}
+```
+
+### TradeBook Example
+
+```
+response = client.tradebook()
+print(response)
+```
+
+TradeBook Response:
+
+```
+{
+  "status": "success",
+  "data": [
+    {
+      "action": "BUY",
+      "symbol": "RELIANCE",
+      "exchange": "NSE",
+      "orderid": "250408000989443",
+      "product": "MIS",
+      "quantity": 0.0,
+      "average_price": 1180.1,
+      "timestamp": "13:58:03",
+      "trade_value": 1180.1
+    },
+    {
+      "action": "SELL",
+      "symbol": "NHPC",
+      "exchange": "NSE",
+      "orderid": "250408001086129",
+      "product": "MIS",
+      "quantity": 0.0,
+      "average_price": 83.74,
+      "timestamp": "14:28:49",
+      "trade_value": 83.74
+    }
+  ]
+}
+```
+
+### PositionBook Example
+
+```
+response = client.positionbook()
+print(response)
+```
+
+PositionBook Response:
+
+```
+{
+  "status": "success",
+  "data": [
+    {
+      "symbol": "NHPC",
+      "exchange": "NSE",
+      "product": "MIS",
+      "quantity": "-1",
+      "average_price": "83.74",
+      "ltp": "83.72",
+      "pnl": "0.02"
+    },
+    {
+      "symbol": "RELIANCE",
+      "exchange": "NSE",
+      "product": "MIS",
+      "quantity": "0",
+      "average_price": "0.0",
+      "ltp": "1189.9",
+      "pnl": "5.90"
+    },
+    {
+      "symbol": "YESBANK",
+      "exchange": "NSE",
+      "product": "MIS",
+      "quantity": "-104",
+      "average_price": "17.2",
+      "ltp": "17.31",
+      "pnl": "-10.44"
+    }
+  ]
+}
+```
+
+### Holdings Example
+
+```
+response = client.holdings()
+print(response)
+```
+
+Holdings Response:
+
+```
+{
+  "status": "success",
+  "data": {
+    "holdings": [
+      {"symbol": "RELIANCE",  "exchange": "NSE", "product": "CNC", "quantity": 1, "pnl": -149.0, "pnlpercent": -11.10},
+      {"symbol": "TATASTEEL", "exchange": "NSE", "product": "CNC", "quantity": 1, "pnl": -15.0,  "pnlpercent": -10.41},
+      {"symbol": "CANBK",     "exchange": "NSE", "product": "CNC", "quantity": 5, "pnl": -69.0,  "pnlpercent": -13.43}
+    ],
+    "statistics": {
+      "totalholdingvalue": 1768.0,
+      "totalinvvalue": 2001.0,
+      "totalprofitandloss": -233.15,
+      "totalpnlpercentage": -11.65
+    }
+  }
+}
+```
+
+### Holidays Example
+
+```
+response = client.holidays(year=2026)
+print(response)
+```
+
+Holidays Response:
+
+```
+{
+  "data": [
+    {
+      "closed_exchanges": ["NSE", "BSE", "NFO", "BFO", "CDS", "BCD", "MCX"],
+      "date": "2026-01-26",
+      "description": "Republic Day",
+      "holiday_type": "TRADING_HOLIDAY",
+      "open_exchanges": []
+    },
+    {
+      "closed_exchanges": [],
+      "date": "2026-02-19",
+      "description": "Chhatrapati Shivaji Maharaj Jayanti",
+      "holiday_type": "SETTLEMENT_HOLIDAY",
+      "open_exchanges": []
+    },
+    {
+      "closed_exchanges": ["NSE", "BSE", "NFO", "BFO", "CDS", "BCD"],
+      "date": "2026-03-10",
+      "description": "Holi",
+      "holiday_type": "TRADING_HOLIDAY",
+      "open_exchanges": [
+        {"end_time": 1741677900000, "exchange": "MCX", "start_time": 1741624200000}
+      ]
+    }
+  ]
+}
+```
+
+### Timings Example
+
+```
+response = client.timings(date="2025-12-19")
+print(response)
+```
+
+Timings Response:
+
+```
+{
+  "data": [
+    {"end_time": 1766138400000, "exchange": "NSE", "start_time": 1766115900000},
+    {"end_time": 1766138400000, "exchange": "BSE", "start_time": 1766115900000},
+    {"end_time": 1766138400000, "exchange": "NFO", "start_time": 1766115900000},
+    {"end_time": 1766138400000, "exchange": "BFO", "start_time": 1766115900000},
+    {"end_time": 1766168700000, "exchange": "MCX", "start_time": 1766115000000},
+    {"end_time": 1766143800000, "exchange": "BCD", "start_time": 1766115000000},
+    {"end_time": 1766143800000, "exchange": "CDS", "start_time": 1766115000000}
+  ],
+  "status": "success"
+}
+```
+
+### Analyzer Status Example
+
+```
+response = client.analyzerstatus()
+print(response)
+```
+
+Analyzer Status Response:
+
+```
+{
+  "data": {"analyze_mode": true, "mode": "analyze", "total_logs": 2},
+  "status": "success"
+}
+```
+
+### Analyzer Toggle Example
+
+```
+# Switch to analyze mode (simulated responses)
+response = client.analyzertoggle(mode=True)
+print(response)
+```
+
+Analyzer Toggle Response:
+
+```
+{
+  "data": {
+    "analyze_mode": true,
+    "message": "Analyzer mode switched to analyze",
+    "mode": "analyze",
+    "total_logs": 2
+  },
+  "status": "success"
+}
+```
+
+### LTP Data (Streaming WebSocket)
+Verbose levels:
+  - verbose=False (default): Silent mode - no SDK output, only your prints
+  - verbose=True or 1: Basic info - connection, auth, subscription status
+  - verbose=2: Full debug - all market data updates from SDK
+
+```
+from openalgo import api
+import time
+
+# Initialize OpenAlgo client
+client = api(
+    api_key="your_api_key",                  # Replace with your actual OpenAlgo API key
+    host="http://127.0.0.1:5000",            # REST API host
+    ws_url="ws://127.0.0.1:8765",            # WebSocket host
+    verbose=True
+)
+
+# Define instruments to subscribe for LTP
+instruments = [
+    {"exchange": "NSE", "symbol": "RELIANCE"},
+    {"exchange": "NSE", "symbol": "INFY"}
+]
+
+# Callback function for LTP updates
+def on_ltp(data):
+    print("LTP Update Received:")
+    print(data)
+
+# Connect and subscribe
+client.connect()
+client.subscribe_ltp(instruments, on_data_received=on_ltp)
+
+# Run for a few seconds to receive data
+try:
+    time.sleep(10)
+finally:
+    client.unsubscribe_ltp(instruments)
+    client.disconnect()
+```
+
+### Quotes (Streaming WebSocket)
+Verbose levels:
+  - verbose=False (default): Silent mode - no SDK output, only your prints
+  - verbose=True or 1: Basic info - connection, auth, subscription status
+  - verbose=2: Full debug - all market data updates from SDK
+
+```
+from openalgo import api
+import time
+
+client = api(
+    api_key="your_api_key",
+    host="http://127.0.0.1:5000",
+    ws_url="ws://127.0.0.1:8765",
+    verbose=True
+)
+
+instruments = [
+    {"exchange": "NSE_INDEX", "symbol": "NIFTY"},
+    {"exchange": "NSE", "symbol": "INFY"}
+]
+
+def on_quote(data):
+    print("Quote Update Received:")
+    print(data)
+
+# Connect and subscribe
+client.connect()
+client.subscribe_quote(instruments, on_data_received=on_quote)
+
+# Poll few times
+for i in range(5):
+    print(f"\n--- Poll {i+1} ---")
+    quotes = client.get_quotes()
+    for exch, symbols in quotes.get('quote', {}).items():
+        for sym, data in symbols.items():
+            print(f"  {exch}:{sym} = {data.get('ltp')}")
+    time.sleep(1)
+
+
+# Cleanup
+client.unsubscribe_quote(instruments)
+client.disconnect()
+```
+
+### Depth (Streaming WebSocket)
+Verbose levels:
+  - verbose=False (default): Silent mode - no SDK output, only your prints
+  - verbose=True or 1: Basic info - connection, auth, subscription status
+  - verbose=2: Full debug - all market data updates from SDK
+
+```
+from openalgo import api
+import time
+
+client = api(
+    api_key="your_api_key",
+    host="http://127.0.0.1:5000",
+    ws_url="ws://127.0.0.1:8765",
+    verbose=True
+)
+
+instruments = [
+    {"exchange": "NFO", "symbol": "NIFTY26JUN0923500CE"},
+    {"exchange": "NFO", "symbol": "NIFTY26JUN0923500PE"}
+]
+
+def on_depth(data):
+    print("Market Depth Update Received:")
+    print(data)
+
+# Connect and subscribe
+client.connect()
+client.subscribe_depth(instruments, on_data_received=on_depth)
+
+# Poll Market Depth data a few times
+for i in range(100):
+    print(f"\nPoll {i+1}:")
+    print(client.get_depth())
+    time.sleep(0.5)
+
+# Cleanup
+client.unsubscribe_depth(instruments)
+client.disconnect()
+```
+
+## More Examples
+
+The `examples/` directory in the source repository contains runnable scripts:
+
+- `account_test.py` — account-related functions
+- `margin_example.py` — margin calculation for single and multiple positions
+- `order_test.py` — order management
+- `data_examples.py` — market data
+- `feed_examples.py` — WebSocket LTP feeds
+- `quote_example.py` — WebSocket quote feeds
+- `depth_example.py` — WebSocket market depth feeds
+- `options_examples.py` — Options API (Greeks, symbol resolution, orders)
+- `telegram_examples.py` — Telegram notification API
+
+## License
+
+MIT — see the [LICENSE](LICENSE) file for details.
