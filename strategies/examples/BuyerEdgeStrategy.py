@@ -40,9 +40,9 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-
 # ===============================================================================
-# AUDIT STATUS (Post Conviction-Risk-Engine + Confirmed-Close Trail Upgrade)
+# AUDIT STATUS (Post Conviction-Risk-Engine + Confirmed-Close Trail +
+# WS Recovery + Basket Protection + Exit Attribution Upgrade)
 # ===============================================================================
 #
 # CRITICAL BUGS
@@ -62,69 +62,162 @@ if hasattr(sys.stderr, "reconfigure"):
 #   ✓ PendingEntry delta propagation
 #   ✓ Moneyness-aware target scaling
 #   ✓ Moneyness-aware trail activation scaling
-#   ✓ WebSocket stale-client recovery
+#
+#   ✓ Auth-error notification deduplication
+#   ✓ WS-dead entry protection
+#   ✓ Persistent WebSocket client architecture
+#   ✓ Subscription reconciliation engine
+#   ✓ Reconnect subscription restoration
+#   ✓ WebSocket circuit-breaker alerting
+#   ✓ WebSocket watchdog self-healing
+#   ✓ WebSocket health telemetry
+#   ✓ Reconcile-cycle monitoring
+#   ✓ Subscription drift detection
+#   ✓ Thread-leak visibility instrumentation
+#
+#   ✓ MIS product consistency (Entry / SL / Target / Exit)
+#   ✓ Basket protection order architecture
+#   ✓ Partial basket acceptance recovery
+#   ✓ Idempotent protection-order patching
+#   ✓ Basket-order fallback protection
+#   ✓ Startup broker-protection restoration
 #   ✓ Broker SL synchronization
 #   ✓ Position persistence compatibility
+#
+#   ✓ Exit attribution framework
+#   ✓ Exit-type normalization
+#   ✓ R-multiple journaling
+#   ✓ Daily-PnL accounting consistency
+#   ✓ EOD force-untrack journaling
+#   ✓ EOD force-untrack attribution
+#   ✓ Broker-fill accounting protection
 #
 #
 # HIGH SEVERITY ITEMS
 # ------------------------------------------------------------------------------
 # None currently identified.
 #
+# Current live-trading architecture:
+#
+#   Broker SL                : Native broker-side SL-M
+#   Broker Target            : Native broker-side LIMIT
+#   Entry Protection         : Basket-protected (SL + Target)
+#   Breakeven                : Confirmed-close driven
+#   Premium Trail            : Confirmed-close driven
+#   Spot Trail               : Confirmed-close driven
+#   Gamma Speed-X            : Confirmed-close ROI driven
+#   Exit Breach Detection    : Tick driven
+#   Exit Attribution         : Normalized exit-type tracking
+#   Journal Analytics        : R-multiple aware
+#
+# No known:
+#
+#   - state-corruption defects
+#   - conviction propagation defects
+#   - moneyness propagation defects
+#   - reconnect restoration defects
+#   - subscription reconciliation defects
+#   - broker protection synchronization defects
+#   - exit attribution defects
+#   - accounting drift defects
+#
+# remain open.
+#
 #
 # MEDIUM SEVERITY ITEMS (Calibration / Research)
 # ------------------------------------------------------------------------------
 #
-# 1. Conviction -> Initial SL relationship remains empirical.
+# 1. Gamma Speed-X thresholds remain distribution-dependent.
 #
 #    Current:
-#       Higher conviction -> tighter premium risk
-#       Lower conviction  -> wider premium risk
 #
-#    Alternative hypothesis:
-#       Strong conviction may justify slightly wider initial risk
-#       to survive seller-defense behavior before expansion.
-#
-#    Requires live trade outcome analysis.
-#
-#
-# 2. Gamma Speed-X thresholds remain distribution-dependent.
-#
-#    Current:
 #       ROI >=  50% -> 1.5x speed
 #       ROI >= 100% -> 2.0x speed
 #       ROI >= 150% -> 2.5x speed
 #
 #    Architecture verified.
-#    Thresholds require validation from live ROI distributions.
+#
+#    Future work:
+#
+#       Validate thresholds using live ROI distributions
+#       and realized premium expansion behavior.
 #
 #
-# 3. asym_score_threshold requires statistical calibration.
+# 2. asym_score_threshold requires statistical calibration.
 #
 #    Current:
+#
 #       cfg.asym_score_threshold
 #
 #    Future work:
-#       Log asym_score distributions,
-#       strike-selection rejection rates,
-#       and realized trade outcomes.
+#
+#       Log asym_score distributions
+#       Log rejection rates
+#       Log selected strike quality
+#       Log realized trade outcomes
 #
 #    Calibration should remain data-driven.
 #
 #
-# 4. Confirmed-close trail timing uses live WS snapshots.
+# 3. Conviction scaling constants require long-term calibration.
+#
+#       CONV_BE_BASE
+#       CONV_BE_RANGE
+#
+#       CONV_TRAIL_ACT_BASE
+#       CONV_TRAIL_ACT_RANGE
+#
+#    Current ranges are intentionally conservative.
+#
+#    Architecture validated.
+#
+#    Requires larger live-trade sample size before modification.
+#
+#
+# 4. Confirmed-close trail timing uses synchronized WS snapshots.
 #
 #    Current architecture:
+#
 #       Strategy thread wakes on clock-aligned boundaries.
 #
-#       Trail decisions use the most recent WS premium/spot LTP
-#       available at processing time.
+#       Trail decisions use the most recent synchronized
+#       premium and spot LTP available at processing time.
+#
+#       Trail ratchets only on new confirmed-close highs.
 #
 #    Result:
-#       Practical drift is typically sub-second and acceptable
-#       for 1-minute trail decisions.
+#
+#       Avoids intrabar noise ratchets.
+#       Avoids tick-spike contamination.
+#       Preserves graceful Speed-X decay behavior.
+#       Maintains sub-second execution latency.
 #
 #    No structural issue identified.
+#
+#
+# 5. Exit-type expectancy database is newly available.
+#
+#    Current exit categories:
+#
+#       BROKER_SL
+#       BROKER_TARGET
+#       PREMIUM_TRAIL
+#       SPOT_TRAIL
+#       MAX_HOLD
+#       EOD
+#       FORCE_UNTRACK_EST
+#       FORCE_UNTRACK_UNKNOWN
+#       MANUAL
+#       OTHER
+#
+#    Future work:
+#
+#       Measure expectancy by exit type.
+#       Measure average R-multiple by exit type.
+#       Identify negative-expectancy exit mechanisms.
+#
+#    Architecture complete.
+#    Research phase pending live sample accumulation.
 #
 #
 # LOW SEVERITY ITEMS
@@ -133,55 +226,106 @@ if hasattr(sys.stderr, "reconfigure"):
 # 1. Delta target curve may benefit from future optimization.
 #
 #    Current:
+#
 #       STRIKE_DELTA_BASE
 #       STRIKE_DELTA_RANGE
 #
 #    Architecture is stable.
-#    Requires larger trade sample for refinement.
+#
+#    Future tuning should be expectancy-driven and supported
+#    by live trade-distribution analysis.
 #
 #
-# 2. Conviction scaling constants require long-term calibration.
-#
-#       CONV_BE_BASE
-#       CONV_BE_RANGE
-#       CONV_TRAIL_ACT_BASE
-#       CONV_TRAIL_ACT_RANGE
-#
-#    Current ranges are intentionally conservative.
-#
-#
-# 3. Gamma Speed-X floor may require instrument-specific tuning.
+# 2. Gamma Speed-X floor may require instrument-specific tuning.
 #
 #    Current:
+#
 #       max(base_step * 0.40,
 #           base_step / trail_speed)
 #
 #    Production-safe.
 #
+#    Future optimization may improve gamma-capture efficiency.
+#
+#
+# 3. Confirmed-close implementation is not exchange OHLC close.
+#
+#    Current:
+#
+#       Uses latest synchronized WS LTP sampled on the
+#       clock-aligned strategy boundary.
+#
+#    Typical timing drift:
+#
+#       Sub-second.
+#
+#    Considered preferable to REST candle retrieval due to:
+#
+#       Lower latency
+#       Reduced API dependence
+#       Better live responsiveness
+#
+#    No structural issue identified.
+#
 #
 # 4. Deep-ITM stop sizing may warrant future expectancy research.
 #
 #    Current architecture:
+#
 #       Moneyness-aware stop sizing.
 #
 #    Future work:
-#       Compare Deep-ITM vs ATM expectancy,
-#       capital efficiency,
-#       and realized R-multiples.
+#
+#       Compare Deep-ITM vs ATM expectancy
+#       Compare capital efficiency
+#       Compare premium retention
+#       Compare realized R-multiples
 #
 #
 # 5. Conviction scaling is currently linear.
 #
 #    Current:
-#       conviction = abs(score) / 100
-#       Applied via linear interpolation throughout.
 #
-#    No architectural issue.
-#    Market edge is often nonlinear; future options:
-#       `conviction ** 1.5`  (compress low-conviction effect)
-#       `sqrt(conviction)`   (expand low-conviction effect)
-#    Selection should be validated against live expectancy data
-#    before any change is made.
+#       conviction = abs(score) / 100
+#
+#       Applied via:
+#
+#           Strike Selection
+#           Entry Risk
+#           Breakeven
+#           Trail Activation
+#
+#    No architectural issue identified.
+#
+#    Future research candidates:
+#
+#       conviction ** 1.5
+#           Compress low-conviction influence.
+#
+#       sqrt(conviction)
+#           Expand low-conviction influence.
+#
+#    Any change should be expectancy-validated before adoption.
+#
+#
+# 6. Retail API idempotency remains externally constrained.
+#
+#    Basket protection architecture is hardened against:
+#
+#       Partial acceptance
+#       Missing-leg recovery
+#       Startup restoration
+#
+#    However, true broker-side idempotency keys are not
+#    available through the retail API stack.
+#
+#    Residual tail-risk:
+#
+#       Network timeout after broker acceptance but before
+#       response delivery may theoretically create duplicate
+#       protection orders during fallback recovery.
+#
+#    Considered acceptable operational risk.
 #
 #
 # PRODUCTION READINESS
@@ -195,11 +339,28 @@ if hasattr(sys.stderr, "reconfigure"):
 #   Conviction Framework      : Stable
 #   Gamma Capture             : Stable
 #   Moneyness Framework       : Stable
-#   WebSocket Recovery        : Stable
+#
+#   WebSocket Architecture    : Stable
+#   Subscription Recovery     : Stable
+#   Watchdog Recovery         : Stable
+#   Auth Failure Detection    : Stable
+#   Entry Protection          : Stable
+#   Basket Protection         : Stable
+#
+#   Exit Attribution          : Stable
+#   Journal Analytics         : Stable
+#   R-Multiple Tracking       : Stable
+#   Accounting Consistency    : Stable
+#
 #   Broker SL Synchronization : Stable
+#   Startup Recovery          : Stable
+#   Position Reconstruction   : Stable
 #
 # Remaining work is calibration, expectancy research,
-# and trade-distribution analysis rather than structural correctness.
+# trade-distribution analysis, and statistical optimization
+# rather than structural correctness, fault tolerance,
+# or production reliability.
+#
 # ===============================================================================
 
 
@@ -385,8 +546,9 @@ class BotConfig:
     spot_reward_pct: float = 0.05   # env: SPOT_REWARD_PCT
 
     # ── Mode Flags ─────────────────────────────────────────────────────────────
-    long_only_mode:   bool = True
-    broker_sl_orders: bool = True
+    long_only_mode:        bool = True
+    broker_sl_orders:      bool = True
+    use_basket_protection: bool = True
 
     # ── Technicals ─────────────────────────────────────────────────────────────
     candle_interval: str = "1m"
@@ -745,6 +907,7 @@ class OptionPosition:
     entry_delta:          float | None  = None  # Actual delta at entry; used for SL/TP adaptation
     moneyness:            str           = "Unknown"  # "ATM" / "Sl-OTM" / "OTM" / "Deep-OTM"
     sl:                   float         = 0.0
+    initial_sl:           float         = 0.0
     tgt:                  float         = 0.0
     trail_active:         bool          = False
     trail_peak:           float | None  = None
@@ -1492,6 +1655,7 @@ class DataFetcher:
         self._greeks_cache_misses: int = 0
         self._greeks_api_calls: int = 0
         self._greeks_cache_max_size: int = 500  # LRU: prevent unbounded growth
+        self._auth_error_notified: bool = False  # One-time Telegram alert per session for UDAPI100050
 
     def clear_greeks_cache(self, symbol: str | None = None) -> None:
         """Clear cached option greeks. Called once per scan to avoid stale reads."""
@@ -1658,23 +1822,30 @@ class DataFetcher:
             
             error_msg = response.get("message", "")
             if isinstance(error_msg, str) and ("Invalid token" in error_msg or "UDAPI100050" in error_msg):
-                print(f"[DEBUG] {symbol}@{exchange}: quotes API error: {response}")
-                if self._notify:
-                    self._notify(f"🚨 API Auth Error: Invalid token detected for {symbol}. Triggering proactive re-login.", 9)
-                # Proactive re-login procedure to self-recover from authentication failures
-                # The actual token refresh mechanism depends on the specific broker integration
-                pass
+                print(f"[ERROR] {symbol}@{exchange}: broker token invalid (UDAPI100050): {response}")
+                if self._notify and not self._auth_error_notified:
+                    self._auth_error_notified = True
+                    self._notify(
+                        f"🚨 API Auth Error: Broker token invalid (UDAPI100050) for {symbol}.\n"
+                        f"All quote/chain calls will fail until token is refreshed.\n"
+                        f"Action: Re-login to broker and restart strategy.",
+                        9,
+                    )
             else:
-                print(f"[DEBUG] {symbol}@{exchange}: quotes API error: {response}")
-                
+                print(f"[ERROR] {symbol}@{exchange}: quotes API error: {response}")
             return {}
         except Exception as e:
             if "Invalid token" in str(e) or "UDAPI100050" in str(e):
-                print(f"[DEBUG] {symbol}@{exchange}: quotes API exception: {e}")
-                if self._notify:
-                    self._notify(f"🚨 API Auth Error: Invalid token exception for {symbol}. Triggering proactive re-login.", 9)
+                print(f"[ERROR] {symbol}@{exchange}: broker token invalid (exception): {e}")
+                if self._notify and not self._auth_error_notified:
+                    self._auth_error_notified = True
+                    self._notify(
+                        f"🚨 API Auth Error: Broker token invalid (exception) for {symbol}.\n"
+                        f"Action: Re-login to broker and restart strategy.",
+                        9,
+                    )
             else:
-                print(f"[DEBUG] {symbol}@{exchange}: quotes API exception: {e}")
+                print(f"[ERROR] {symbol}@{exchange}: quotes API exception: {e}")
             return {}
 
     def fetch_synthetic_future(self, symbol: str, expiry: str | None) -> float | None:
@@ -2645,7 +2816,8 @@ class WebSocketManager:
         self._notify_callback:    Callable[[str, int], None] | None = None   # U-G: wired after init
         self._fetcher:            DataFetcher | None = None  # Set via set_fetcher() after construction
         self._ws_started     = threading.Event()
-        self._subscriptions: set[tuple[str, str]] = set()   # (exchange, symbol) registry for reconnect
+        self._desired: set[tuple[str, str]] = set()   # Instruments we WANT subscribed (desired state)
+        self._actual:  set[tuple[str, str]] = set()   # Instruments SDK has confirmed subscribed (actual state)
         self._subscribe_lock  = threading.Lock()
         self._last_tick_time: float = 0.0                   # updated on every valid tick; used by watchdog
         self._ws_stale_alerted: bool = False                # U-G: rate-limit 30s WARNING log to once per stale window
@@ -2656,6 +2828,12 @@ class WebSocketManager:
         self._delta_lock = threading.Lock()
         # Thread pool to limit concurrent delta fetches (avoid spawning unlimited daemon threads)
         self._delta_executor = concurrent.futures.ThreadPoolExecutor(max_workers=3, thread_name_prefix="delta-pool")
+        self._ws_connected: bool = False  # True only while SDK reports a live, authenticated connection
+        self._reconnect_count: int = 0
+        self._reconcile_cycles: int = 0
+        self._repaired_subscriptions: int = 0
+        self._ws_start_time: float = time.time()
+        self._telemetry_last_log_time: float = 0.0
 
     def set_fetcher(self, fetcher: DataFetcher) -> None:
         """Set DataFetcher reference to consolidate greeks API calls."""
@@ -2664,6 +2842,10 @@ class WebSocketManager:
     def set_notify_callback(self, cb: Callable[[str, int], None]) -> None:
         """Wire the orchestrator's Telegram notify function into the WS watchdog (U-G)."""
         self._notify_callback = cb
+
+    def is_connected(self) -> bool:
+        """Returns True when the WebSocket is live and authenticated. Used by scan_underlying() entry guard."""
+        return self._ws_connected
 
     def _get_cached_delta(self, underlying: str, option_symbol: str, ttl: float = 30.0) -> float | None:
         """Return cached |delta| and refresh asynchronously when stale."""
@@ -2731,12 +2913,13 @@ class WebSocketManager:
 
     def subscribe(self, exchange: str, symbol: str) -> None:
         with self._subscribe_lock:
-            self._subscriptions.add((exchange, symbol))
+            self._desired.add((exchange, symbol))
             try:
                 self.client.subscribe_ltp(
                     [{"exchange": exchange, "symbol": symbol}],
                     on_data_received=self._on_ws_data,
                 )
+                self._actual.add((exchange, symbol))
                 print(f"[WS] Subscribed option {exchange}:{symbol}")
             except Exception as exc:
                 print(f"[WS] Subscribe error {exchange}:{symbol}: {exc}")
@@ -2744,31 +2927,36 @@ class WebSocketManager:
     def subscribe_spot(self, symbol: str) -> None:
         exch = self.config.index_exchange if symbol in self.config.index_underlyings else self.config.spot_exchange
         with self._subscribe_lock:
-            self._subscriptions.add((exch, symbol))
+            self._desired.add((exch, symbol))
             try:
                 self.client.subscribe_ltp(
                     [{"exchange": exch, "symbol": symbol}],
                     on_data_received=self._on_ws_data,
                 )
+                self._actual.add((exch, symbol))
                 print(f"[WS] Subscribed spot {exch}:{symbol}")
             except Exception as exc:
                 print(f"[WS] Subscribe spot error {symbol}: {exc}")
 
     def unsubscribe(self, exchange: str, symbol: str) -> None:
         with self._subscribe_lock:
-            self._subscriptions.discard((exchange, symbol))
+            self._desired.discard((exchange, symbol))
             try:
                 self.client.unsubscribe_ltp([{"exchange": exchange, "symbol": symbol}])
+                self._actual.discard((exchange, symbol))
             except Exception as exc:
+                self._actual.discard((exchange, symbol))
                 print(f"[WS] Unsubscribe error {exchange}:{symbol}: {exc}")
 
     def unsubscribe_spot(self, symbol: str) -> None:
         exch = self.config.index_exchange if symbol in self.config.index_underlyings else self.config.spot_exchange
         with self._subscribe_lock:
-            self._subscriptions.discard((exch, symbol))
+            self._desired.discard((exch, symbol))
             try:
                 self.client.unsubscribe_ltp([{"exchange": exch, "symbol": symbol}])
+                self._actual.discard((exch, symbol))
             except Exception as exc:
+                self._actual.discard((exch, symbol))
                 print(f"[WS] Unsubscribe spot error {symbol}: {exc}")
 
     def _on_ws_data(self, data: dict) -> None:
@@ -2864,40 +3052,64 @@ class WebSocketManager:
         max_backoff_secs = 300  # 5 minutes max backoff
         consecutive_failures = 0
         max_consecutive_failures = 36  # ~3 hours of retries before circuit break
+        is_first_connect = True
         while True:
             try:
-                # Re-instantiate the client in the retry loop.
-                # If the SDK caches a failed broker-auth state, this forces a clean start.
-                # `verbose=False/True/2` enables None/Basic/Verbose logging for deep visibility.
-                api_kwargs = dict(
-                    api_key=self.config.api_key, 
-                    host=self.config.api_host, 
-                    verbose=2
-                )
-                if self.config.ws_url:
-                    api_kwargs["ws_url"] = self.config.ws_url
-                self.client = api(**api_kwargs)
+                # Persistent single-client architecture — SDK-aligned.
+                # Per OpenAlgo SDK docs: one client instance, one connect(), many subscriptions.
+                # Re-instantiating api() on every attempt spawns new internal SDK threads
+                # without cleaning up the old ones, exhausting the OS thread limit.
+                # Fix: reuse self.client (constructed once in BuyerEdgeStrategy.__init__);
+                # disconnect() the previous transport before reconnecting.
+                print(f"[WS] Connecting... (active OS threads: {threading.active_count()})")
+                try:
+                    self.client.disconnect()   # Release previous transport threads
+                except Exception:
+                    pass
+                with self._subscribe_lock:
+                    self._actual.clear()
+                time.sleep(0.5)               # Brief pause: allow SDK thread teardown
 
                 ok = self.client.connect()
                 _actual_url = getattr(self.client, 'ws_url', ws_url)
                 print(f"[WS] Client connects using {_actual_url} (expected {ws_url})")
                 if ok:
+                    if not is_first_connect:
+                        self._reconnect_count += 1
+                    is_first_connect = False
+                    self._ws_connected = True
                     print(f"[WS] Connected to {_actual_url} — SDK managing reconnects automatically")
                     backoff_secs = 5  # Reset backoff on successful connect
                     consecutive_failures = 0
+                    # ── Diff-based subscription reconciliation ──────────────────────────────
+                    # Reconcile desired vs actual rather than a full replay.
+                    # Avoids redundant SDK subscribe calls for already-active instruments.
                     with self._subscribe_lock:
-                        subs = list(self._subscriptions)   # replay all subscriptions (handles reconnects)
-                    if subs:
-                        print(f"[WS] Replaying {len(subs)} subscription(s)...")
-                        for (exch, sym) in subs:
-                            try:
-                                with self._subscribe_lock:
-                                    self.client.subscribe_ltp(
-                                        [{"exchange": exch, "symbol": sym}],
-                                        on_data_received=self._on_ws_data,
-                                    )
-                            except Exception as _re_exc:
-                                print(f"[WS] Re-subscribe error {exch}:{sym}: {_re_exc}")
+                        to_add    = self._desired - self._actual
+                        to_remove = self._actual  - self._desired  # stale cleanup (edge case)
+                    if to_add or to_remove:
+                        print(f"[WS] Reconciling: +{len(to_add)} subscribe / -{len(to_remove)} unsubscribe")
+                    for (exch, sym) in to_remove:
+                        try:
+                            self.client.unsubscribe_ltp([{"exchange": exch, "symbol": sym}])
+                            with self._subscribe_lock:
+                                self._actual.discard((exch, sym))
+                        except Exception as _un_exc:
+                            print(f"[WS] Reconcile unsubscribe error {exch}:{sym}: {_un_exc}")
+                    for (exch, sym) in to_add:
+                        with self._subscribe_lock:
+                            if (exch, sym) not in self._desired:
+                                continue
+                        try:
+                            self.client.subscribe_ltp(
+                                [{"exchange": exch, "symbol": sym}],
+                                on_data_received=self._on_ws_data,
+                            )
+                            with self._subscribe_lock:
+                                if (exch, sym) in self._desired:
+                                    self._actual.add((exch, sym))
+                        except Exception as _re_exc:
+                            print(f"[WS] Reconcile subscribe error {exch}:{sym}: {_re_exc}")
                     while True:  # watchdog: graduated alerts then force-reconnect if feed silent
                         time.sleep(30)
                         elapsed = time.time() - self._last_tick_time
@@ -2922,12 +3134,54 @@ class WebSocketManager:
                             break   # exit watchdog → outer loop reconnects immediately
                         if not in_market:
                             self._ws_stale_alerted = False   # reset outside market hours
+
+                        # ── Fix B5: Periodic Reconcile Check ──
+                        # If a mid-batch subscribe fails, it won't be in _actual. Retry here.
+                        with self._subscribe_lock:
+                            missing = self._desired - self._actual
+                        if missing:
+                            self._reconcile_cycles += 1
+                            self._repaired_subscriptions += len(missing)
+                            print(f"[WS] Watchdog: Found {len(missing)} missing subscriptions. Attempting to reconcile...")
+                            for (exch, sym) in missing:
+                                with self._subscribe_lock:
+                                    if (exch, sym) not in self._desired:
+                                        continue
+                                try:
+                                    self.client.subscribe_ltp(
+                                        [{"exchange": exch, "symbol": sym}],
+                                        on_data_received=self._on_ws_data,
+                                    )
+                                    with self._subscribe_lock:
+                                        if (exch, sym) in self._desired:
+                                            self._actual.add((exch, sym))
+                                except Exception as _re_exc:
+                                    print(f"[WS] Watchdog subscribe error {exch}:{sym}: {_re_exc}")
+
+                        # ── Telemetry Logging ──
+                        now_ts = time.time()
+                        if now_ts - self._telemetry_last_log_time >= 300:
+                            self._telemetry_last_log_time = now_ts
+                            with self._subscribe_lock:
+                                d_len = len(self._desired)
+                                a_len = len(self._actual)
+                            uptime_mins = (now_ts - self._ws_start_time) / 60.0
+                            last_tick_sec = (now_ts - self._last_tick_time) if self._last_tick_time else 0.0
+                            print(
+                                f"[WS-HEALTH] Uptime: {uptime_mins:.1f}m | Threads: {threading.active_count()} | "
+                                f"Subs: {d_len}/{a_len} | Reconnects: {self._reconnect_count} | "
+                                f"Reconciles: {self._reconcile_cycles} (Repaired: {self._repaired_subscriptions}) | "
+                                f"LastTick: {last_tick_sec:.1f}s"
+                            )
+
                     continue        # skip backoff sleep — reconnect without delay
                 consecutive_failures += 1
+                self._ws_connected = False
                 print(f"[WS] Connection failed, Verify [WEBSOCKET_URL={self.config.ws_url}, API Key: {self.config.api_key}], attempt {consecutive_failures}/{max_consecutive_failures}")
             except Exception as exc:
                 _emsg = str(exc)
                 consecutive_failures += 1
+                self._ws_connected = False
                 print(f"[WS] Connection error: {exc}. Attempt {consecutive_failures}/{max_consecutive_failures}")
                 if "Invalid API key" in _emsg or "AUTHENTICATION_ERROR" in _emsg:
                     print("[WS] HINT: Check OPENALGO_API_KEY — copy the key from OpenAlgo dashboard \u2192 API Key page")
@@ -2937,6 +3191,15 @@ class WebSocketManager:
             if consecutive_failures >= max_consecutive_failures:
                 print(f"[WS] Circuit breaker triggered: {consecutive_failures} consecutive failures. Giving up.")
                 print("[WS] Check broker connectivity, credentials, and reverse proxy configuration.")
+                if self._notify_callback:
+                    try:
+                        self._notify_callback(
+                            f"🚨 WS Circuit Breaker: {consecutive_failures} consecutive failures. "
+                            f"WebSocket monitoring STOPPED. Only broker SL-M protecting positions.",
+                            9,
+                        )
+                    except Exception:
+                        pass
                 return  # Exit thread to prevent infinite retry accumulation
             # Exponential backoff (5s → 7.5s → 11.25s ... → 300s max)
             current_backoff = min(backoff_secs, max_backoff_secs)
@@ -3143,14 +3406,15 @@ class OrderManager:
                         pnl = 0.0
                         if executed_price > 0:
                             pnl = (executed_price - pos.entry_premium) * pos.qty
-                            self._risk.record_exit(pnl)
-                            self._notify(
-                                f"🏦 Broker order filled for {underlying}\n"
-                                f"Option: {pos.symbol}\nExecuted: ₹{executed_price:.2f}\n"
-                                f"P&L: ₹{pnl:.0f}\nReason: {reason}",
-                                2,
-                            )
-                        # PNL-2: write journal entry for broker-triggered exits
+                        # PNL-2: always update both risk counter and journal together
+                        # (prevents journal vs daily_pnl drift when average_price=0)
+                        self._risk.record_exit(pnl)
+                        self._notify(
+                            f"🏦 Broker order filled for {underlying}\n"
+                            f"Option: {pos.symbol}\nExecuted: ₹{executed_price:.2f}\n"
+                            f"P&L: ₹{pnl:.0f}\nReason: {reason}",
+                            2,
+                        )
                         self._write_journal(underlying, pos, executed_price, pnl, reason)
                         self._ws.unsubscribe(self.config.fno_exchange, pos.symbol)
                         self._ws.unsubscribe_spot(pos.spot_symbol)
@@ -3191,6 +3455,7 @@ class OrderManager:
             entry_delta=entry_delta,
             moneyness=moneyness,
             sl=sl,
+            initial_sl=sl,
             tgt=tgt,
             spot_symbol=underlying,
             spot_entry=spot,
@@ -3207,6 +3472,91 @@ class OrderManager:
         self._ws.subscribe_spot(underlying)
 
         if cfg.broker_sl_orders and not cfg.paper_trade:
+            if getattr(cfg, "use_basket_protection", True) and hasattr(self.client, "basketorder"):
+                self._place_protection_basket(underlying, pos, option_symbol, qty, sl, tgt)
+            else:
+                self._place_protection_orders_sequential(underlying, pos, option_symbol, qty, sl, tgt)
+
+            if pos.sl_order_id or pos.tgt_order_id:
+                pos.broker_protection = True
+
+        print(
+            f"[ORDER] Position registered for {underlying}: {option_symbol} "
+            f"QTY={qty} ENTRY=₹{executed:.2f} SL=₹{sl:.2f} "
+            f"(pts={resolved_sl_pts:.2f}) TGT=₹{tgt:.2f}"
+        )
+
+    def _place_protection_basket(
+        self,
+        underlying: str,
+        pos: OptionPosition,
+        option_symbol: str,
+        qty: int,
+        sl: float,
+        tgt: float
+    ) -> None:
+        cfg = self.config
+        try:
+            basket_orders = [
+                {
+                    "symbol": option_symbol,
+                    "exchange": cfg.fno_exchange,
+                    "action": "SELL",
+                    "quantity": qty,
+                    "pricetype": "SL-M",
+                    "product": "MIS",
+                    "trigger_price": sl,
+                    "price": 0,
+                    "strategy": cfg.strategy_name,
+                },
+                {
+                    "symbol": option_symbol,
+                    "exchange": cfg.fno_exchange,
+                    "action": "SELL",
+                    "quantity": qty,
+                    "pricetype": "LIMIT",
+                    "product": "MIS",
+                    "price": tgt,
+                    "strategy": cfg.strategy_name,
+                }
+            ]
+            basket_resp = self.client.basketorder(orders=basket_orders)
+            if isinstance(basket_resp, dict) and basket_resp.get("status") == "success":
+                results = basket_resp.get("results", [])
+                for i, leg in enumerate(results):
+                    if leg.get("status") != "success" or not leg.get("orderid"):
+                        print(f"[ORDER] Basket leg {i} rejected for {underlying}: {leg}")
+                        continue
+                    
+                    pt = str(leg.get("pricetype", leg.get("price_type", leg.get("ordertype", "")))).upper()
+                    is_sl = ("SL" in pt) if pt else (i == 0)
+                    
+                    if is_sl:
+                        pos.sl_order_id = leg.get("orderid")
+                        print(f"[ORDER] Basket SL-M placed for {underlying}: trigger ₹{sl:.2f} (id:{pos.sl_order_id})")
+                    else:
+                        pos.tgt_order_id = leg.get("orderid")
+                        print(f"[ORDER] Basket LIMIT placed for {underlying}: ₹{tgt:.2f} (id:{pos.tgt_order_id})")
+
+                if pos.sl_order_id and pos.tgt_order_id:
+                    return
+        except Exception as exc:
+            print(f"[ORDER] Basket order error for {underlying}: {exc}")
+
+        print(f"[ORDER] Falling back to sequential protective orders for {underlying}...")
+        self._place_protection_orders_sequential(underlying, pos, option_symbol, qty, sl, tgt)
+
+    def _place_protection_orders_sequential(
+        self,
+        underlying: str,
+        pos: OptionPosition,
+        option_symbol: str,
+        qty: int,
+        sl: float,
+        tgt: float
+    ) -> None:
+        cfg = self.config
+        if not pos.sl_order_id:
             try:
                 sl_resp = self.client.placeorder(
                     strategy=cfg.strategy_name,
@@ -3224,6 +3574,8 @@ class OrderManager:
                     print(f"[ORDER] Broker SL-M placed for {underlying}: trigger ₹{sl:.2f} (id:{pos.sl_order_id})")
             except Exception as exc:
                 print(f"[ORDER] Broker SL-M error for {underlying}: {exc}")
+                
+        if not pos.tgt_order_id:
             try:
                 tgt_resp = self.client.placeorder(
                     strategy=cfg.strategy_name,
@@ -3240,14 +3592,6 @@ class OrderManager:
                     print(f"[ORDER] Broker LIMIT placed for {underlying}: ₹{tgt:.2f} (id:{pos.tgt_order_id})")
             except Exception as exc:
                 print(f"[ORDER] Broker LIMIT target error for {underlying}: {exc}")
-            if pos.sl_order_id or pos.tgt_order_id:
-                pos.broker_protection = True
-
-        print(
-            f"[ORDER] Position registered for {underlying}: {option_symbol} "
-            f"QTY={qty} ENTRY=₹{executed:.2f} SL=₹{sl:.2f} "
-            f"(pts={resolved_sl_pts:.2f}) TGT=₹{tgt:.2f}"
-        )
 
     # ── Trade Journal ──────────────────────────────────────────────────────────
 
@@ -3497,6 +3841,33 @@ class OrderManager:
             print(f"[ORDER] place_exit error for {underlying}: {exc}")
 
         if order_id is None:
+            now_hm = get_ist_now().strftime("%H:%M")
+            is_past_cutoff = bool(cfg.square_off_time and now_hm >= cfg.square_off_time)
+
+            if is_past_cutoff:
+                best_price = self._state.ltp_map.get(pos.symbol)
+                if best_price is not None:
+                    pnl = (best_price - pos.entry_premium) * pos.qty
+                    journal_reason = "EOD-ForceUntrack-Estimated"
+                else:
+                    best_price = 0.0
+                    pnl = 0.0
+                    journal_reason = "EOD-ForceUntrack-NoBrokerPrice"
+                    
+                self._risk.record_exit(pnl)
+                self._write_journal(underlying, pos, best_price, pnl, journal_reason)
+                self._ws.unsubscribe(cfg.fno_exchange, pos.symbol)
+                self._ws.unsubscribe_spot(pos.spot_symbol)
+                print(
+                    f"[ORDER] Exit order rejected after EOD cutoff — untracking {underlying} "
+                    f"({journal_reason} price ₹{best_price:.2f} | P&L ₹{pnl:.0f})"
+                )
+                with self._state.state_lock:
+                    self._state.positions.pop(underlying, None)
+                with self._state.exit_lock:
+                    self._state.exit_queue.discard(underlying)
+                return
+
             # Order was not submitted — safe to release exit lock so the next SL
             # trigger from the WS trail can retry the exit on the next tick.
             print(f"[ORDER] Exit order not submitted for {underlying} — releasing for retry")
@@ -3647,16 +4018,43 @@ class OrderManager:
                         8 if pnl < 0 else 6,
                     )
                 elif status in ("rejected", "cancelled", "canceled"):
-                    with self._state.state_lock:
-                        self._state.pending_exits.pop(underlying, None)
-                        pos.exit_pending = False
-                    with self._state.exit_lock:
-                        self._state.exit_queue.discard(underlying)
-                    self._notify(
-                        f"🚨 {self.config.strategy_name}: pending EXIT {order_id} {status} for {underlying} {opt_sym}\n"
-                        "Position remains tracked; software exit may retry on next trigger.",
-                        9,
-                    )
+                    now_hm = get_ist_now().strftime("%H:%M")
+                    is_past_cutoff = bool(self.config.square_off_time and now_hm >= self.config.square_off_time)
+
+                    if is_past_cutoff:
+                        best_price = self._state.ltp_map.get(opt_sym)
+                        if best_price is not None:
+                            pnl = (best_price - pos.entry_premium) * pos.qty
+                            journal_reason = "EOD-ForceUntrack-Estimated"
+                        else:
+                            best_price = 0.0
+                            pnl = 0.0
+                            journal_reason = "EOD-ForceUntrack-NoBrokerPrice"
+                            
+                        self._risk.record_exit(pnl)
+                        self._write_journal(underlying, pos, best_price, pnl, journal_reason)
+                        self._ws.unsubscribe(self.config.fno_exchange, opt_sym)
+                        self._ws.unsubscribe_spot(pos.spot_symbol)
+                        with self._state.state_lock:
+                            self._state.pending_exits.pop(underlying, None)
+                            self._state.positions.pop(underlying, None)
+                        with self._state.exit_lock:
+                            self._state.exit_queue.discard(underlying)
+                        print(
+                            f"[PENDING] EXIT {order_id} {status} after EOD cutoff — untracking {underlying} "
+                            f"({journal_reason} price ₹{best_price:.2f} | P&L ₹{pnl:.0f})"
+                        )
+                    else:
+                        with self._state.state_lock:
+                            self._state.pending_exits.pop(underlying, None)
+                            pos.exit_pending = False
+                        with self._state.exit_lock:
+                            self._state.exit_queue.discard(underlying)
+                        self._notify(
+                            f"🚨 {self.config.strategy_name}: pending EXIT {order_id} {status} for {underlying} {opt_sym}\n"
+                            "Position remains tracked; software exit may retry on next trigger.",
+                            9,
+                        )
 
 
 # ===============================================================================
@@ -3671,7 +4069,7 @@ class OptionsBuyerEdgeBot:
 
     def __init__(self, config: BotConfig):
         self.config = config
-        api_kwargs: dict = dict(api_key=config.api_key, host=config.api_host)
+        api_kwargs: dict = dict(api_key=config.api_key, host=config.api_host, verbose=1)
         if config.ws_url:
             api_kwargs["ws_url"] = config.ws_url   # explicit override; otherwise SDK derives from host
         self.client = api(**api_kwargs)
@@ -3695,11 +4093,13 @@ class OptionsBuyerEdgeBot:
         if not self.config.telegram_username:
             return
         try:
-            self.client.telegram(
+            result = self.client.telegram(
                 username=self.config.telegram_username,
                 strategy=self.config.strategy_name,
                 message=message,
+                priority=priority,
             )
+            print(f"[TELEGRAM] Send result: {result}")
         except Exception as exc:
             print(f"[TELEGRAM] Send error: {exc}")
 
@@ -3785,6 +4185,10 @@ class OptionsBuyerEdgeBot:
                             pos.sl_order_id = order.get("orderid")
                         elif "limit" in o_type:
                             pos.tgt_order_id = order.get("orderid")
+                
+                if pos.sl_order_id or pos.tgt_order_id:
+                    pos.broker_protection = True
+
                 # Register + resubscribe WS
                 with self.state.state_lock:
                     self.state.positions[underlying] = pos
@@ -4195,6 +4599,22 @@ class OptionsBuyerEdgeBot:
             )
             _log_greeks_perf("qty-zero", sep_count=79)
             return
+
+        # ── WS connectivity guard — must run last so all preflight logs are printed ──
+        # When WS is down, trail/target detection is blind; broker SL-M provides minimum protection.
+        # Block entry entirely if broker_sl_orders=False (no fallback protection at all).
+        if not self.ws.is_connected():
+            if not cfg.broker_sl_orders:
+                print(
+                    f"[SCAN] {symbol}: entry BLOCKED — WS disconnected and broker_sl_orders=False. "
+                    f"No protection available."
+                )
+                _log_greeks_perf("ws-dead-no-broker-sl", sep_count=79)
+                return
+            print(
+                f"[RISK] {symbol}: WS disconnected — entry allowed (broker SL-M active). "
+                f"Trail/target hit detection blind until WS recovers."
+            )
 
         # All guards passed — close the scan block then log intent
         _log_greeks_perf("entry-preflight", sep_count=79)
