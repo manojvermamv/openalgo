@@ -400,35 +400,44 @@ WATCH_FACTOR = 0.75
 
 # ── Layer 3: Strike Selection (conviction-driven) ──────────────────────────────
 # All strike-selection parameters are driven by a single `conviction` scalar
-# derived from abs(signal_score) / 100.0.  This eliminates hard regime jumps.
+# derived from (abs(signal_score) - min_score) / (100 - min_score).  This
+# eliminates hard regime jumps and maps the tradeable score range [min→100]
+# continuously to [0.0, 1.0].
 #
 # Delta targeting — piecewise continuous mapping:
-#   Score < 60   → [STRIKE_DELTA_BASE, STRIKE_DELTA_PIVOT] (OTM -> ATM)
-#   Score >= 60  → [STRIKE_DELTA_PIVOT, STRIKE_DELTA_MAX]  (ATM -> Mild ITM)
-STRIKE_DELTA_BASE  = 0.15   # minimum delta at min_score (deepest OTM allowed)
-STRIKE_DELTA_PIVOT = 0.50   # delta at SCORE_PIVOT (ATM)
-STRIKE_DELTA_MAX   = 0.70   # maximum delta at score 100 (mild ITM)
-STRIKE_SCORE_PIVOT = 60.0   # score where we cross ATM
+#   Score < 50   → [STRIKE_DELTA_BASE, STRIKE_DELTA_PIVOT] (near-OTM → ATM)
+#   Score >= 50  → [STRIKE_DELTA_PIVOT, STRIKE_DELTA_MAX]  (ATM → Mild ITM)
+#
+# Calibration change (2026-06-04):
+#   STRIKE_DELTA_BASE:  raised 0.15 → 0.25: even the weakest signal now targets
+#     a near-OTM strike (Δ≈0.25) instead of a deep-OTM (Δ≈0.15), reducing
+#     SL width and preventing systematic qty=0 risk-cap rejections.
+#   STRIKE_SCORE_PIVOT: lowered 60 → 50: ATM targeting is reached at a lower
+#     score, so today's typical 42–52 signals get meaningfully better strikes.
+STRIKE_DELTA_BASE  = 0.25   # min delta at min_score (near-OTM floor) — raised from 0.15 to reduce SL width on weak signals
+STRIKE_DELTA_PIVOT = 0.50   # delta at SCORE_PIVOT (ATM) — crossover between OTM and mild-ITM targeting zones
+STRIKE_DELTA_MAX   = 0.70   # max delta at score 100 (mild ITM) — prevents over-leveraged deep-ITM selection
+STRIKE_SCORE_PIVOT = 50.0   # score where ATM is targeted — lowered from 60 so typical 42–52 signals reach ATM-ish strikes
 
 # Delta band half-width — how wide to search around the target delta.
 # e.g. 0.08 means [target-0.08, target+0.08].
-STRIKE_DELTA_BAND = 0.08
+STRIKE_DELTA_BAND = 0.08    # search band around target_delta — wider band tolerates illiquid chains with sparse delta coverage
 
 # Maximum acceptable delta gap in the fallback strike selection.
 # If the nearest available delta is farther than this from the target, the
 # fallback is considered pathological and the delta filter is bypassed entirely,
 # falling back to pure liquidity ranking instead of picking a wildly OTM strike.
-MAX_DELTA_GAP = 0.15
+MAX_DELTA_GAP = 0.15        # fallback gap ceiling — exceeding this bypasses delta filter entirely and uses liquidity rank only
 
 # Dynamic asym_score weighting — delta vs liquidity tradeoff:
 #   conviction=0.0 → delta_weight = STRIKE_DELTA_WEIGHT_BASE          (favour liquidity)
 #   conviction=1.0 → delta_weight = STRIKE_DELTA_WEIGHT_BASE + RANGE  (favour delta fit)
-STRIKE_DELTA_WEIGHT_BASE  = 0.10   # weight at zero conviction
-STRIKE_DELTA_WEIGHT_RANGE = 0.20   # extra weight added at full conviction (max 0.30)
+STRIKE_DELTA_WEIGHT_BASE  = 0.10   # delta fit weight at zero conviction — low conviction defers to OI/volume liquidity signals
+STRIKE_DELTA_WEIGHT_RANGE = 0.20   # additional delta weight at max conviction — total 0.30 at high conviction (max delta precision)
 
 # Maximum strike search window as a fraction of spot price (each side).
 # e.g. 0.05 = ±5% → CE: [spot, spot*1.05]; PE: [spot*0.95, spot].
-STRIKE_RANGE_PCT = 0.05
+STRIKE_RANGE_PCT = 0.05     # strike search radius — ±5% of spot; wider = more candidates but lower quality floor
 
 # ── Conviction Risk Engine — global tuning constants ──────────────────────────
 # These constants are shared by SL sizing, breakeven, and all trail functions
@@ -480,6 +489,8 @@ class BotConfig:
 
     # ── Notifications ──────────────────────────────────────────────────────────
     telegram_username: str = ""
+    live_pnl_alert_interval: int = 60
+    risk_based_sizing_enabled: bool = False  # When True, caps qty by RISK_PERCENT of capital; disabled by default
 
     # ── Options Parameters ─────────────────────────────────────────────────────
     dte_min:        int = 7
@@ -682,6 +693,8 @@ class BotConfig:
             fno_exchange=os.getenv("FNO_EXCHANGE", defaults.fno_exchange),
             index_exchange=os.getenv("INDEX_EXCHANGE", defaults.index_exchange),
             telegram_username=os.getenv("TELEGRAM_USERNAME", defaults.telegram_username),
+            live_pnl_alert_interval=int(os.getenv("LIVE_PNL_ALERT_INTERVAL", str(defaults.live_pnl_alert_interval))),
+            risk_based_sizing_enabled=os.getenv("RISK_BASED_SIZING", str(defaults.risk_based_sizing_enabled)).lower() in ("1", "true", "yes"),
             dte_min=int(os.getenv("DTE_MIN", str(defaults.dte_min))),
             dte_max=int(os.getenv("DTE_MAX", str(defaults.dte_max))),
             otm_offset=int(os.getenv("OTM_OFFSET", str(defaults.otm_offset))),
@@ -1655,7 +1668,7 @@ class DataFetcher:
         self._greeks_cache_misses: int = 0
         self._greeks_api_calls: int = 0
         self._greeks_cache_max_size: int = 500  # LRU: prevent unbounded growth
-        self._auth_error_notified: bool = False  # One-time Telegram alert per session for UDAPI100050
+        self._auth_error_notified: bool = False  # One-time alert per session for UDAPI100050
 
     def clear_greeks_cache(self, symbol: str | None = None) -> None:
         """Clear cached option greeks. Called once per scan to avoid stale reads."""
@@ -2445,8 +2458,8 @@ class StrikeSelector:
         )
 
         # ── Piecewise continuous delta target ─────────────────────────────────
-        # 0 - 50 score   → STRIKE_DELTA_BASE to STRIKE_DELTA_PIVOT (OTM -> ATM)
-        # 50 - 100 score → STRIKE_DELTA_PIVOT to STRIKE_DELTA_MAX (ATM -> ITM)
+        # 0 - 50 score   → STRIKE_DELTA_BASE(0.25) to STRIKE_DELTA_PIVOT(0.50)  (near-OTM → ATM)
+        # 50 - 100 score → STRIKE_DELTA_PIVOT(0.50) to STRIKE_DELTA_MAX(0.70)   (ATM → mild ITM)
         if abs_score <= STRIKE_SCORE_PIVOT:
             # Map [min_score, SCORE_PIVOT] -> [BASE, PIVOT]
             score_range = max(STRIKE_SCORE_PIVOT - cfg.min_score, 1.0)
@@ -3402,6 +3415,17 @@ class OrderManager:
                             with self._state.exit_lock:
                                 self._state.exit_queue.add(underlying)
                         print(f"[ORDER] Broker {attr_name} filled for {underlying} ({oid})")
+                        
+                        # --- CANCEL THE OTHER LEG ---
+                        other_oid = pos.tgt_order_id if attr_name == "sl_order_id" else pos.sl_order_id
+                        other_name = "tgt_order_id" if attr_name == "sl_order_id" else "sl_order_id"
+                        if other_oid:
+                            try:
+                                print(f"[ORDER] Cancelling opposite broker order {other_name} ({other_oid})...")
+                                self.client.cancelorder(order_id=other_oid, strategy=self.config.strategy_name)
+                            except Exception as c_exc:
+                                print(f"[ORDER] Cancel opposite broker order error {other_name} ({other_oid}): {c_exc}")
+                        # ----------------------------
                         executed_price = float(data.get("average_price", 0) or 0)
                         pnl = 0.0
                         if executed_price > 0:
@@ -3409,10 +3433,19 @@ class OrderManager:
                         # PNL-2: always update both risk counter and journal together
                         # (prevents journal vs daily_pnl drift when average_price=0)
                         self._risk.record_exit(pnl)
+                        direction_emoji = "🔺 UP" if pos.option_type.upper() == "CE" else "🔻 DN"
+                        emoji = "✅ PROFIT" if pnl >= 0 else "❌ LOSS"
+                        risk_pts = max(0.01, pos.entry_premium - pos.initial_sl)
+                        risk_amt = risk_pts * pos.qty
+                        r_multiple = pnl / risk_amt if risk_amt > 0 else 0.0
+                        hold_mins = max(0, int((get_ist_now() - pos.entry_time).total_seconds() / 60))
                         self._notify(
-                            f"🏦 Broker order filled for {underlying}\n"
-                            f"Option: {pos.symbol}\nExecuted: ₹{executed_price:.2f}\n"
-                            f"P&L: ₹{pnl:.0f}\nReason: {reason}",
+                            f"{emoji} EXIT: {underlying}\n"
+                            f"📌 {reason.upper()}\n"
+                            f"{direction_emoji} {pos.symbol}\n"
+                            f"🚪 ₹{pos.entry_premium:.2f} → ₹{executed_price:.2f}\n"
+                            f"💰 P&L: ₹{pnl:.0f} ({r_multiple:+.2f}R)\n"
+                            f"⏱ Hold: {hold_mins}m | Daily: ₹{self._risk.daily_pnl:.0f}",
                             2,
                         )
                         self._write_journal(underlying, pos, executed_price, pnl, reason)
@@ -3486,6 +3519,24 @@ class OrderManager:
             f"(pts={resolved_sl_pts:.2f}) TGT=₹{tgt:.2f}"
         )
 
+        direction_emoji = "🔺 UP" if direction.upper() == "CE" else "🔻 DN"
+        now_str = datetime.now().strftime("%H:%M:%S")
+        actual_sl_pts = round(executed - sl, 2)
+        actual_target_pts = round(tgt - executed, 2)
+        rrr = round(actual_target_pts / actual_sl_pts, 2) if actual_sl_pts > 0 else 0
+        sl_amt = actual_sl_pts * qty
+        tgt_amt = actual_target_pts * qty
+        delta_str = f"{entry_delta:.2f}" if entry_delta is not None else "N/A"
+        mode_str = "PAPER" if cfg.paper_trade else "TRADE"
+        self._notify(
+            f"🚀 {direction_emoji} {mode_str} ENTRY: {underlying} @ {now_str}\n"
+            f"🔹 Option: {option_symbol} (x{qty})\n"
+            f"🎯 Fill Price: ₹{executed:.2f}\n"
+            f"📊 {moneyness} | RRR: 1:{rrr} | Δ:{delta_str} | Conv:{entry_conviction:.0%}\n"
+            f"🛑 SL: {actual_sl_pts:.1f} (₹{sl_amt:.0f}) | 🏁 TGT: {actual_target_pts:.1f} (₹{tgt_amt:.0f})",
+            2,
+        )
+
     def _place_protection_basket(
         self,
         underlying: str,
@@ -3507,7 +3558,6 @@ class OrderManager:
                     "product": "MIS",
                     "trigger_price": sl,
                     "price": 0,
-                    "strategy": cfg.strategy_name,
                 },
                 {
                     "symbol": option_symbol,
@@ -3517,7 +3567,6 @@ class OrderManager:
                     "pricetype": "LIMIT",
                     "product": "MIS",
                     "price": tgt,
-                    "strategy": cfg.strategy_name,
                 }
             ]
             basket_resp = self.client.basketorder(orders=basket_orders)
@@ -3660,14 +3709,6 @@ class OrderManager:
                 sl_pts=resolved_sl_pts, entry_delta=entry_delta,
                 entry_conviction=entry_conviction,
             )
-            self._notify(
-                f"📄 PAPER Entry: {underlying}\n"
-                f"Option: {option_symbol} x{qty}\n"
-                f"Sim fill: ₹{executed:.2f}\n"
-                f"SL: ₹{executed - resolved_sl_pts:.2f} | "
-                f"TGT: ₹{executed + cfg.premium_target_pts:.2f}",
-                2,
-            )
             return True
 
         with self._state.state_lock:
@@ -3756,13 +3797,6 @@ class OrderManager:
                 sl_pts=resolved_sl_pts, entry_delta=entry_delta,
                 entry_conviction=entry_conviction,
             )
-            self._notify(
-                f"✅ Entry executed: {underlying}\n"
-                f"Option: {option_symbol}\nQty: {qty}\nExecuted: ₹{executed:.2f}\n"
-                f"SL: ₹{executed - resolved_sl_pts:.2f} | "
-                f"TGT: ₹{executed + cfg.premium_target_pts:.2f}",
-                2,
-            )
             return True
         except Exception as exc:
             print(f"[ORDER] placeorder error for {underlying}: {exc}")
@@ -3791,12 +3825,19 @@ class OrderManager:
                 self._state.positions.pop(underlying, None)
             with self._state.exit_lock:
                 self._state.exit_queue.discard(underlying)
-            emoji = "✅" if pnl >= 0 else "❌"
+            direction_emoji = "🔺 UP" if pos.option_type.upper() == "CE" else "🔻 DN"
+            emoji = "✅ PROFIT" if pnl >= 0 else "❌ LOSS"
+            risk_pts = max(0.01, pos.entry_premium - pos.initial_sl)
+            risk_amt = risk_pts * pos.qty
+            r_multiple = pnl / risk_amt if risk_amt > 0 else 0.0
+            hold_mins = max(0, int((get_ist_now() - pos.entry_time).total_seconds() / 60))
             self._notify(
-                f"{emoji} PAPER Exit: {underlying} | {reason}\n"
-                f"Option: {pos.symbol}\n"
-                f"Entry ₹{pos.entry_premium:.2f} → Exit ₹{executed_price:.2f}\n"
-                f"P&L: ₹{pnl:.0f} | Daily ₹{self._risk.daily_pnl:.0f}",
+                f"{emoji} PAPER EXIT: {underlying}\n"
+                f"📌 {reason.upper()}\n"
+                f"{direction_emoji} {pos.symbol}\n"
+                f"🚪 ₹{pos.entry_premium:.2f} → ₹{executed_price:.2f}\n"
+                f"💰 P&L: ₹{pnl:.0f} ({r_multiple:+.2f}R)\n"
+                f"⏱ Hold: {hold_mins}m | Daily: ₹{self._risk.daily_pnl:.0f}",
                 2,
             )
             return
@@ -3908,12 +3949,19 @@ class OrderManager:
         with self._state.exit_lock:
             self._state.exit_queue.discard(underlying)
 
-        emoji = "✅" if pnl >= 0 else "❌"
+        direction_emoji = "🔺 UP" if pos.option_type.upper() == "CE" else "🔻 DN"
+        emoji = "✅ PROFIT" if pnl >= 0 else "❌ LOSS"
+        risk_pts = max(0.01, pos.entry_premium - pos.initial_sl)
+        risk_amt = risk_pts * pos.qty
+        r_multiple = pnl / risk_amt if risk_amt > 0 else 0.0
+        hold_mins = max(0, int((get_ist_now() - pos.entry_time).total_seconds() / 60))
         self._notify(
-            f"{emoji} Exit: {underlying} | {reason}\n"
-            f"Option: {pos.symbol}\n"
-            f"Entry ₹{pos.entry_premium:.2f} → Exit ₹{executed_price:.2f}\n"
-            f"P&L: ₹{pnl:.0f} | Daily ₹{self._risk.daily_pnl:.0f}",
+            f"{emoji} EXIT: {underlying}\n"
+            f"📌 {reason.upper()}\n"
+            f"{direction_emoji} {pos.symbol}\n"
+            f"🚪 ₹{pos.entry_premium:.2f} → ₹{executed_price:.2f}\n"
+            f"💰 P&L: ₹{pnl:.0f} ({r_multiple:+.2f}R)\n"
+            f"⏱ Hold: {hold_mins}m | Daily: ₹{self._risk.daily_pnl:.0f}",
             2,
         )
 
@@ -4075,21 +4123,22 @@ class OptionsBuyerEdgeBot:
         self.client = api(**api_kwargs)
         self.state   = BotState(lookback_bars=config.lookback_bars)
         self.risk    = RiskManager(self.client, config, self.state)
-        self.fetcher = DataFetcher(self.client, config, notify_callback=self._send_telegram)
+        self.fetcher = DataFetcher(self.client, config, notify_callback=self._send_alert)
         self.sl_policy      = EntryStopLossPolicy(self.fetcher, config)
         self.trail_engine   = TrailSLEngine(self.fetcher, config)
         self.scorer         = SignalEngine(config)
         self.strikes        = StrikeSelector(self.fetcher, config)
         self.ws             = WebSocketManager(self.client, config, self.state)
-        self.orders         = OrderManager(self.client, config, self.state, self.risk, self.ws, self.fetcher, self._send_telegram)
+        self.orders         = OrderManager(self.client, config, self.state, self.risk, self.ws, self.fetcher, self._send_alert)
         # Wire callbacks and dependencies to break circular dependency + consolidate API calls
         self.ws.set_fetcher(self.fetcher)       # Reuse DataFetcher cache for delta in trailing SL
         self.ws.set_exit_callback(self.orders.place_exit)
         self.ws.set_sl_modify_callback(self.orders.modify_broker_sl)
-        self.ws.set_notify_callback(self._send_telegram)  # U-G: WS watchdog Telegram alert
+        self.ws.set_notify_callback(self._send_alert)  # U-G: WS watchdog alert
         self.trail_engine.modify_callback = self.orders.modify_broker_sl
+        self._last_pnl_alert_time: float = 0.0
 
-    def _send_telegram(self, message: str, priority: int = 1) -> None:
+    def _send_alert(self, message: str, priority: int = 1) -> None:
         if not self.config.telegram_username:
             return
         try:
@@ -4099,9 +4148,9 @@ class OptionsBuyerEdgeBot:
                 message=message,
                 priority=priority,
             )
-            print(f"[TELEGRAM] Send result: {result}")
+            print(f"[ALERT] Send result: {result}")
         except Exception as exc:
-            print(f"[TELEGRAM] Send error: {exc}")
+            print(f"[ALERT] Send error: {exc}")
 
     def _verify_registration(self) -> None:
         """WC-14: Verify strategy is registered in broker's strategy configs."""
@@ -4220,6 +4269,45 @@ class OptionsBuyerEdgeBot:
                         continue
                     pos.exit_pending = True
                 self.orders.place_exit(ul, f"MaxHoldTime({cfg.max_hold_minutes}m)")
+
+    def _send_live_pnl_alert(self, open_positions: list[OptionPosition]) -> None:
+        """Fetch live positions and dispatch a single-line active PNL alert."""
+        try:
+            broker_pnl_map = {}
+            if not self.config.paper_trade and hasattr(self.client, "positions"):
+                resp = self.client.positions(strategy=self.config.strategy_name)
+                if isinstance(resp, dict) and resp.get("status") == "success":
+                    for p in resp.get("data", []):
+                        sym = p.get("symbol", "")
+                        unrealized = float(p.get("unrealized_pnl", 0) or p.get("pnl", 0) or 0)
+                        if sym:
+                            broker_pnl_map[sym] = unrealized
+
+            for pos in open_positions:
+                pnl = 0.0
+                if not self.config.paper_trade and pos.symbol in broker_pnl_map:
+                    pnl = broker_pnl_map[pos.symbol]
+                else:
+                    ltp = self.state.ltp_map.get(pos.symbol)
+                    if ltp:
+                        pnl = (ltp - pos.entry_premium) * pos.qty
+
+                hold_mins = max(0, int((get_ist_now() - pos.entry_time).total_seconds() / 60))
+                hours = hold_mins // 60
+                mins  = hold_mins % 60
+                hold_str = f"{hours}h{mins}m" if hours > 0 else f"{mins}m"
+
+                side  = pos.option_type.upper()
+                emoji = "🟢" if pnl >= 0 else "🔴"
+                sign  = "+" if pnl >= 0 else ""
+
+                self._send_alert(
+                    f"{emoji} {pos.underlying} {side} | PNL: ₹{sign}{pnl:.0f} | Hold: {hold_str}",
+                    3,
+                )
+                
+        except Exception as exc:
+            print(f"[PNL REPORT] Error checking active PNL: {exc}")
 
     def _is_market_hours(self) -> bool:
         hm = int(get_ist_now().strftime("%H%M"))
@@ -4357,8 +4445,8 @@ class OptionsBuyerEdgeBot:
 
         # Prefetch greeks only for symbols that will be consumed in this scan:
         # 1) ATM CE/PE (L3 delta component)
-        # 2) Strikes with OI > 0 (GEX gamma profile)
-        # 3) Liquidity-qualified strikes (strike selection delta gate)
+        # 2) Strikes near ATM with OI > 0 (GEX gamma profile)
+        # 3) Liquidity-qualified strikes near ATM (strike selection delta gate)
         option_symbols: list[str] = []
         if atm_row.get("ce_symbol"):
             option_symbols.append(atm_row.get("ce_symbol"))
@@ -4571,7 +4659,7 @@ class OptionsBuyerEdgeBot:
             f"[SCAN] {symbol}: Phase A initial SL source={entry_sl_source} "
             f"base={base_sl_pts:.2f} × factor={sl_factor:.2f} (conv={entry_conviction:.2f})"
             f" → clamped={entry_sl_pts:.2f}pts"
-        )
+            )
 
         lotsize = int(best.get("lotsize", 1) or 1)
         effective_mult = self.risk.effective_lot_multiplier(cfg.lot_multiplier)
@@ -4583,22 +4671,25 @@ class OptionsBuyerEdgeBot:
             )
 
         available  = self.risk.available_capital()
-        risk_cap   = available * (cfg.risk_percent / 100.0)
-        risk_per_unit = entry_sl_pts
-        risk_qty   = int(risk_cap / risk_per_unit) if risk_per_unit > 0 else 0
-        # Round down to lot size boundary
-        risk_qty   = (risk_qty // lotsize) * lotsize if lotsize > 0 else risk_qty
-        qty = min(fixed_qty, risk_qty) if risk_qty > 0 else 0
-        if qty <= 0:
-            min_risk_pct = (entry_sl_pts * lotsize / available * 100) if available > 0 else 0.0
-            print(
-                f"[SCAN] {symbol}: qty=0 — 1 lot risk exceeds cap "
-                f"(stop ₹{entry_sl_pts:.2f} pts × {lotsize} units = ₹{entry_sl_pts*lotsize:.0f}/lot, "
-                f"risk cap ₹{risk_cap:.0f} @ {cfg.risk_percent}% of ₹{available:.0f} available; "
-                f"need RISK_PERCENT≥{min_risk_pct:.1f}%)"
-            )
-            _log_greeks_perf("qty-zero", sep_count=79)
-            return
+        if cfg.risk_based_sizing_enabled:
+            risk_cap      = available * (cfg.risk_percent / 100.0)
+            risk_per_unit = entry_sl_pts
+            risk_qty      = int(risk_cap / risk_per_unit) if risk_per_unit > 0 else 0
+            risk_qty      = (risk_qty // lotsize) * lotsize if lotsize > 0 else risk_qty
+            qty = min(fixed_qty, risk_qty) if risk_qty > 0 else 0
+            if qty <= 0:
+                min_risk_pct = (entry_sl_pts * lotsize / available * 100) if available > 0 else 0.0
+                print(
+                    f"[SCAN] {symbol}: qty=0 — 1 lot risk exceeds cap "
+                    f"(stop ₹{entry_sl_pts:.2f} pts × {lotsize} units = ₹{entry_sl_pts*lotsize:.0f}/lot, "
+                    f"risk cap ₹{risk_cap:.0f} @ {cfg.risk_percent}% of ₹{available:.0f} available; "
+                    f"need RISK_PERCENT≥{min_risk_pct:.1f}%)"
+                )
+                _log_greeks_perf("qty-zero", sep_count=79)
+                return
+        else:
+            qty = fixed_qty
+            print(f"[SCAN] {symbol}: qty={qty} (risk-based sizing disabled — using fixed lot_mult)")
 
         # ── WS connectivity guard — must run last so all preflight logs are printed ──
         # When WS is down, trail/target detection is blind; broker SL-M provides minimum protection.
@@ -4622,13 +4713,7 @@ class OptionsBuyerEdgeBot:
             f"[SCAN] {symbol}: placing {direction} entry | strike {best.get('strike')} "
             f"| {opt_symbol} x{qty}"
         )
-        self._send_telegram(
-            f"🔍 Signal: {symbol} {direction}\n"
-            f"Score: {result.score:+d} | Trap: {result.trap_score}\n"
-            f"Strike: {best.get('strike')} | {opt_symbol} x{qty}\n"
-            f"Reasons: {'; '.join(result.reasons[:3])}",
-            1,
-        )
+
         _log_greeks_perf("entry-order")
         orders.place_entry(
             symbol, opt_symbol, qty, spot, direction,
@@ -4669,6 +4754,16 @@ class OptionsBuyerEdgeBot:
                                 self.orders.place_exit(ul, "EOD-SquareOff")
                 self._check_max_hold()
                 self.trail_engine.check_trailing_stops(self.state)
+
+                if cfg.live_pnl_alert_interval > 0 and self._is_market_hours():
+                    with self.state.state_lock:
+                        open_positions = list(self.state.positions.values())
+                    if open_positions:
+                        now_ts = time.time()
+                        if now_ts - getattr(self, "_last_pnl_alert_time", 0.0) >= cfg.live_pnl_alert_interval:
+                            self._send_live_pnl_alert(open_positions)
+                            self._last_pnl_alert_time = now_ts
+
                 if self._is_market_hours():
                     for symbol in cfg.underlyings:
                         self.scan_underlying(symbol)
@@ -4833,7 +4928,7 @@ class OptionsBuyerEdgeBot:
         self._print_startup_info()
         self._check_open_positions_on_startup()  # WC-01: restore broker positions
 
-        self._send_telegram(
+        self._send_alert(
             f"🚀 {cfg.strategy_name} starting\n"
             f"Underlyings: {', '.join(cfg.underlyings)}\n"
             f"Min Score: {cfg.min_score} | Max Trap: {cfg.max_trap}",
@@ -4863,7 +4958,7 @@ class OptionsBuyerEdgeBot:
                 self.client.disconnect()
             except Exception:
                 pass
-            self._send_telegram(f"🛑 {cfg.strategy_name} stopped", 1)
+            self._send_alert(f"🛑 {cfg.strategy_name} stopped", 1)
             print("[BOT] Shutdown complete")
 
 
