@@ -1,0 +1,1137 @@
+=== Strategy Started at 2026-06-05 13:59:21 IST ===
+=== Platform: linux ===
+
+[CONFIG] All configuration values validated OK
+[STARTUP] ⚠️  Strategy 'BuyerEdgeStrategyBot' not found in strategy configs.
+[STARTUP]    Run: python3 /app/strategies/register_strategy.py
+[STARTUP]    Then restart this script.
+[STARTUP] Continuing anyway (may cause runtime errors)...
+
+======================================================================
+  BuyerEdgeStrategyBot
+======================================================================
+  API Host        : https://oadev.karm8boost.online
+  WebSocket URL   : wss://oadev.karm8boost.online/ws
+  Underlyings     : NIFTY
+  FNO Exchange    : NFO
+  Min Score       : 40 | Max Trap: 60
+  SL Points       : 25.0 (Phase A hard SL fallback)
+  Phase A SL      : moneyness-adapted from entry_delta or fallback to PREMIUM_STOP_PTS
+  Phase B Trail   : tracking=premium  method=fixed_pct  activate=25%
+  Trail Step      : 10.0% of base distance (cap: 50% of entry premium)
+  Breakeven SL    : 80% of target gain
+  Long Only Mode  : True
+  Broker SL Orders: True
+  DTE Range       : 7 – 30 days
+  Candle Interval : 1m
+  Check Interval  : 60s
+----------------------------------------------------------------------
+  [RISK GATES]
+  Max Trades/Day  : 5
+  Max Consec Loss : 3
+  Daily Loss Limit: ₹2000
+  Daily Profit Tgt: disabled
+  Entry Cooldown  : 300s per underlying
+  [TIMING]
+  No New Entries  : after 15:25 IST
+  EOD Square-Off  : 15:30 IST
+  Max Hold Time   : disabled
+======================================================================
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS-TEST] REST API key OK (orderbook: 2 order(s))
+[WS-TEST] Testing wss://oadev.karm8boost.online/ws ...
+[WS-TEST] Transport OK — WebSocket handshake succeeded
+[WS-TEST] Auth OK
+[WS-TEST] Subscribed NSE_INDEX:Nifty 50
+[WS-TEST] Tick #1 — ltp=?
+[WS-TEST] (no tick yet, 15s remaining...)
+[WS-TEST] (no tick yet, 10s remaining...)
+[WS-TEST] (no tick yet, 5s remaining...)
+[WS-TEST] PASS — received 1 tick(s) ✓
+[WS] WebSocket thread starting...
+[WS] Connecting... (active OS threads: 2)
+[STRATEGY] Strategy scan thread started[BOT] BuyerEdgeStrategyBot running. Press Ctrl+C to stop.
+
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[WS-HEALTH] Uptime: 0.8m | Threads: 5 | Subs: 0/0 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+  ━━ SCAN · NIFTY · 23,323 · 14:00:14  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Neutral     score -10/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     +0/1  ████░░░░  RSI Momentum         RSI 51.9 — mild bullish tilt
+     +1/1  ████████  MACD Histogram       MACD Histogram expanding positive
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.22
+     +0/2  ░░░░░░░░  Call OI Flow         CE Neutral
+     +0/2  ░░░░░░░░  Put OI Flow          PE Neutral
+     -1/1  ████████  OI Wall Position     Spot 23323 below put wall 23500 — support broken, put writers hedging (bearish)
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.041 — mild CE dominance   (CE +0.519 / PE -0.478)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -113808); nearest downside punch 23300 from spot 23323
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +0/1  ░░░░░░░░  Synthetic Futures    SF snapshot only (no prior bar): basis +83.5 (normal) — score 0
+  ✘ NO_TRADE  —  not executing  (score 10/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,327 · 14:01:32  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Neutral     score +13/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -0/1  ████░░░░  RSI Momentum         RSI 49.9 — mild bearish tilt
+     +0/1  ████░░░░  MACD Histogram       MACD Histogram positive (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.19
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23327 below put wall 23500 — support broken, put writers hedging (bearish)
+     -0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum -0.022 — mild PE dominance   (CE +0.492 / PE -0.515)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -96032); nearest upside punch 23350 from spot 23327
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +68.2, normal)
+  ✘ NO_TRADE  —  not executing  (score 13/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=34 miss=39 api_calls=39 hit_rate=46.6% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,331 · 14:02:32  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +34/100  █████░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +1/1  ████████  EMA Trend            Bullish EMA crossover (9/21)
+     +1/1  ████████  RSI Momentum         RSI 59.4 — bullish momentum
+     +1/1  ████████  MACD Histogram       MACD Histogram expanding positive
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.19
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23331 below put wall 23500 — support broken, put writers hedging (bearish)
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.013 — balanced (CE +0.496 / PE -0.509)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -61247); nearest upside punch 23350 from spot 23331
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +69.1, normal)
+  ✔ EXECUTE  ▲  CE
+[STRIKE] Signal score 34 < min 40 — insufficient edge
+[SCAN] NIFTY: using simple OTM fallback strike 23400.0
+[SCAN] NIFTY: Phase A initial SL source=hard_sl_pts_fallback base=25.00 × factor=1.03 (conv=0.00) → clamped=25.80pts
+[SCAN] NIFTY: qty=65 (risk-based sizing disabled — using fixed lot_mult)
+  [PERF] NIFTY [entry-preflight] greeks: hit=23 miss=50 api_calls=50 hit_rate=31.5% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: placing CE entry | strike 23400.0 | NIFTY16JUN2623400CE x65
+  [PERF] NIFTY [entry-order] greeks: hit=23 miss=50 api_calls=50 hit_rate=31.5% cache_size=30
+[ORDER] Entry order 26060522284898 placed for NIFTY (NIFTY16JUN2623400CE x65)
+[SUB]    Subscribing NFO:NIFTY16JUN2623400CE LTP...
+[WS] Subscribed option NFO:NIFTY16JUN2623400CE
+[SUB]    Subscribing NSE_INDEX:NIFTY LTP...
+[WS] Subscribed spot NSE_INDEX:NIFTY
+[SUB]    NFO:NIFTY16JUN2623400CE | Mode: Unknown | Status: success
+[SUB]    NSE_INDEX:NIFTY | Mode: Unknown | Status: success
+[ORDER] Basket SL-M placed for NIFTY: trigger ₹227.10 (id:26060581566048)
+[ORDER] Basket LIMIT placed for NIFTY: ₹302.90 (id:26060583294495)
+[ORDER] Position registered for NIFTY: NIFTY16JUN2623400CE QTY=65 ENTRY=₹252.90 SL=₹227.10 (pts=25.80) TGT=₹302.90
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS-HEALTH] Uptime: 5.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.2s
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS-HEALTH] Uptime: 10.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.2s
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS-HEALTH] Uptime: 15.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.1s
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS-HEALTH] Uptime: 20.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.2s
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS-HEALTH] Uptime: 25.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.2s
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS-HEALTH] Uptime: 30.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.2s
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS-HEALTH] Uptime: 35.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.2s
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS-HEALTH] Uptime: 40.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.5s
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS-HEALTH] Uptime: 45.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.1s
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] PREMIUM TARGET HIT NIFTY: LTP 303.20 >= TGT 302.90
+[ORDER] Exiting NIFTY — reason: premium_target_hit
+[ORDER] Cancelled broker sl_order_id 26060581566048
+[ORDER] Cancelled broker tgt_order_id 26060583294495
+[ORDER] Post-cancel status 26060581566048: cancelled
+[ORDER] Post-cancel status 26060583294495: cancelled
+[ORDER] Exit order 26060578019842 placed for NIFTY
+[UNSUB]  Unsubscribing NFO:NIFTY16JUN2623400CE LTP
+[UNSUB]  Unsubscribing NSE_INDEX:NIFTY LTP
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,417 · 14:47:32  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Neutral     score +15/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 75.2 — bullish momentum
+     +1/1  ████████  MACD Histogram       MACD Histogram expanding positive
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.07
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     -1/1  ████████  OI Wall Position     Spot 23417 below put wall 23500 — support broken, put writers hedging (bearish)
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.032 — mild CE dominance   (CE +0.515 / PE -0.484)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -111428); nearest downside punch 23400 from spot 23417
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +1/1  ████████  Synthetic Futures    SF co-movement bullish: spot Δ+85.6, SF Δ+102.7 — confirming
+  ✘ NO_TRADE  —  not executing  (score 15/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=34 miss=40 api_calls=40 hit_rate=45.9% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[WS] WARNING: Stale tick feed — no ticks in 45s (market hours active)
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,409 · 14:48:32  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Neutral     score -2/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 75.8 — bullish momentum
+     +1/1  ████████  MACD Histogram       MACD Histogram expanding positive
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.08
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     -1/1  ████████  OI Wall Position     Spot 23409 below put wall 23500 — support broken, put writers hedging (bearish)
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.014 — balanced (CE +0.510 / PE -0.495)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -51287); nearest downside punch 23400 from spot 23409 | gamma flip 23050
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     -1/2  ████░░░░  Straddle Velocity    Straddle mild contraction -0.5% — premium fading
+     -1/1  ████████  Synthetic Futures    SF co-movement bearish: spot Δ-7.5, SF Δ-12.0 — confirming
+  ✘ NO_TRADE  —  not executing  (score 2/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=31 miss=43 api_calls=43 hit_rate=41.9% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 135s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 6)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+  ━━ SCAN · NIFTY · 23,394 · 14:49:31  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +18/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 78.9 — bullish momentum
+     +1/1  ████████  MACD Histogram       MACD Histogram expanding positive
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     -1/1  ████████  OI Wall Position     Spot 23394 below put wall 23500 — support broken, put writers hedging (bearish)
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.017 — balanced (CE +0.496 / PE -0.513)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -116143); nearest upside punch 23400 from spot 23394
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     -1/2  ████░░░░  Straddle Velocity    Straddle mild contraction -0.7% — premium fading
+     -1/1  ████████  Synthetic Futures    SF co-movement bearish: spot Δ-15.3, SF Δ-23.3 — confirming
+  ✘ NO_TRADE  —  not executing  (score 18/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=11 miss=62 api_calls=62 hit_rate=15.1% cache_size=29
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[WS] WARNING: Stale tick feed — no ticks in 167s (market hours active)
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 167s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 8)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+[WS] WARNING: Stale tick feed — no ticks in 200s (market hours active)
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 200s — forcing hard reconnect...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS] Connecting... (active OS threads: 8)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+  ━━ SCAN · NIFTY · 23,373 · 14:50:32  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Neutral     score +10/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 74.0 — bullish momentum
+     +1/1  ████████  MACD Histogram       MACD Histogram expanding positive
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.04
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     -1/1  ████████  OI Wall Position     Spot 23373 below put wall 23500 — support broken, put writers hedging (bearish)
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.047 — mild CE dominance   (CE +0.521 / PE -0.474)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -123982); nearest downside punch 23350 from spot 23373
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +97.8, normal)
+  ✘ NO_TRADE  —  not executing  (score 10/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=12 miss=62 api_calls=62 hit_rate=16.2% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[WS] WARNING: Stale tick feed — no ticks in 231s (market hours active)
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 231s — forcing hard reconnect...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS] Connecting... (active OS threads: 8)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+[WS] WARNING: Stale tick feed — no ticks in 261s (market hours active)
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 261s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 1/36
+[WS] Retrying in 5s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+  ━━ SCAN · NIFTY · 23,387 · 14:51:30  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Neutral     score +5/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 64.9 — bullish momentum
+     +0/1  ████░░░░  MACD Histogram       MACD Histogram positive (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.05
+     -1/2  ████░░░░  Call OI Flow         CE Long Unwinding — moderately bearish
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -1/1  ████████  OI Wall Position     Spot 23387 below put wall 23500 — support broken, put writers hedging (bearish)
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.008 — balanced (CE +0.498 / PE -0.506)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -113130); nearest upside punch 23400 from spot 23387
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +88.3, normal)
+  ✘ NO_TRADE  —  not executing  (score 5/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=12 miss=61 api_calls=61 hit_rate=16.4% cache_size=28
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+[WS] WARNING: Stale tick feed — no ticks in 305s (market hours active)
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 305s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 1/36
+[WS] Retrying in 5s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 2/36
+[WS] Retrying in 8s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+  ━━ SCAN · NIFTY · 23,378 · 14:52:31  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ◆ Neutral     score +0/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 54.9 — bullish momentum
+     +0/1  ████░░░░  MACD Histogram       MACD Histogram positive (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.05
+     -1/2  ████░░░░  Call OI Flow         CE Long Unwinding — moderately bearish
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -1/1  ████████  OI Wall Position     Spot 23378 below put wall 23500 — support broken, put writers hedging (bearish)
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.019 — balanced (CE +0.494 / PE -0.513)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -111727); nearest upside punch 23400 from spot 23378
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     -1/1  ████████  Synthetic Futures    SF co-movement bearish: spot Δ-8.6, SF Δ-10.8 — confirming
+  ✘ NO_TRADE  —  not executing  (score 0/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=34 miss=39 api_calls=39 hit_rate=46.6% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[WS] WARNING: Stale tick feed — no ticks in 363s (market hours active)
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 363s — forcing hard reconnect...
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 1/36
+[WS] Retrying in 5s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 2/36
+[WS] Retrying in 8s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+  ━━ SCAN · NIFTY · 23,378 · 14:53:31  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Neutral     score +5/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 55.7 — bullish momentum
+     +0/1  ████░░░░  MACD Histogram       MACD Histogram positive (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.05
+     -1/2  ████░░░░  Call OI Flow         CE Long Unwinding — moderately bearish
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -1/1  ████████  OI Wall Position     Spot 23378 below put wall 23500 — support broken, put writers hedging (bearish)
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.017 — balanced (CE +0.495 / PE -0.512)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -109509); nearest upside punch 23400 from spot 23378
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +88.8, normal)
+  ✘ NO_TRADE  —  not executing  (score 5/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=34 miss=39 api_calls=39 hit_rate=46.6% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[WS] WARNING: Stale tick feed — no ticks in 421s (market hours active)
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 421s — forcing hard reconnect...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS] Connecting... (active OS threads: 8)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+[WS] WARNING: Stale tick feed — no ticks in 452s (market hours active)
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 452s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+  ━━ SCAN · NIFTY · 23,379 · 14:54:32  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +26/100  ████░░░░░░░░░░░░  trap 0/100   ⚡ WATCH
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 55.7 — bullish momentum
+     +0/1  ████░░░░  MACD Histogram       MACD Histogram positive (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.05
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     -1/1  ████████  OI Wall Position     Spot 23379 below put wall 23500 — support broken, put writers hedging (bearish)
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.017 — balanced (CE +0.494 / PE -0.511)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -25680); nearest upside punch 23400 from spot 23379 | gamma flip 23164
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +85.0, normal)
+  ⚡ WATCH  —  not executing  (score 26/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=31 miss=42 api_calls=42 hit_rate=42.5% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 1/36
+[WS] Retrying in 5s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 2/36
+[WS] Retrying in 8s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+[WS] WARNING: Stale tick feed — no ticks in 510s (market hours active)
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 510s — forcing hard reconnect...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS] Connecting... (active OS threads: 8)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+  ━━ SCAN · NIFTY · 23,383 · 14:55:32  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Neutral     score +2/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 55.6 — bullish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     +0/2  ░░░░░░░░  Call OI Flow         CE Neutral
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -1/1  ████████  OI Wall Position     Spot 23383 below put wall 23500 — support broken, put writers hedging (bearish)
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.013 — balanced (CE +0.497 / PE -0.510)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -60598); nearest upside punch 23400 from spot 23383
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +83.2, normal)
+  ✘ NO_TRADE  —  not executing  (score 2/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=25 miss=47 api_calls=47 hit_rate=34.7% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[WS] WARNING: Stale tick feed — no ticks in 541s (market hours active)
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 541s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 1/36
+[WS] Retrying in 5s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+  ━━ SCAN · NIFTY · 23,385 · 14:56:31  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Neutral     score +13/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 55.9 — bullish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     +0/2  ░░░░░░░░  Call OI Flow         CE Neutral
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     -1/1  ████████  OI Wall Position     Spot 23385 below put wall 23500 — support broken, put writers hedging (bearish)
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.015 — balanced (CE +0.496 / PE -0.511)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -67931); nearest upside punch 23400 from spot 23385
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +79.2, normal)
+  ✘ NO_TRADE  —  not executing  (score 13/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=13 miss=59 api_calls=59 hit_rate=18.1% cache_size=29
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[WS] WARNING: Stale tick feed — no ticks in 584s (market hours active)
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 584s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 1/36
+[WS] Retrying in 5s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+[WS] WARNING: Stale tick feed — no ticks in 627s (market hours active)
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 627s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 1/36
+[WS] Retrying in 5s...
+  ━━ SCAN · NIFTY · 23,370 · 14:57:32  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Bearish     score -31/100  ████░░░░░░░░░░░░  trap 0/100   ⚡ WATCH
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 57.6 — bullish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.05
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -1/1  ████████  OI Wall Position     Spot 23370 below put wall 23500 — support broken, put writers hedging (bearish)
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.040 — mild CE dominance   (CE +0.519 / PE -0.479)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -118703); nearest downside punch 23350 from spot 23370
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     -1/1  ████████  Synthetic Futures    SF co-movement bearish: spot Δ-15.0, SF Δ-27.2 — confirming
+  ⚡ WATCH  —  not executing  (score 31/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=14 miss=60 api_calls=60 hit_rate=18.9% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+[WS] WARNING: Stale tick feed — no ticks in 670s (market hours active)
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 670s — forcing hard reconnect...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS] Connecting... (active OS threads: 8)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+  ━━ SCAN · NIFTY · 23,365 · 14:58:29  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Neutral     score -15/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 58.2 — bullish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.05
+     +0/2  ░░░░░░░░  Call OI Flow         CE Neutral
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -1/1  ████████  OI Wall Position     Spot 23365 below put wall 23500 — support broken, put writers hedging (bearish)
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.032 — mild CE dominance   (CE +0.515 / PE -0.483)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -174692); nearest downside punch 23350 from spot 23365
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.3%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +89.7, normal)
+  ✘ NO_TRADE  —  not executing  (score 15/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=14 miss=60 api_calls=60 hit_rate=18.9% cache_size=27
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[WS] WARNING: Stale tick feed — no ticks in 701s (market hours active)
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 701s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 1/36
+[WS] Retrying in 5s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+[WS] WARNING: Stale tick feed — no ticks in 744s (market hours active)
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 744s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 1/36
+[WS] Retrying in 5s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+  ━━ SCAN · NIFTY · 23,353 · 14:59:33  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Bearish     score -23/100  ███░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +0/1  ████░░░░  RSI Momentum         RSI 50.8 — mild bullish tilt
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.05
+     -1/2  ████░░░░  Call OI Flow         CE Long Unwinding — moderately bearish
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -1/1  ████████  OI Wall Position     Spot 23353 below put wall 23500 — support broken, put writers hedging (bearish)
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.041 — mild CE dominance   (CE +0.517 / PE -0.476)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -121820); nearest downside punch 23350 from spot 23353
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.2%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +106.0, normal)
+  ✘ NO_TRADE  —  not executing  (score 23/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=34 miss=40 api_calls=40 hit_rate=45.9% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+[WS] WARNING: Stale tick feed — no ticks in 787s (market hours active)
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 787s — forcing hard reconnect...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS] Connecting... (active OS threads: 8)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+  ━━ SCAN · NIFTY · 23,363 · 15:00:33  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Bearish     score -23/100  ███░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     -0/1  ████░░░░  RSI Momentum         RSI 48.6 — mild bearish tilt
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.05
+     +0/2  ░░░░░░░░  Call OI Flow         CE Neutral
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -1/1  ████████  OI Wall Position     Spot 23363 below put wall 23500 — support broken, put writers hedging (bearish)
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.033 — mild CE dominance   (CE +0.516 / PE -0.484)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -107436); nearest downside punch 23350 from spot 23363
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +76.0, normal)
+  ✘ NO_TRADE  —  not executing  (score 23/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=10 miss=64 api_calls=64 hit_rate=13.5% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[WS] WARNING: Stale tick feed — no ticks in 818s (market hours active)
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 818s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 1/36
+[WS] Retrying in 5s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 2/36
+[WS] Retrying in 8s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+[WS] Connecting... (active OS threads: 10)
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+  ━━ SCAN · NIFTY · 23,328 · 15:01:10  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Bearish     score -26/100  ████░░░░░░░░░░░░  trap 0/100   ⚡ WATCH
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     -1/1  ████████  RSI Momentum         RSI 43.8 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.18
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -1/1  ████████  OI Wall Position     Spot 23328 below put wall 23500 — support broken, put writers hedging (bearish)
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.012 — balanced (CE +0.497 / PE -0.509)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -44693); nearest upside punch 23350 from spot 23328
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.2%)
+     -1/1  ████████  Synthetic Futures    SF co-movement bearish: spot Δ-35.7, SF Δ-18.2 — confirming
+  ⚡ WATCH  —  not executing  (score 26/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=4 miss=68 api_calls=68 hit_rate=5.6% cache_size=6
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[WS] WARNING: Stale tick feed — no ticks in 876s (market hours active)
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 876s — forcing hard reconnect...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS] Connecting... (active OS threads: 8)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+[WS] WARNING: Stale tick feed — no ticks in 907s (market hours active)
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 907s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 1/36
+[WS] Retrying in 5s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+  ━━ SCAN · NIFTY · 23,336 · 15:02:35  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Neutral     score -13/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     -0/1  ████░░░░  RSI Momentum         RSI 47.8 — mild bearish tilt
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.18
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -1/1  ████████  OI Wall Position     Spot 23336 below put wall 23500 — support broken, put writers hedging (bearish)
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.008 — balanced (CE +0.499 / PE -0.507)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -125223); nearest upside punch 23350 from spot 23336
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.2%)
+     +1/1  ████████  Synthetic Futures    SF co-movement bullish: spot Δ+8.6, SF Δ+17.8 — confirming
+  ✘ NO_TRADE  —  not executing  (score 13/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[WS] WARNING: Stale tick feed — no ticks in 950s (market hours active)
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 950s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 1/36
+[WS] Retrying in 5s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+[WS] WARNING: Stale tick feed — no ticks in 994s (market hours active)
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS] Feed silent 994s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 1/36
+[WS] Retrying in 5s...
+  ━━ SCAN · NIFTY · 23,350 · 15:03:37  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Bearish     score -50/100  ████████░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -1/1  ████████  EMA Trend            Bearish EMA crossover (9/21)
+     -1/1  ████████  RSI Momentum         RSI 36.4 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.17
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -1/1  ████████  OI Wall Position     Spot 23350 below put wall 23500 — support broken, put writers hedging (bearish)
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.016 — balanced (CE +0.509 / PE -0.493)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -95653); nearest downside punch 23350 from spot 23350
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +90.9, normal)
+  ✔ EXECUTE  ▼  PE
+[STRIKE] conviction=0.17 target_delta=0.500 band=[0.42,0.58]
+[SCAN] NIFTY: Phase A initial SL source=moneyness_adapted_ATM base=50.00 × factor=1.00 (conv=0.17) → clamped=50.00pts
+[SCAN] NIFTY: qty=65 (risk-based sizing disabled — using fixed lot_mult)
+[RISK] NIFTY: WS disconnected — entry allowed (broker SL-M active). Trail/target hit detection blind until WS recovers.
+  [PERF] NIFTY [entry-preflight] greeks: hit=37 miss=44 api_calls=44 hit_rate=45.7% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: placing PE entry | strike 23300.0 | NIFTY16JUN2623300PE x65
+  [PERF] NIFTY [entry-order] greeks: hit=37 miss=44 api_calls=44 hit_rate=45.7% cache_size=30
+[ORDER] Entry order 26060573234522 placed for NIFTY (NIFTY16JUN2623300PE x65)
+[ERROR]  Not connected to WebSocket server
+[WS] Subscribed option NFO:NIFTY16JUN2623300PE
+[ERROR]  Not connected to WebSocket server
+[WS] Subscribed spot NSE_INDEX:NIFTY
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 2/36
+[WS] Retrying in 8s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[ORDER] Basket SL-M placed for NIFTY: trigger ₹127.65 (id:26060535259635)
+[ORDER] Basket LIMIT placed for NIFTY: ₹227.65 (id:26060536950260)
+[ORDER] Position registered for NIFTY: NIFTY16JUN2623300PE QTY=65 ENTRY=₹177.65 SL=₹127.65 (pts=50.00) TGT=₹227.65
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[WS] Reconciling: +2 subscribe / -0 unsubscribe
+[SUB]    Subscribing NSE_INDEX:NIFTY LTP...
+[SUB]    Subscribing NFO:NIFTY16JUN2623300PE LTP...
+[SUB]    NSE_INDEX:NIFTY | Mode: Unknown | Status: success
+[SUB]    NFO:NIFTY16JUN2623300PE | Mode: Unknown | Status: success
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS-HEALTH] Uptime: 65.0m | Threads: 10 | Subs: 2/2 | Reconnects: 22 | Reconciles: 0 (Repaired: 0) | LastTick: 0.1s
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS-HEALTH] Uptime: 70.0m | Threads: 10 | Subs: 2/2 | Reconnects: 22 | Reconciles: 0 (Repaired: 0) | LastTick: 0.2s
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS-HEALTH] Uptime: 75.0m | Threads: 10 | Subs: 2/2 | Reconnects: 22 | Reconciles: 0 (Repaired: 0) | LastTick: 0.2s
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS-HEALTH] Uptime: 80.0m | Threads: 10 | Subs: 2/2 | Reconnects: 22 | Reconciles: 0 (Repaired: 0) | LastTick: 0.2s
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS-HEALTH] Uptime: 85.0m | Threads: 10 | Subs: 2/2 | Reconnects: 22 | Reconciles: 0 (Repaired: 0) | LastTick: 0.2s
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[ALERT] Send result: {'message': 'Notification queued for delivery', 'status': 'success'}
+[WS-HEALTH] Uptime: 90.0m | Threads: 10 | Subs: 2/2 | Reconnects: 22 | Reconciles: 0 (Repaired: 0) | LastTick: 0.1s
+[SQUAREOFF] 15:30 reached — closing 1 position(s)
+[ORDER] Exiting NIFTY — reason: EOD-SquareOff
+[ORDER] Cancel resp for 26060535259635: {'status': 'error', 'message': 'HTTP 400: {"message":"Cannot cancel order in cancelled status","mode":"analyze","status":"error"}\n', 'code': 400, 'error_type': 'http_error'}
+[ORDER] Cancel resp for 26060536950260: {'status': 'error', 'message': 'HTTP 400: {"message":"Cannot cancel order in cancelled status","mode":"analyze","status":"error"}\n', 'code': 400, 'error_type': 'http_error'}
+[ORDER] Post-cancel status 26060535259635: cancelled
+[ORDER] Post-cancel status 26060536950260: cancelled
+[ORDER] Exit order response: {'status': 'error', 'message': 'HTTP 400: {"message":"MIS orders cannot be placed after square-off time (15:15 IST). Trading resumes at 09:00 AM IST.","mode":"analyze","status":"error"}\n', 'code': 400, 'error_type': 'http_error'}
+[UNSUB]  Unsubscribing NFO:NIFTY16JUN2623300PE LTP
+[UNSUB]  Unsubscribing NSE_INDEX:NIFTY LTP
+[ORDER] Exit order rejected after EOD cutoff — untracking NIFTY (EOD-ForceUntrack-Estimated price ₹177.70 | P&L ₹3)
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:25 IST (current 15:30) — waiting for EOD
+[WS] WARNING: Stale tick feed — no ticks in 57s (market hours active)
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[WS-HEALTH] Uptime: 95.0m | Threads: 10 | Subs: 0/0 | Reconnects: 22 | Reconciles: 0 (Repaired: 0) | LastTick: 267.7s
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[WS-HEALTH] Uptime: 100.0m | Threads: 10 | Subs: 0/0 | Reconnects: 22 | Reconciles: 0 (Repaired: 0) | LastTick: 567.7s
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[WS-HEALTH] Uptime: 105.0m | Threads: 10 | Subs: 0/0 | Reconnects: 22 | Reconciles: 0 (Repaired: 0) | LastTick: 867.7s
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[WS-HEALTH] Uptime: 110.0m | Threads: 10 | Subs: 0/0 | Reconnects: 22 | Reconciles: 0 (Repaired: 0) | LastTick: 1167.7s
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[WS-HEALTH] Uptime: 115.0m | Threads: 10 | Subs: 0/0 | Reconnects: 22 | Reconciles: 0 (Repaired: 0) | LastTick: 1467.7s
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[WS-HEALTH] Uptime: 120.0m | Threads: 10 | Subs: 0/0 | Reconnects: 22 | Reconciles: 0 (Repaired: 0) | LastTick: 1767.7s
+[STRATEGY] Outside market hours — skipping signal scan

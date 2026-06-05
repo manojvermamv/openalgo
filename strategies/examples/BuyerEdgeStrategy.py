@@ -62,6 +62,25 @@ if hasattr(sys.stderr, "reconfigure"):
 #   ✓ PendingEntry delta propagation
 #   ✓ Moneyness-aware target scaling
 #   ✓ Moneyness-aware trail activation scaling
+#   ✓ Premium Risk Compression (RR Falloff Engine)
+#   ✓ Profit Acceleration Compression Engine (Trend Efficiency)
+#
+# ONGOING OBSERVATION (Trend Efficiency KER):
+# ------------------------------------------------------------------------------
+# The 1-candle KER computed over 15 5-minute candles can react very quickly. 
+# In a violent consolidation right after a huge impulse, KER may collapse 
+# abruptly (e.g. from 2.5x speed to 1.25x speed within minutes). 
+# This correctly relaxes the trail to avoid getting chopped out.
+# However, if this decay proves too abrupt in live intraday testing, consider
+# applying an EMA smoother: efficiency = EMA(raw_efficiency, N)
+# or a decay floor: efficiency = max(current, previous * 0.95).
+#
+# OPTIONS BUYER DISCRETIONARY INTUITION MAPPING:
+# ------------------------------------------------------------------------------
+# The trailing engine now correctly mimics human discretionary management:
+#   1. Early Trade + Profit small       →  Normal trail
+#   2. Gamma Expansion + Clean trend    →  Compress aggressively (lock windfall)
+#   3. Post-Explosion + Dirty trend     →  Relax compression (survive consolidation)
 #
 #   ✓ Auth-error notification deduplication
 #   ✓ WS-dead entry protection
@@ -488,7 +507,7 @@ class BotConfig:
     index_exchange: str = "NSE_INDEX"
 
     # ── Notifications ──────────────────────────────────────────────────────────
-    telegram_username: str = ""
+    openalgo_username: str = "manojv097"
     live_pnl_alert_interval: int = 60
     risk_based_sizing_enabled: bool = False  # When True, caps qty by RISK_PERCENT of capital; disabled by default
 
@@ -532,17 +551,25 @@ class BotConfig:
     #   "spot"     → track underlying price   (structural; cleaner for indices)
     trail_tracking_mode: str = "premium"   # env: TRAIL_TRACKING_MODE
     #
-    # STEP METHOD — how the trail step distance is computed (both modes support all 3):
-    #   "fixed_pct" → fixed % of entry premium (premium) or reward_dist (spot)
-    #   "atr"       → ATR-based dynamic step; adapts to realized volatility
-    #   "delta"     → live delta drives tightness; ITM→tight, OTM→wide
+    # STEP METHOD — how the trail step distance is computed (both modes support all 4):
+    #   "fixed_pct" → % of entry premium; cap applied at entry_premium × 50% to prevent giant steps
+    #   "fixed_pts" → raw premium points regardless of price level (best for high-VIX, high-premium options)
+    #   "atr"       → ATR-based dynamic step; self-scaling, no cap needed
+    #   "delta"     → live delta drives tightness; ITM→tight, OTM→wide; cap at entry_premium × 50%
     trail_sl_method: str = "fixed_pct"   # env: TRAIL_SL_METHOD
     #
-    # Activation gate — minimum % move before trail engine activates:
-    trail_activate_at_pct: float = 25.0   # env: TRAIL_ACTIVATE_AT_PCT
+    # Activation gate — minimum move before trail engine activates:
+    trail_activate_at_pct:     float = 25.0   # % of base distance required before trail fires; env: TRAIL_ACTIVATE_AT_PCT
+    trail_activate_at_max_pts: float = 0.0    # Hard ceiling on activation distance in premium pts; 0=no cap; env: TRAIL_ACTIVATE_AT_MAX_PTS
+    #                                           Prevents activation from exceeding the TP window on expensive options.
+    #                                           Example: premium=₹267, pct=25%→67pts, but TP=50pts → trail never fires.
+    #                                           Set to 20 to cap activation at 20pts, well inside the TP window.
     #
     # Method: fixed_pct params
-    trail_step_pct: float = 10.0          # % of entry_premium (premium) or reward_dist (spot)
+    trail_step_pct: float = 10.0   # % of entry_premium (premium) or reward_dist (spot); env: TRAIL_STEP_PCT
+    #
+    # Method: fixed_pts params
+    trail_step_pts: float = 15.0   # Raw premium points per ratchet step (independent of entry price); env: TRAIL_STEP_PTS
     #
     # Method: atr params
     trail_atr_period: int   = 14
@@ -692,7 +719,7 @@ class BotConfig:
             spot_exchange=os.getenv("EXCHANGE", defaults.spot_exchange),
             fno_exchange=os.getenv("FNO_EXCHANGE", defaults.fno_exchange),
             index_exchange=os.getenv("INDEX_EXCHANGE", defaults.index_exchange),
-            telegram_username=os.getenv("TELEGRAM_USERNAME", defaults.telegram_username),
+            openalgo_username=os.getenv("OPENALGO_USERNAME", defaults.openalgo_username),
             live_pnl_alert_interval=int(os.getenv("LIVE_PNL_ALERT_INTERVAL", str(defaults.live_pnl_alert_interval))),
             risk_based_sizing_enabled=os.getenv("RISK_BASED_SIZING", str(defaults.risk_based_sizing_enabled)).lower() in ("1", "true", "yes"),
             dte_min=int(os.getenv("DTE_MIN", str(defaults.dte_min))),
@@ -719,7 +746,9 @@ class BotConfig:
             trail_sl_method=os.getenv("TRAIL_SL_METHOD", defaults.trail_sl_method).strip().lower(),
             spot_reward_pct=float(os.getenv("SPOT_REWARD_PCT", str(defaults.spot_reward_pct))),
             trail_activate_at_pct=float(os.getenv("TRAIL_ACTIVATE_AT_PCT", str(defaults.trail_activate_at_pct))),
+            trail_activate_at_max_pts=float(os.getenv("TRAIL_ACTIVATE_AT_MAX_PTS", str(defaults.trail_activate_at_max_pts))),
             trail_step_pct=float(os.getenv("TRAIL_STEP_PCT", str(defaults.trail_step_pct))),
+            trail_step_pts=float(os.getenv("TRAIL_STEP_PTS", str(defaults.trail_step_pts))),
             trail_atr_period=int(os.getenv("TRAIL_ATR_PERIOD", str(defaults.trail_atr_period))),
             trail_atr_mult=float(os.getenv("TRAIL_ATR_MULT", str(defaults.trail_atr_mult))),
             trail_delta_itm_step_pct=float(os.getenv("TRAIL_DELTA_ITM_STEP_PCT", str(defaults.trail_delta_itm_step_pct))),
@@ -792,8 +821,8 @@ class BotConfig:
             errors.append(f"RISK_PERCENT={self.risk_percent} must be > 0")
         if self.trail_tracking_mode not in ("premium", "spot"):
             errors.append(f"TRAIL_TRACKING_MODE={self.trail_tracking_mode!r} must be 'premium' or 'spot'")
-        if self.trail_sl_method not in ("fixed_pct", "atr", "delta"):
-            errors.append(f"TRAIL_SL_METHOD={self.trail_sl_method!r} must be 'fixed_pct', 'atr', or 'delta'")
+        if self.trail_sl_method not in ("fixed_pct", "fixed_pts", "atr", "delta"):
+            errors.append(f"TRAIL_SL_METHOD={self.trail_sl_method!r} must be 'fixed_pct', 'fixed_pts', 'atr', or 'delta'")
         if self.lot_multiplier < 1:
             errors.append(f"LOT_MULTIPLIER={self.lot_multiplier} must be >= 1")
         if self.strike_count < 1:
@@ -2235,10 +2264,23 @@ class TrailSLEngine:
                 self._process_spot_trail(underlying, pos, spot_ltp, _trail_conv_adj)
 
     def _get_step_pts(self, pos: OptionPosition, base_dist: float, price_series_df: pd.DataFrame | None, current_delta: float | None = None) -> float:
-        """Resolve step points based on trail_sl_method."""
+        """Resolve step points based on trail_sl_method.
+
+        Cap logic (prevents oversized steps on high-premium options):
+          fixed_pts → raw N pts, no cap (it IS the explicit value)
+          fixed_pct → capped at entry_premium × 50%
+          delta     → capped at entry_premium × 50%
+          atr       → no cap (ATR is self-scaling)
+        """
         cfg = self._config
         method = cfg.trail_sl_method
+        ep = pos.entry_premium
 
+        # ── fixed_pts: always return a fixed raw premium point step ──────────
+        if method == "fixed_pts":
+            return max(1.0, cfg.trail_step_pts)
+
+        # ── atr: self-adapting; no external cap applied ────────────────────
         if method == "atr" and price_series_df is not None and len(price_series_df) >= cfg.trail_atr_period + 2:
             try:
                 atr_series = ta.atr(
@@ -2252,15 +2294,16 @@ class TrailSLEngine:
                     return atr_val * cfg.trail_atr_mult
             except Exception as e:
                 print(f"[TRAIL] ATR compute error: {e}")
-                
-        elif method == "delta" and current_delta is not None:
+
+        # ── delta: tier-based pct ──────────────────────────────────────────
+        if method == "delta" and current_delta is not None:
             d = abs(current_delta)
-            if d >= 0.55: step_pct = cfg.trail_delta_itm_step_pct
+            if d >= 0.55:   step_pct = cfg.trail_delta_itm_step_pct
             elif d >= 0.35: step_pct = cfg.trail_delta_atm_step_pct
-            else: step_pct = cfg.trail_delta_otm_step_pct
+            else:           step_pct = cfg.trail_delta_otm_step_pct
             return base_dist * (step_pct / 100.0)
 
-        # Fallback and default method: fixed_pct
+        # ── fixed_pct (default/fallback) ───────────────────────────────────
         return base_dist * (cfg.trail_step_pct / 100.0)
 
     def _process_premium_trail(
@@ -2277,7 +2320,10 @@ class TrailSLEngine:
         ltp = confirmed_close
         
         activate_pts = ep * (cfg.trail_activate_at_pct / 100.0) * conv_adj * pos.trail_act_mult
-        
+        # Hard ceiling: prevents activation requiring more pts than the TP window on high-premium options
+        if cfg.trail_activate_at_max_pts > 0:
+            activate_pts = min(activate_pts, cfg.trail_activate_at_max_pts)
+
         if not pos.premium_trail_active and move < activate_pts:
             return  # not activated yet
 
@@ -2293,15 +2339,39 @@ class TrailSLEngine:
             
         _base_step_pts = self._get_step_pts(pos, ep, df, current_delta)
         
-        # Gamma Speed-X evaluates from confirmed close to allow for state decay.
-        # This matches the institutional close-to-close expansion model.
+        # ── Profit Acceleration Compression Engine ─────────────────────────────
+        # 1. Base Gamma Speed (ROI-based)
         _roi_pct = ((confirmed_close - ep) / ep * 100.0) if ep > 0 else 0.0
-        if _roi_pct >= 150: _trail_speed = 2.5
+        if _roi_pct >= 150:   _trail_speed = 2.5
         elif _roi_pct >= 100: _trail_speed = 2.0
-        elif _roi_pct >= 50: _trail_speed = 1.5
-        else: _trail_speed = 1.0
+        elif _roi_pct >= 50:  _trail_speed = 1.5
+        else:                 _trail_speed = 1.0
         
-        step_pts = max(_base_step_pts * GAMMA_SPEED_STEP_FLOOR, _base_step_pts / _trail_speed)
+        # 2. Trend Efficiency Factor (Market Structure & Ranging Avoidance)
+        if df is None:
+            df = self._fetcher.fetch_option_candles(pos.symbol)
+            
+        trend_efficiency = 1.0
+        if df is not None and not df.empty:
+            recent = df.tail(15)  # recent window to evaluate chop vs trend
+            if len(recent) > 1:
+                closes = recent["close"].values
+                net_move = abs(closes[-1] - closes[0])
+                path_length = sum(abs(closes[i] - closes[i-1]) for i in range(1, len(closes)))
+                if path_length > 0:
+                    trend_efficiency = net_move / path_length
+                    
+        # Clamp efficiency between 0.50 and 1.0 to prevent dividing by zero or inflating the step
+        trend_efficiency_factor = max(0.50, min(1.0, trend_efficiency))
+        
+        # Apply efficiency multiplier: ranging markets will lower the trail speed (looser trail)
+        _trail_speed *= trend_efficiency_factor
+        
+        # 3. Apply intelligence to raw step (Option B architecture)
+        step_pts = max(_base_step_pts * GAMMA_SPEED_STEP_FLOOR, _base_step_pts / max(0.1, _trail_speed))
+        
+        # 4. Final Safety Limit Cap (Guarantees trail doesn't exceed 50% of entry premium)
+        step_pts = min(step_pts, ep * 0.50)
         
         # Trail activation and ratchet placement use confirmed periodic closes.
         if not pos.premium_trail_active:
@@ -2330,10 +2400,13 @@ class TrailSLEngine:
         reward_dist = pos.reward_dist
         
         activate_pts = reward_dist * (cfg.trail_activate_at_pct / 100.0) * conv_adj * pos.trail_act_mult
-        
+        # Hard ceiling: prevents activation requiring more pts than the TP window on expensive options
+        if cfg.trail_activate_at_max_pts > 0:
+            activate_pts = min(activate_pts, cfg.trail_activate_at_max_pts)
+
         if pos.option_type == "CE": move = spot_ltp - pos.spot_entry
         else: move = pos.spot_entry - spot_ltp
-            
+
         if not pos.trail_active and move < activate_pts:
             return
             
@@ -2348,6 +2421,9 @@ class TrailSLEngine:
             df = self._fetcher.fetch_spot_candles(underlying)
             
         step_pts = self._get_step_pts(pos, reward_dist, df, current_delta)
+
+        # Final Safety Limit Cap for Spot Mode (Option B architecture)
+        step_pts = min(step_pts, reward_dist * 0.50)
 
         if not pos.trail_active:
             pos.trail_active = True
@@ -3374,6 +3450,8 @@ class OrderManager:
             resp = self.client.modifyorder(
                 order_id=pos.sl_order_id,
                 strategy=self.config.strategy_name,
+                symbol=pos.symbol,
+                exchange=self.config.fno_exchange,
                 action="SELL",
                 quantity=pos.qty,
                 order_type="SL-M",
@@ -4139,11 +4217,9 @@ class OptionsBuyerEdgeBot:
         self._last_pnl_alert_time: float = 0.0
 
     def _send_alert(self, message: str, priority: int = 1) -> None:
-        if not self.config.telegram_username:
-            return
         try:
             result = self.client.telegram(
-                username=self.config.telegram_username,
+                username=self.config.openalgo_username,
                 strategy=self.config.strategy_name,
                 message=message,
                 priority=priority,
@@ -4325,18 +4401,21 @@ class OptionsBuyerEdgeBot:
         print(f"  Min Score       : {cfg.min_score} | Max Trap: {cfg.max_trap}")
         print(f"  SL Points       : {cfg.premium_stop_pts} (Phase A hard SL fallback)")
         print(f"  Phase A SL      : moneyness-adapted from entry_delta or fallback to PREMIUM_STOP_PTS")
+        _max_pts_str = f" (hard cap {cfg.trail_activate_at_max_pts:.0f}pts)" if cfg.trail_activate_at_max_pts > 0 else ""
         print(
             f"  Phase B Trail   : tracking={cfg.trail_tracking_mode}  method={cfg.trail_sl_method}  "
-            f"activate={cfg.trail_activate_at_pct:.0f}%"
+            f"activate={cfg.trail_activate_at_pct:.0f}%{_max_pts_str}"
         )
         if cfg.trail_sl_method == "fixed_pct":
-            print(f"  Trail Step      : {cfg.trail_step_pct:.1f}% of base distance")
+            print(f"  Trail Step      : {cfg.trail_step_pct:.1f}% of base distance (cap: 50% of entry premium)")
+        elif cfg.trail_sl_method == "fixed_pts":
+            print(f"  Trail Step      : {cfg.trail_step_pts:.1f} raw pts (no scaling — use for high-VIX/high-premium options)")
         elif cfg.trail_sl_method == "atr":
             print(f"  Trail ATR       : period={cfg.trail_atr_period}, mult={cfg.trail_atr_mult}")
         elif cfg.trail_sl_method == "delta":
             print(
                 f"  Trail Delta     : ITM={cfg.trail_delta_itm_step_pct:.0f}%  "
-                f"ATM={cfg.trail_delta_atm_step_pct:.0f}%  OTM={cfg.trail_delta_otm_step_pct:.0f}%"
+                f"ATM={cfg.trail_delta_atm_step_pct:.0f}%  OTM={cfg.trail_delta_otm_step_pct:.0f}%  (cap: 50% of entry premium)"
             )
         print(f"  Breakeven SL    : {'disabled' if cfg.breakeven_at_gain_pct <= 0 else f'{cfg.breakeven_at_gain_pct:.0f}% of target gain'}")
         print(f"  Long Only Mode  : {cfg.long_only_mode}")
