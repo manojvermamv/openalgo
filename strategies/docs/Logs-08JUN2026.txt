@@ -1,0 +1,1328 @@
+=== Strategy Started at 2026-06-08 11:14:39 IST ===
+=== Platform: linux ===
+
+[CONFIG] All configuration values validated OK
+[STARTUP] ⚠️  Strategy 'BuyerEdgeStrategyBot' not found in strategy configs.
+[STARTUP]    Run: python3 /app/strategies/register_strategy.py
+[STARTUP]    Then restart this script.
+[STARTUP] Continuing anyway (may cause runtime errors)...
+
+======================================================================
+  BuyerEdgeStrategyBot
+======================================================================
+  API Host        : https://oadev.karm8boost.online
+  WebSocket URL   : wss://oadev.karm8boost.online/ws
+  Underlyings     : NIFTY
+  FNO Exchange    : NFO
+  Min Score       : 40 | Max Trap: 60
+  SL Points       : 25.0 (Phase A hard SL fallback)
+  Phase A SL      : moneyness-adapted from entry_delta or fallback to PREMIUM_STOP_PTS
+  Phase B Trail   : tracking=premium  method=fixed_pct  activate=25%
+  Trail Step      : 10.0% of base distance (cap: 50% of entry premium)
+  Breakeven SL    : 80% of target gain
+  Long Only Mode  : True
+  Broker SL Orders: True
+  DTE Range       : 7 – 30 days
+  Candle Interval : 1m
+  Check Interval  : 60s
+----------------------------------------------------------------------
+  [RISK GATES]
+  Max Trades/Day  : 5
+  Max Consec Loss : 3
+  Daily Loss Limit: ₹2000
+  Daily Profit Tgt: disabled
+  Entry Cooldown  : 300s per underlying
+  [TIMING]
+  No New Entries  : after 15:10 IST
+  EOD Square-Off  : 15:15 IST
+  Max Hold Time   : disabled
+======================================================================
+
+[WS-TEST] REST API key OK (orderbook: 2 order(s))
+[WS-TEST] Testing wss://oadev.karm8boost.online/ws ...
+[WS-TEST] Transport OK — WebSocket handshake succeeded
+[WS-TEST] Auth OK
+[WS-TEST] Subscribed NSE_INDEX:Nifty 50
+[WS-TEST] Tick #1 — ltp=?
+[WS-TEST] (no tick yet, 15s remaining...)
+[WS-TEST] (no tick yet, 10s remaining...)
+[WS-TEST] (no tick yet, 5s remaining...)
+[WS-TEST] PASS — received 1 tick(s) ✓
+[WS] WebSocket thread starting...
+[WS] Connecting... (active OS threads: 2)
+[STRATEGY] Strategy scan thread started[BOT] BuyerEdgeStrategyBot running. Press Ctrl+C to stop.
+
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[WS-HEALTH] Uptime: 0.8m | Threads: 5 | Subs: 0/0 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+  ━━ SCAN · NIFTY · 23,200 · 11:15:39  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Neutral     score +7/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     +0/1  ████░░░░  RSI Momentum         RSI 50.1 — mild bullish tilt
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.16
+     +0/2  ░░░░░░░░  Call OI Flow         CE Neutral
+     +0/2  ░░░░░░░░  Put OI Flow          PE Neutral
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.012 — balanced (CE +0.506 / PE -0.494)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -124393); nearest upside punch 23200 from spot 23200
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +0/1  ░░░░░░░░  Synthetic Futures    SF snapshot only (no prior bar): basis +40.4 (normal) — score 0
+  ✘ NO_TRADE  —  not executing  (score 7/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,200 · 11:16:39  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Bearish     score -28/100  ████░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     +0/1  ████░░░░  RSI Momentum         RSI 50.1 — mild bullish tilt
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.16
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.011 — balanced (CE +0.506 / PE -0.495)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -32503); nearest downside punch 23200 from spot 23200
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +38.6, normal)
+  ✘ NO_TRADE  —  not executing  (score 28/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=27 miss=45 api_calls=45 hit_rate=37.5% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,201 · 11:17:33  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Neutral     score -7/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -0/1  ████░░░░  RSI Momentum         RSI 48.1 — mild bearish tilt
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.16
+     +0/2  ░░░░░░░░  Call OI Flow         CE Neutral
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.005 — balanced (CE +0.499 / PE -0.504)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -179940); nearest downside punch 23200 from spot 23201
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +31.7, normal)
+  ✘ NO_TRADE  —  not executing  (score 7/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=13 miss=59 api_calls=59 hit_rate=18.1% cache_size=25
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,181 · 11:18:39  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Neutral     score -13/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -0/1  ████░░░░  RSI Momentum         RSI 48.1 — mild bearish tilt
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.16
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.016 — balanced (CE +0.494 / PE -0.510)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -132674); nearest upside punch 23200 from spot 23181
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +49.7, normal)
+  ✘ NO_TRADE  —  not executing  (score 13/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,188 · 11:19:38  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Bearish     score -18/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 34.8 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.16
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.008 — balanced (CE +0.497 / PE -0.505)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -129487); nearest upside punch 23200 from spot 23188
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +39.8, normal)
+  ✘ NO_TRADE  —  not executing  (score 18/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=12 miss=60 api_calls=60 hit_rate=16.7% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[WS-HEALTH] Uptime: 5.8m | Threads: 5 | Subs: 0/0 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+  ━━ SCAN · NIFTY · 23,183 · 11:20:40  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Bearish     score -18/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 34.8 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.16
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.012 — balanced (CE +0.495 / PE -0.508)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -134209); nearest upside punch 23200 from spot 23183
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +44.4, normal)
+  ✘ NO_TRADE  —  not executing  (score 18/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=12 miss=60 api_calls=60 hit_rate=16.7% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,191 · 11:21:27  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Bearish     score -18/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 41.5 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.16
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +1/1  ████████  Greeks Bias (Δ)      LTP proxy Δ +0.137 — CE premium heavy (bullish)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -131655); nearest upside punch 23200 from spot 23191 | gamma flip 22850
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +41.4, normal)
+  ✘ NO_TRADE  —  not executing  (score 18/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=10 miss=62 api_calls=62 hit_rate=13.9% cache_size=19
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,192 · 11:22:33  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +18/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 38.9 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.15
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.001 — balanced (CE +0.500 / PE -0.501)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -130752); nearest upside punch 23200 from spot 23192
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +45.5, normal)
+  ✘ NO_TRADE  —  not executing  (score 18/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,188 · 11:23:33  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Neutral     score +15/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 45.3 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.15
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.005 — balanced (CE +0.499 / PE -0.504)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -105288); nearest upside punch 23200 from spot 23188
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +46.0, normal)
+  ✘ NO_TRADE  —  not executing  (score 15/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=20 miss=52 api_calls=52 hit_rate=27.8% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,186 · 11:24:29  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +21/100  ███░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 45.3 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.15
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +1/1  ████████  Greeks Bias (Δ)      LTP proxy Δ +0.135 — CE premium heavy (bullish)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -123609); nearest upside punch 23200 from spot 23186 | gamma flip 22800
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +37.3, normal)
+  ✘ NO_TRADE  —  not executing  (score 21/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=17 miss=55 api_calls=55 hit_rate=23.6% cache_size=26
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[WS-HEALTH] Uptime: 10.8m | Threads: 5 | Subs: 0/0 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+  ━━ SCAN · NIFTY · 23,185 · 11:25:33  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Neutral     score -15/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 41.9 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.15
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.010 — balanced (CE +0.496 / PE -0.507)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -132957); nearest upside punch 23200 from spot 23185
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +44.4, normal)
+  ✘ NO_TRADE  —  not executing  (score 15/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,182 · 11:26:33  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Neutral     score -15/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 41.9 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.15
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.016 — balanced (CE +0.494 / PE -0.509)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -132503); nearest upside punch 23200 from spot 23182
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +39.9, normal)
+  ✘ NO_TRADE  —  not executing  (score 15/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=4 miss=68 api_calls=68 hit_rate=5.6% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,190 · 11:27:15  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Neutral     score +5/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 40.8 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.16
+     +0/2  ░░░░░░░░  Call OI Flow         CE Neutral
+     +0/2  ░░░░░░░░  Put OI Flow          PE Neutral
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.004 — balanced (CE +0.499 / PE -0.503)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -118373); nearest upside punch 23200 from spot 23190
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +1/1  ████████  Synthetic Futures    SF co-movement bullish: spot Δ+8.0, SF Δ+11.3 — confirming
+  ✘ NO_TRADE  —  not executing  (score 5/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=4 miss=68 api_calls=68 hit_rate=5.6% cache_size=11
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,185 · 11:28:35  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Neutral     score -2/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 39.2 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.16
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.011 — balanced (CE +0.496 / PE -0.506)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -131413); nearest upside punch 23200 from spot 23185
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +38.5, normal)
+  ✘ NO_TRADE  —  not executing  (score 2/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,183 · 11:29:35  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Bearish     score -21/100  ███░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 46.1 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.16
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.008 — balanced (CE +0.497 / PE -0.505)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -106037); nearest upside punch 23200 from spot 23183
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +47.4, normal)
+  ✘ NO_TRADE  —  not executing  (score 21/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=18 miss=54 api_calls=54 hit_rate=25.0% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[WS-HEALTH] Uptime: 15.8m | Threads: 5 | Subs: 0/0 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+  ━━ SCAN · NIFTY · 23,186 · 11:30:33  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +21/100  ███░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 42.9 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.16
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.010 — balanced (CE +0.497 / PE -0.506)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -2095); nearest upside punch 23200 from spot 23186
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +40.2, normal)
+  ✘ NO_TRADE  —  not executing  (score 21/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=9 miss=63 api_calls=63 hit_rate=12.5% cache_size=28
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,189 · 11:31:35  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +21/100  ███░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 45.1 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.16
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.005 — balanced (CE +0.499 / PE -0.504)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -139346); nearest upside punch 23200 from spot 23189
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +45.8, normal)
+  ✘ NO_TRADE  —  not executing  (score 21/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,193 · 11:32:34  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Neutral     score +15/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 45.1 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.16
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.001 — balanced (CE +0.501 / PE -0.500)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -133602); nearest upside punch 23200 from spot 23193
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +45.8, normal)
+  ✘ NO_TRADE  —  not executing  (score 15/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=4 miss=68 api_calls=68 hit_rate=5.6% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,198 · 11:33:35  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +18/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 45.8 — bearish momentum
+     +1/1  ████████  MACD Histogram       MACD Histogram expanding positive
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.16
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +0/2  ░░░░░░░░  Put OI Flow          PE Neutral
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.007 — balanced (CE +0.504 / PE -0.497)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -134164); nearest upside punch 23200 from spot 23198
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +43.2, normal)
+  ✘ NO_TRADE  —  not executing  (score 18/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=4 miss=68 api_calls=68 hit_rate=5.6% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,199 · 11:34:36  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +34/100  █████░░░░░░░░░░░  trap 0/100   ⚡ WATCH
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     +1/1  ████████  RSI Momentum         RSI 54.9 — bullish momentum
+     +1/1  ████████  MACD Histogram       MACD Histogram expanding positive
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.15
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.006 — balanced (CE +0.504 / PE -0.498)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -128701); nearest upside punch 23200 from spot 23199
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +46.2, normal)
+  ⚡ WATCH  —  not executing  (score 34/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=5 miss=67 api_calls=67 hit_rate=6.9% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,199 · 11:35:06  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +28/100  ████░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     +1/1  ████████  RSI Momentum         RSI 54.9 — bullish momentum
+     +1/1  ████████  MACD Histogram       MACD Histogram expanding positive
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.15
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +1/1  ████████  Greeks Bias (Δ)      LTP proxy Δ +0.167 — CE premium heavy (bullish)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +40546) — dealer hedging tends to dampen directional follow-through
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +42.8, normal)
+  ✘ NO_TRADE  —  not executing  (score 28/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=2 miss=70 api_calls=70 hit_rate=2.8% cache_size=1
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[WS-HEALTH] Uptime: 20.8m | Threads: 5 | Subs: 0/0 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+  ━━ SCAN · NIFTY · 23,197 · 11:36:36  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +26/100  ████░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +1/1  ████████  EMA Trend            Bullish EMA crossover (9/21)
+     +1/1  ████████  RSI Momentum         RSI 55.6 — bullish momentum
+     +1/1  ████████  MACD Histogram       MACD Histogram expanding positive
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.15
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.006 — balanced (CE +0.504 / PE -0.498)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -132649); nearest upside punch 23200 from spot 23197
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +45.9, normal)
+  ✘ NO_TRADE  —  not executing  (score 26/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,199 · 11:37:37  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +26/100  ████░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +1/1  ████████  EMA Trend            Bullish EMA crossover (9/21)
+     +1/1  ████████  RSI Momentum         RSI 55.6 — bullish momentum
+     +1/1  ████████  MACD Histogram       MACD Histogram expanding positive
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.15
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.008 — balanced (CE +0.504 / PE -0.496)
+     +2/2  ████████  Gamma Regime         Short gamma (Net GEX -176572); nearest upside punch 23200 from spot 23199
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +39.8, normal)
+  ✘ NO_TRADE  —  not executing  (score 26/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=14 miss=58 api_calls=58 hit_rate=19.4% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ERROR]  WebSocket error: Connection to remote host was lost.
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+  ━━ SCAN · NIFTY · 23,200 · 11:38:37  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Neutral     score -5/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 53.0 — bullish momentum
+     +0/1  ████░░░░  MACD Histogram       MACD Histogram positive (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.15
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.009 — balanced (CE +0.505 / PE -0.496)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -114327); nearest downside punch 23200 from spot 23200
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +39.9, normal)
+  ✘ NO_TRADE  —  not executing  (score 5/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=14 miss=58 api_calls=58 hit_rate=19.4% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,201 · 11:39:37  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Neutral     score +15/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 56.1 — bullish momentum
+     +0/1  ████░░░░  MACD Histogram       MACD Histogram positive (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.16
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.014 — balanced (CE +0.506 / PE -0.492)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -136529); nearest downside punch 23200 from spot 23201
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +48.2, normal)
+  ✘ NO_TRADE  —  not executing  (score 15/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=9 miss=63 api_calls=63 hit_rate=12.5% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,207 · 11:40:10  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Neutral     score +15/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 56.1 — bullish momentum
+     +0/1  ████░░░░  MACD Histogram       MACD Histogram positive (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.16
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.018 — balanced (CE +0.509 / PE -0.491)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -106807); nearest downside punch 23200 from spot 23207
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +43.9, normal)
+  ✘ NO_TRADE  —  not executing  (score 15/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=5 miss=67 api_calls=67 hit_rate=6.9% cache_size=5
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[WS-HEALTH] Uptime: 25.8m | Threads: 5 | Subs: 0/0 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+  ━━ SCAN · NIFTY · 23,209 · 11:41:35  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Neutral     score +15/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 61.6 — bullish momentum
+     +1/1  ████████  MACD Histogram       MACD Histogram expanding positive
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.16
+     +0/2  ░░░░░░░░  Call OI Flow         CE Neutral
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.021 — mild CE dominance   (CE +0.510 / PE -0.489)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -134579); nearest downside punch 23200 from spot 23209
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +44.9, normal)
+  ✘ NO_TRADE  —  not executing  (score 15/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,207 · 11:42:35  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Neutral     score +13/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 61.6 — bullish momentum
+     +1/1  ████████  MACD Histogram       MACD Histogram expanding positive
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.16
+     +0/2  ░░░░░░░░  Call OI Flow         CE Neutral
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23000 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.018 — balanced (CE +0.510 / PE -0.492)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -152166); nearest downside punch 23200 from spot 23207
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +40.2, normal)
+  ✘ NO_TRADE  —  not executing  (score 13/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=22 miss=50 api_calls=50 hit_rate=30.6% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,205 · 11:43:25  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +21/100  ███░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 62.9 — bullish momentum
+     +1/1  ████████  MACD Histogram       MACD Histogram expanding positive
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.17
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23200 (call wall 23500 far) — mild bullish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.020 — mild CE dominance   (CE +0.512 / PE -0.492)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -48790); nearest downside punch 23200 from spot 23205
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +48.6, normal)
+  ✘ NO_TRADE  —  not executing  (score 21/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=13 miss=59 api_calls=59 hit_rate=18.1% cache_size=20
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,211 · 11:44:40  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Neutral     score +13/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 58.8 — bullish momentum
+     +0/1  ████░░░░  MACD Histogram       MACD Histogram positive (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.17
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +1/2  ████░░░░  Put OI Flow          PE Long Unwinding — moderately bullish
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23200 (call wall 23500 far) — mild bullish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.023 — mild CE dominance   (CE +0.512 / PE -0.489)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -131952); nearest downside punch 23200 from spot 23211
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +36.6, normal)
+  ✘ NO_TRADE  —  not executing  (score 13/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[WS-HEALTH] Uptime: 30.8m | Threads: 5 | Subs: 0/0 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+  ━━ SCAN · NIFTY · 23,206 · 11:45:40  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Neutral     score -10/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 58.8 — bullish momentum
+     +0/1  ████░░░░  MACD Histogram       MACD Histogram positive (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.17
+     -1/2  ████░░░░  Call OI Flow         CE Long Unwinding — moderately bearish
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23200 (call wall 23500 far) — mild bullish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.016 — balanced (CE +0.508 / PE -0.492)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -134893); nearest downside punch 23200 from spot 23206
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +39.2, normal)
+  ✘ NO_TRADE  —  not executing  (score 10/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=4 miss=68 api_calls=68 hit_rate=5.6% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,207 · 11:46:35  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Neutral     score -13/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 63.6 — bullish momentum
+     +1/1  ████████  MACD Histogram       MACD Histogram expanding positive
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.17
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23200 (call wall 23500 far) — mild bullish
+     +1/1  ████████  Greeks Bias (Δ)      LTP proxy Δ +0.203 — CE premium heavy (bullish)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -75922); nearest downside punch 23200 from spot 23207 | gamma flip 22900
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +43.8, normal)
+  ✘ NO_TRADE  —  not executing  (score 13/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=2 miss=70 api_calls=70 hit_rate=2.8% cache_size=26
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,207 · 11:47:38  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Neutral     score +2/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 58.3 — bullish momentum
+     +0/1  ████░░░░  MACD Histogram       MACD Histogram positive (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.17
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23200 (call wall 23500 far) — mild bullish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.025 — mild CE dominance   (CE +0.512 / PE -0.487)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -133339); nearest downside punch 23200 from spot 23207
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +48.8, normal)
+  ✘ NO_TRADE  —  not executing  (score 2/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=34 miss=38 api_calls=38 hit_rate=47.2% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,215 · 11:48:05  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +42/100  ██████░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 58.3 — bullish momentum
+     +0/1  ████░░░░  MACD Histogram       MACD Histogram positive (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.17
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     +0/1  ████░░░░  OI Wall Position     Spot between walls, near put support 23200 (call wall 23500 far) — mild bullish
+     +1/1  ████████  Greeks Bias (Δ)      LTP proxy Δ +0.208 — CE premium heavy (bullish)
+     +1/2  ████░░░░  Gamma Regime         Short gamma (Net GEX -3241); nearest upside punch 23550 from spot 23215 | gamma flip 23500
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +41.7, normal)
+  ✔ EXECUTE  ▲  CE
+[STRIKE] conviction=0.03 target_delta=0.300 band=[0.22,0.38]
+[STRIKE] No candidate delta in [0.22, 0.38] — conviction=0.03, relaxing to closest available
+[STRIKE] Best asym 0.110 < conviction-scaled min 0.348 (conviction=0.03) — no qualifying strike
+[SCAN] NIFTY: using simple OTM fallback strike 23250.0
+[SCAN] NIFTY: Phase A initial SL source=hard_sl_pts_fallback base=25.00 × factor=1.02 (conv=0.03) → clamped=25.40pts
+[SCAN] NIFTY: qty=65 (risk-based sizing disabled — using fixed lot_mult)
+  [PERF] NIFTY [entry-preflight] greeks: hit=0 miss=80 api_calls=80 hit_rate=0.0% cache_size=4
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: placing CE entry | strike 23250.0 | NIFTY16JUN2623250CE x65
+  [PERF] NIFTY [entry-order] greeks: hit=0 miss=80 api_calls=80 hit_rate=0.0% cache_size=4
+[ORDER] Entry order 26060828768064 placed for NIFTY (NIFTY16JUN2623250CE x65)
+[SUB]    Subscribing NFO:NIFTY16JUN2623250CE LTP...
+[WS] Subscribed option NFO:NIFTY16JUN2623250CE
+[SUB]    Subscribing NSE_INDEX:NIFTY LTP...
+[WS] Subscribed spot NSE_INDEX:NIFTY
+[SUB]    NFO:NIFTY16JUN2623250CE | Mode: Unknown | Status: success
+[SUB]    NSE_INDEX:NIFTY | Mode: Unknown | Status: success
+[ORDER] Basket SL-M placed for NIFTY: trigger ₹218.80 (id:26060895272796)
+[ORDER] Basket LIMIT placed for NIFTY: ₹294.20 (id:26060807034985)
+[ORDER] Position registered for NIFTY: NIFTY16JUN2623250CE QTY=65 ENTRY=₹244.20 SL=₹218.80 (pts=25.40) TGT=₹294.20
+[WS-HEALTH] Uptime: 35.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.2s
+[WS-HEALTH] Uptime: 40.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.2s
+[WS-HEALTH] Uptime: 45.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.2s
+[WS-HEALTH] Uptime: 50.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.2s
+[WS-HEALTH] Uptime: 55.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.2s
+[WS-HEALTH] Uptime: 60.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.2s
+[WS-HEALTH] Uptime: 65.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.1s
+[WS-HEALTH] Uptime: 70.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.2s
+[WS-HEALTH] Uptime: 75.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.2s
+[WS-HEALTH] Uptime: 80.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.2s
+[WS-HEALTH] Uptime: 85.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.3s
+[WS-HEALTH] Uptime: 90.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.1s
+[WS-HEALTH] Uptime: 95.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.3s
+[WS-HEALTH] Uptime: 100.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.1s
+[WS-HEALTH] Uptime: 105.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.1s
+[WS-HEALTH] Uptime: 110.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.1s
+[WS-HEALTH] Uptime: 115.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.3s
+[WS-HEALTH] Uptime: 120.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.3s
+[WS-HEALTH] Uptime: 125.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.3s
+[WS-HEALTH] Uptime: 130.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.3s
+[WS-HEALTH] Uptime: 135.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.3s[WS-HEALTH] Uptime: 140.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.3s
+[WS-HEALTH] Uptime: 145.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.1s
+[WS-HEALTH] Uptime: 150.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.3s
+[WS] PREMIUM SL HIT NIFTY: LTP 218.45 <= SL 218.80
+[ORDER] Exiting NIFTY — reason: PREMIUM_TRAIL → OTHER
+[ORDER] Cancelled broker sl_order_id 26060895272796
+[ORDER] Cancelled broker tgt_order_id 26060807034985
+[ORDER] Post-cancel status 26060895272796: cancelled
+[ORDER] Post-cancel status 26060807034985: cancelled
+[ORDER] Exit order 26060822579837 placed for NIFTY
+[RISK] Loss streak: 1 | Daily P&L ₹-1778
+[UNSUB]  Unsubscribing NFO:NIFTY16JUN2623250CE LTP
+[UNSUB]  Unsubscribing NSE_INDEX:NIFTY LTP
+
+[WS] WARNING: Stale tick feed — no ticks in 43s (market hours active)
+  ━━ SCAN · NIFTY · 23,162 · 13:46:35  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Bearish     score -55/100  ████████░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 27.2 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP insufficient volume (0/5 have volume; 5 zero)
+     -0/1  ████░░░░  PCR OI Level         PCR OI 1.26
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23162 below put wall 23200 — support broken, put writers hedging (bearish)
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.023 — mild CE dominance   (CE +0.512 / PE -0.489)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -236894); nearest downside punch 23150 from spot 23162
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     -1/1  ████████  Synthetic Futures    SF co-movement bearish: spot Δ-52.7, SF Δ-47.5 — confirming
+  ✔ EXECUTE  ▼  PE
+[STRIKE] conviction=0.25 target_delta=0.520 band=[0.44,0.60]
+[SCAN] NIFTY: Phase A initial SL source=moneyness_adapted_ATM base=50.00 × factor=0.99 (conv=0.25) → clamped=49.50pts
+[SCAN] NIFTY: qty=65 (risk-based sizing disabled — using fixed lot_mult)
+  [PERF] NIFTY [entry-preflight] greeks: hit=43 miss=40 api_calls=40 hit_rate=51.8% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: placing PE entry | strike 23100.0 | NIFTY16JUN2623100PE x65
+  [PERF] NIFTY [entry-order] greeks: hit=43 miss=40 api_calls=40 hit_rate=51.8% cache_size=30
+[ORDER] Entry order 26060807762665 placed for NIFTY (NIFTY16JUN2623100PE x65)
+[SUB]    Subscribing NFO:NIFTY16JUN2623100PE LTP...
+[WS] Subscribed option NFO:NIFTY16JUN2623100PE
+[SUB]    Subscribing NSE_INDEX:NIFTY LTP...
+[WS] Subscribed spot NSE_INDEX:NIFTY
+[SUB]    NFO:NIFTY16JUN2623100PE | Mode: Unknown | Status: success
+[SUB]    NSE_INDEX:NIFTY | Mode: Unknown | Status: success
+[ORDER] Basket SL-M placed for NIFTY: trigger ₹139.30 (id:26060867029296)
+[ORDER] Basket LIMIT placed for NIFTY: ₹238.80 (id:26060868651238)
+[ORDER] Position registered for NIFTY: NIFTY16JUN2623100PE QTY=65 ENTRY=₹188.80 SL=₹139.30 (pts=49.50) TGT=₹238.80
+[WS-HEALTH] Uptime: 155.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.3s
+[WS-HEALTH] Uptime: 160.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.3s
+[WS-HEALTH] Uptime: 165.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.3s[WS-HEALTH] Uptime: 170.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.3s
+[WS-HEALTH] Uptime: 175.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.3s[WS-HEALTH] Uptime: 180.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.3s[WS-HEALTH] Uptime: 185.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.3s
+[WS-HEALTH] Uptime: 190.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.3s
+[WS-HEALTH] Uptime: 195.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s[WS-HEALTH] Uptime: 200.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s[WS-HEALTH] Uptime: 205.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+[WS-HEALTH] Uptime: 210.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+[WS-HEALTH] Uptime: 215.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s[WS-HEALTH] Uptime: 220.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s[WS-HEALTH] Uptime: 225.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+[WS-HEALTH] Uptime: 230.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+[WS-HEALTH] Uptime: 235.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+[SQUAREOFF] 15:15 reached — closing 1 position(s)
+[ORDER] Exiting NIFTY — reason: EOD-SquareOff → EOD
+[ORDER] Cancelled broker sl_order_id 26060867029296
+[ORDER] Cancel resp for 26060868651238: {'status': 'error', 'message': 'HTTP 400: {"message":"Cannot cancel order in cancelled status","mode":"analyze","status":"error"}\n', 'code': 400, 'error_type': 'http_error'}
+[ORDER] Post-cancel status 26060867029296: cancelled
+[ORDER] Post-cancel status 26060868651238: cancelled
+[ORDER] Exit order 26060825644231 placed for NIFTY
+[UNSUB]  Unsubscribing NFO:NIFTY16JUN2623100PE LTP
+[UNSUB]  Unsubscribing NSE_INDEX:NIFTY LTP
+
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:15) — waiting for EOD
+[WS-HEALTH] Uptime: 240.8m | Threads: 6 | Subs: 0/0 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 28.5s
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:16) — waiting for EOD
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:17) — waiting for EOD
+
+[WS] Feed silent 148s — forcing hard reconnect...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS] Connecting... (active OS threads: 4)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:18) — waiting for EOD
+[WS] WARNING: Stale tick feed — no ticks in 179s (market hours active)
+
+[WS] Feed silent 179s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 6)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] WARNING: Stale tick feed — no ticks in 212s (market hours active)
+
+[WS] Feed silent 212s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 8)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:19) — waiting for EOD
+[WS] WARNING: Stale tick feed — no ticks in 244s (market hours active)
+
+[WS] Feed silent 244s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 1/36
+[WS] Retrying in 5s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[WS] WARNING: Stale tick feed — no ticks in 288s (market hours active)
+
+[WS] Feed silent 288s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 1/36
+[WS] Retrying in 5s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:20) — waiting for EOD
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[WS] WARNING: Stale tick feed — no ticks in 331s (market hours active)
+
+[WS] Feed silent 331s — forcing hard reconnect...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS] Connecting... (active OS threads: 8)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:21) — waiting for EOD
+[WS] WARNING: Stale tick feed — no ticks in 362s (market hours active)
+
+[WS] Feed silent 362s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 1/36
+[WS] Retrying in 5s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[WS] WARNING: Stale tick feed — no ticks in 405s (market hours active)
+
+[WS] Feed silent 405s — forcing hard reconnect...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS] Connecting... (active OS threads: 8)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:22) — waiting for EOD
+[WS] WARNING: Stale tick feed — no ticks in 436s (market hours active)
+
+[WS] Feed silent 436s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 1/36
+[WS] Retrying in 5s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:23) — waiting for EOD
+[WS] WARNING: Stale tick feed — no ticks in 479s (market hours active)
+
+[WS] Feed silent 479s — forcing hard reconnect...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS] Connecting... (active OS threads: 8)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[WS] WARNING: Stale tick feed — no ticks in 509s (market hours active)
+
+[WS] Feed silent 509s — forcing hard reconnect...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS] Connecting... (active OS threads: 8)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:24) — waiting for EOD
+[WS] WARNING: Stale tick feed — no ticks in 540s (market hours active)
+
+[WS] Feed silent 540s — forcing hard reconnect...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS] Connecting... (active OS threads: 8)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[WS] WARNING: Stale tick feed — no ticks in 571s (market hours active)
+
+[WS] Feed silent 571s — forcing hard reconnect...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS] Connecting... (active OS threads: 8)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:25) — waiting for EOD
+[WS] WARNING: Stale tick feed — no ticks in 602s (market hours active)
+
+[WS] Feed silent 602s — forcing hard reconnect...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS] Connecting... (active OS threads: 8)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[WS] WARNING: Stale tick feed — no ticks in 632s (market hours active)
+
+[WS] Feed silent 632s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 1/36
+[WS] Retrying in 5s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 2/36
+[WS] Retrying in 8s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:26) — waiting for EOD
+[WS] Connecting... (active OS threads: 10)
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[WS] WARNING: Stale tick feed — no ticks in 690s (market hours active)
+
+[WS] Feed silent 690s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 1/36
+[WS] Retrying in 5s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:27) — waiting for EOD
+[WS] WARNING: Stale tick feed — no ticks in 734s (market hours active)
+
+[WS] Feed silent 734s — forcing hard reconnect...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS] Connecting... (active OS threads: 8)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[WS] WARNING: Stale tick feed — no ticks in 764s (market hours active)
+
+[WS] Feed silent 764s — forcing hard reconnect...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS] Connecting... (active OS threads: 8)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:28) — waiting for EOD
+[WS] WARNING: Stale tick feed — no ticks in 795s (market hours active)
+
+[WS] Feed silent 795s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 1/36
+[WS] Retrying in 5s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 2/36
+[WS] Retrying in 8s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:29) — waiting for EOD
+[WS] WARNING: Stale tick feed — no ticks in 853s (market hours active)
+
+[WS] Feed silent 853s — forcing hard reconnect...
+[WS] Connecting... (active OS threads: 10)
+[ERROR]  WebSocket error: can't start new thread
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[ERROR]  WebSocket error: can't start new thread
+[ERROR]  Failed to connect to WebSocket server
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connection failed, Verify [WEBSOCKET_URL=wss://oadev.karm8boost.online/ws, API Key: d45a583db14ddae597f0c84e28fee1dc616252d6134bd06d5a5b173867fb132a], attempt 1/36
+[WS] Retrying in 5s...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Reconnect attempt 1 in 1s...
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS]     Reconnected and re-authenticated.
+[WS] Connecting... (active OS threads: 10)
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[WS] WARNING: Stale tick feed — no ticks in 896s (market hours active)
+
+[WS] Feed silent 896s — forcing hard reconnect...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS] Connecting... (active OS threads: 8)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:30) — waiting for EOD
+[WS] WARNING: Stale tick feed — no ticks in 927s (market hours active)
+
+[WS] Feed silent 927s — forcing hard reconnect...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS] Connecting... (active OS threads: 8)
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[WS] WARNING: Stale tick feed — no ticks in 958s (market hours active)
+
+[WS] Feed silent 958s — forcing hard reconnect...
+[WS]     Disconnected from wss://oadev.karm8boost.online/ws
+[WS] Connecting... (active OS threads: 8)
+[STRATEGY] Outside market hours — skipping signal scan
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[WS-HEALTH] Uptime: 256.8m | Threads: 10 | Subs: 0/0 | Reconnects: 23 | Reconciles: 0 (Repaired: 0) | LastTick: 988.9s
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[WS-HEALTH] Uptime: 261.8m | Threads: 10 | Subs: 0/0 | Reconnects: 23 | Reconciles: 0 (Repaired: 0) | LastTick: 1288.9s
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[WS-HEALTH] Uptime: 266.8m | Threads: 10 | Subs: 0/0 | Reconnects: 23 | Reconciles: 0 (Repaired: 0) | LastTick: 1588.9s
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[WS-HEALTH] Uptime: 271.8m | Threads: 10 | Subs: 0/0 | Reconnects: 23 | Reconciles: 0 (Repaired: 0) | LastTick: 1888.9s
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[WS-HEALTH] Uptime: 276.8m | Threads: 10 | Subs: 0/0 | Reconnects: 23 | Reconciles: 0 (Repaired: 0) | LastTick: 2188.9s
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[WS-HEALTH] Uptime: 281.8m | Threads: 10 | Subs: 0/0 | Reconnects: 23 | Reconciles: 0 (Repaired: 0) | LastTick: 2488.9s
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan
+[STRATEGY] Outside market hours — skipping signal scan

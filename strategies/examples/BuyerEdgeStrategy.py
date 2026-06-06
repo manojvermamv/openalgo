@@ -55,33 +55,20 @@ if hasattr(sys.stderr, "reconfigure"):
 #   ✓ Conviction-driven entry stop-loss sizing
 #   ✓ Conviction-driven breakeven engine
 #   ✓ Conviction-driven premium trailing
-#   ✓ Conviction-driven spot trailing
+#   ✓ Conviction-aware spot trail activation
 #   ✓ Gamma Speed-X acceleration
-#   ✓ Confirmed-close trail ratchet architecture
+#   ✓ Premium confirmed-close trail ratchet architecture
+#   ✓ Synchronized snapshot-based spot trailing
 #   ✓ Single-pass delta caching
 #   ✓ PendingEntry delta propagation
 #   ✓ Moneyness-aware target scaling
 #   ✓ Moneyness-aware trail activation scaling
-#   ✓ Premium Risk Compression (RR Falloff Engine)
 #   ✓ Profit Acceleration Compression Engine (Trend Efficiency)
-#
-# ONGOING OBSERVATION (Trend Efficiency KER):
-# ------------------------------------------------------------------------------
-# The 1-candle KER computed over 15 5-minute candles can react very quickly. 
-# In a violent consolidation right after a huge impulse, KER may collapse 
-# abruptly (e.g. from 2.5x speed to 1.25x speed within minutes). 
-# This correctly relaxes the trail to avoid getting chopped out.
-# However, if this decay proves too abrupt in live intraday testing, consider
-# applying an EMA smoother: efficiency = EMA(raw_efficiency, N)
-# or a decay floor: efficiency = max(current, previous * 0.95).
-#
-# OPTIONS BUYER DISCRETIONARY INTUITION MAPPING:
-# ------------------------------------------------------------------------------
-# The trailing engine now correctly mimics human discretionary management:
-#   1. Early Trade + Profit small       →  Normal trail
-#   2. Gamma Expansion + Clean trend    →  Compress aggressively (lock windfall)
-#   3. Post-Explosion + Dirty trend     →  Relax compression (survive consolidation)
-#
+#   ✓ KER observation: Uses rolling 15-bar window on 1-minute option candles (~15 minutes of premium behavior); may react abruptly; consider EMA smoother or decay floor
+#   ✓ Discretionary mapping:
+#     Early trade → normal trail;
+#     Gamma expansion → compress;
+#     High-ROI consolidation/chop → relax compression via KER
 #   ✓ Auth-error notification deduplication
 #   ✓ WS-dead entry protection
 #   ✓ Persistent WebSocket client architecture
@@ -97,7 +84,7 @@ if hasattr(sys.stderr, "reconfigure"):
 #   ✓ MIS product consistency (Entry / SL / Target / Exit)
 #   ✓ Basket protection order architecture
 #   ✓ Partial basket acceptance recovery
-#   ✓ Idempotent protection-order patching
+#   ✓ Protection-order state reconciliation (skip-if-exists, startup restore, basket fallback)
 #   ✓ Basket-order fallback protection
 #   ✓ Startup broker-protection restoration
 #   ✓ Broker SL synchronization
@@ -484,6 +471,55 @@ GAMMA_SPEED_STEP_FLOOR = 0.40   # never tighter than 40% of base step
 
 
 # ===============================================================================
+# EXIT REASON ENUM — Normalized exit attribution for expectancy analysis
+# ===============================================================================
+
+class ExitReason:
+    """Normalized exit reason codes for expectancy database."""
+    BROKER_SL           = "BROKER_SL"
+    BROKER_TARGET       = "BROKER_TARGET"
+    PREMIUM_TRAIL       = "PREMIUM_TRAIL"
+    SPOT_TRAIL          = "SPOT_TRAIL"
+    MAX_HOLD            = "MAX_HOLD"
+    EOD                 = "EOD"
+    FORCE_UNTRACK_EST   = "FORCE_UNTRACK_EST"
+    FORCE_UNTRACK_UNKNOWN = "FORCE_UNTRACK_UNKNOWN"
+    MANUAL              = "MANUAL"
+    OTHER               = "OTHER"
+    
+    # Internal mapping from raw reason strings to normalized enum
+    _RAW_TO_ENUM = {
+        "premium_sl_hit": PREMIUM_TRAIL,
+        "premium_target_hit": BROKER_TARGET,
+        "spot_trail_sl_hit": SPOT_TRAIL,
+        "broker_sl_filled": BROKER_SL,
+        "broker_sl_filled_on_modify": BROKER_SL,
+        "broker_target_filled": BROKER_TARGET,
+        "EOD-SquareOff": EOD,
+        "EOD-ForceUntrack-Estimated": FORCE_UNTRACK_EST,
+        "EOD-ForceUntrack-NoBrokerPrice": FORCE_UNTRACK_UNKNOWN,
+        "PostCutoffEntry": EOD,
+        "MaxHoldTime": MAX_HOLD,
+        "Bot Shutdown": MANUAL,
+        "manual": MANUAL,
+    }
+    
+    @classmethod
+    def normalize(cls, raw_reason: str) -> str:
+        """Map raw exit reason to normalized enum value."""
+        return cls._RAW_TO_ENUM.get(raw_reason, cls.OTHER)
+    
+    @classmethod
+    def all_values(cls) -> list[str]:
+        """Return all normalized enum values."""
+        return [
+            cls.BROKER_SL, cls.BROKER_TARGET, cls.PREMIUM_TRAIL, cls.SPOT_TRAIL,
+            cls.MAX_HOLD, cls.EOD, cls.FORCE_UNTRACK_EST, cls.FORCE_UNTRACK_UNKNOWN,
+            cls.MANUAL, cls.OTHER
+        ]
+
+
+# ===============================================================================
 # CONFIGURATION — BotConfig dataclass
 # ===============================================================================
 
@@ -534,7 +570,7 @@ class BotConfig:
     #                        else                 → premium_stop_pts (fallback)
     # Placed as broker SL-M immediately after fill — does NOT depend on WebSocket.
     premium_stop_pts:   float = 25.0   # fallback fixed premium points SL (env: PREMIUM_STOP_PTS)
-    premium_target_pts: float = 50.0   # kept for reference; TP disabled for now
+    premium_target_pts: float = 50.0   # broker LIMIT target points (used for basket/sequential protection)
 
     # ══ Session Gates ════════════════════════════════════════════════════════════
     max_trades_per_session: int   = 5
@@ -560,10 +596,11 @@ class BotConfig:
     #
     # Activation gate — minimum move before trail engine activates:
     trail_activate_at_pct:     float = 25.0   # % of base distance required before trail fires; env: TRAIL_ACTIVATE_AT_PCT
-    trail_activate_at_max_pts: float = 0.0    # Hard ceiling on activation distance in premium pts; 0=no cap; env: TRAIL_ACTIVATE_AT_MAX_PTS
+    trail_activate_at_max_pts: float = 30.0   # Hard ceiling on activation distance in premium pts; 0=no cap; env: TRAIL_ACTIVATE_AT_MAX_PTS
     #                                           Prevents activation from exceeding the TP window on expensive options.
     #                                           Example: premium=₹267, pct=25%→67pts, but TP=50pts → trail never fires.
-    #                                           Set to 20 to cap activation at 20pts, well inside the TP window.
+    #                                           Default 30pts caps activation well inside typical 50pt target window,
+    #                                           ensuring trail can activate before target on most trades.
     #
     # Method: fixed_pct params
     trail_step_pct: float = 10.0   # % of entry_premium (premium) or reward_dist (spot); env: TRAIL_STEP_PCT
@@ -653,8 +690,8 @@ class BotConfig:
     max_daily_profit_amount: float = 0.0    # halt new entries when day P&L hits this; 0=off
 
     # ── Session Timing ─────────────────────────────────────────────────────────
-    no_new_trade_after: str = "15:25"   # no new BUY entries after this IST time (HH:MM), e.g. "15:10"
-    square_off_time:    str = "15:30"   # force-exit all positions at this IST time, e.g. "15:15"
+    no_new_trade_after: str = "15:10"   # no new BUY entries after this IST time (HH:MM) — must be before square_off_time
+    square_off_time:    str = "15:15"   # force-exit all positions at this IST time — MUST match broker MIS cutoff
 
     # ── Max Hold Time ──────────────────────────────────────────────────────────
     max_hold_minutes: int = 0   # exit positions held > N minutes; 0=disabled
@@ -971,14 +1008,15 @@ class OptionPosition:
 
 @dataclass
 class PendingEntry:
-    order_id:    str
-    symbol:      str
-    qty:         int
-    spot:        float
-    direction:   str
-    sl_pts:      float
-    created_at:  datetime
-    entry_delta: float | None = None  # Preserved for moneyness-adapted tgt/trail on async fill
+    order_id:         str
+    symbol:           str
+    qty:              int
+    spot:             float
+    direction:        str
+    sl_pts:           float
+    created_at:       datetime
+    entry_delta:      float | None = None  # Preserved for moneyness-adapted tgt/trail on async fill
+    entry_conviction: float = 0.0          # Conviction at entry for adaptive risk on async fill
 
 
 @dataclass
@@ -2342,24 +2380,34 @@ class TrailSLEngine:
         # ── Profit Acceleration Compression Engine ─────────────────────────────
         # 1. Base Gamma Speed (ROI-based)
         _roi_pct = ((confirmed_close - ep) / ep * 100.0) if ep > 0 else 0.0
-        if _roi_pct >= 150:   _trail_speed = 2.5
-        elif _roi_pct >= 100: _trail_speed = 2.0
-        elif _roi_pct >= 50:  _trail_speed = 1.5
-        else:                 _trail_speed = 1.0
+        if _roi_pct >= 150:
+            _trail_speed = 2.5
+            _gamma_tier = "TIER_3_150PLUS"
+        elif _roi_pct >= 100:
+            _trail_speed = 2.0
+            _gamma_tier = "TIER_2_100_150"
+        elif _roi_pct >= 50:
+            _trail_speed = 1.5
+            _gamma_tier = "TIER_1_50_100"
+        else:
+            _trail_speed = 1.0
+            _gamma_tier = "TIER_0_0_50"
         
         # 2. Trend Efficiency Factor (Market Structure & Ranging Avoidance)
         if df is None:
             df = self._fetcher.fetch_option_candles(pos.symbol)
             
         trend_efficiency = 1.0
+        _net_move = 0.0
+        _path_length = 0.0
         if df is not None and not df.empty:
             recent = df.tail(15)  # recent window to evaluate chop vs trend
             if len(recent) > 1:
                 closes = recent["close"].values
-                net_move = abs(closes[-1] - closes[0])
-                path_length = sum(abs(closes[i] - closes[i-1]) for i in range(1, len(closes)))
-                if path_length > 0:
-                    trend_efficiency = net_move / path_length
+                _net_move = abs(closes[-1] - closes[0])
+                _path_length = sum(abs(closes[i] - closes[i-1]) for i in range(1, len(closes)))
+                if _path_length > 0:
+                    trend_efficiency = _net_move / _path_length
                     
         # Clamp efficiency between 0.50 and 1.0 to prevent dividing by zero or inflating the step
         trend_efficiency_factor = max(0.50, min(1.0, trend_efficiency))
@@ -2372,6 +2420,22 @@ class TrailSLEngine:
         
         # 4. Final Safety Limit Cap (Guarantees trail doesn't exceed 50% of entry premium)
         step_pts = min(step_pts, ep * 0.50)
+        
+        # ── Incremental PnL ──
+        _unrealized_pnl_pts = confirmed_close - ep
+        _unrealized_pnl_pct = (_unrealized_pnl_pts / ep * 100.0) if ep > 0 else 0.0
+        _unrealized_pnl_abs = _unrealized_pnl_pts * pos.qty
+        
+        # ── Detailed Trail Logging ──
+        print(
+            f"[TRAIL] {underlying} | ROI={_roi_pct:.1f}% ({_gamma_tier}) | "
+            f"KER={trend_efficiency:.3f} (net={_net_move:.2f}/path={_path_length:.2f}) → "
+            f"KER_factor={trend_efficiency_factor:.3f} | "
+            f"Speed={_trail_speed:.2f}x | BaseStep={_base_step_pts:.2f} → "
+            f"FinalStep={step_pts:.2f} | Cap={ep*0.50:.2f} | "
+            f"UnrealPnL={_unrealized_pnl_pts:.2f}pts ({_unrealized_pnl_pct:.1f}%) ₹{_unrealized_pnl_abs:.0f} | "
+            f"PeakClose={pos.trail_peak_close:.2f} | LTP={confirmed_close:.2f}"
+        )
         
         # Trail activation and ratchet placement use confirmed periodic closes.
         if not pos.premium_trail_active:
@@ -2424,6 +2488,17 @@ class TrailSLEngine:
 
         # Final Safety Limit Cap for Spot Mode (Option B architecture)
         step_pts = min(step_pts, reward_dist * 0.50)
+
+        # Spot PnL equivalent (spot move vs entry)
+        _spot_move_pts = move
+        _spot_move_pct = (_spot_move_pts / pos.spot_entry * 100.0) if pos.spot_entry > 0 else 0.0
+
+        print(
+            f"[TRAIL] {underlying} SPOT | Move={_spot_move_pts:.2f}pts ({_spot_move_pct:.2f}%) | "
+            f"ActivateReq={activate_pts:.2f} | Step={step_pts:.2f} | Cap={reward_dist*0.50:.2f} | "
+            f"Peak={pos.trail_peak if pos.trail_peak else 'N/A'} | LTP={spot_ltp:.2f} | "
+            f"SL_Spot={pos.trail_sl_spot:.2f if pos.trail_sl_spot else 'N/A'}"
+        )
 
         if not pos.trail_active:
             pos.trail_active = True
@@ -2886,12 +2961,13 @@ class RiskManager:
 
 
 # ===============================================================================
-# WEBSOCKET MANAGER — real-time LTP + trailing SL engine
+# WEBSOCKET MANAGER — real-time LTP + breach detection
 # ===============================================================================
 
 class WebSocketManager:
     """
-    Manages the WebSocket connection and per-tick trailing SL logic.
+    Manages the WebSocket connection and per-tick breach detection (SL/target hits).
+    Trailing SL ratchets are computed by TrailSLEngine on the strategy thread.
     Callbacks for exit and broker SL modification are wired after construction
     to avoid circular dependency with OrderManager.
     """
@@ -3116,6 +3192,7 @@ class WebSocketManager:
                 self._trigger_exit(underlying, "spot_trail_sl_hit")
 
     def _trigger_exit(self, underlying: str, reason: str) -> None:
+        normalized_reason = ExitReason.normalize(reason)
         with self._state.state_lock:
             pos = self._state.positions.get(underlying)
             if not pos or pos.exit_pending:
@@ -3128,7 +3205,7 @@ class WebSocketManager:
         if self._exit_callback:
             threading.Thread(
                 target=self._exit_callback,
-                args=(underlying, reason),
+                args=(underlying, normalized_reason),
                 name=f"exit-{underlying}",
                 daemon=True,
             ).start()
@@ -3442,7 +3519,7 @@ class OrderManager:
                 _data = pre.get("data") or pre
                 if str(_data.get("order_status", "")).lower() in ("complete", "filled", "executed"):
                     print(f"[ORDER] SL already filled for {underlying} — skipping modify, triggering exit")
-                    self._trigger_exit(underlying, "broker_sl_filled_on_modify")
+                    self.place_exit(underlying, "broker_sl_filled_on_modify")
                     return
         except Exception as _pre_exc:
             print(f"[ORDER] modify_broker_sl pre-check error for {underlying}: {_pre_exc}")
@@ -3471,10 +3548,11 @@ class OrderManager:
         for underlying, pos in list(self._state.positions.items()):
             if pos.exit_pending:
                 continue
-            for attr_name, reason in (
+            for attr_name, raw_reason in (
                 ("sl_order_id",  "broker_sl_filled"),
                 ("tgt_order_id", "broker_target_filled"),
             ):
+                reason = ExitReason.normalize(raw_reason)
                 oid = getattr(pos, attr_name, None)
                 if not oid:
                     continue
@@ -3734,9 +3812,13 @@ class OrderManager:
         path = self.config.trade_journal_path
         if not path:
             return
+        risk_pts = max(0.01, pos.entry_premium - pos.initial_sl)
+        risk_amt = risk_pts * pos.qty
+        r_multiple = pnl / risk_amt if risk_amt > 0 else 0.0
         header = [
             "timestamp", "underlying", "option_symbol", "direction", "qty",
             "entry", "exit", "pnl", "reason", "mode",
+            "r_multiple", "entry_conviction", "moneyness",
         ]
         row = [
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -3749,6 +3831,9 @@ class OrderManager:
             f"{pnl:.2f}",
             reason,
             "PAPER" if self.config.paper_trade else "LIVE",
+            f"{r_multiple:.2f}",
+            f"{pos.entry_conviction:.2f}",
+            pos.moneyness,
         ]
         write_header = not os.path.exists(path)
         try:
@@ -3844,6 +3929,7 @@ class OrderManager:
                     sl_pts=resolved_sl_pts,
                     created_at=datetime.now(),
                     entry_delta=entry_delta,
+                    entry_conviction=entry_conviction,
                 )
 
             filled = self.poll_order_status(order_id)
@@ -3889,7 +3975,9 @@ class OrderManager:
         pos = self._state.positions.get(underlying)
         if not pos:
             return
-        print(f"[ORDER] Exiting {underlying} — reason: {reason}")
+        # Normalize exit reason to enum for consistent attribution
+        norm_reason = ExitReason.normalize(reason)
+        print(f"[ORDER] Exiting {underlying} — reason: {reason} → {norm_reason}")
 
         if cfg.paper_trade:
             executed_price = self._state.ltp_map.get(pos.symbol) or pos.entry_premium
@@ -3898,7 +3986,7 @@ class OrderManager:
             self._risk.record_exit(pnl)
             self._ws.unsubscribe(cfg.fno_exchange, pos.symbol)
             self._ws.unsubscribe_spot(pos.spot_symbol)
-            self._write_journal(underlying, pos, executed_price, pnl, reason)
+            self._write_journal(underlying, pos, executed_price, pnl, norm_reason)
             with self._state.state_lock:
                 self._state.positions.pop(underlying, None)
             with self._state.exit_lock:
@@ -3911,7 +3999,7 @@ class OrderManager:
             hold_mins = max(0, int((get_ist_now() - pos.entry_time).total_seconds() / 60))
             self._notify(
                 f"{emoji} PAPER EXIT: {underlying}\n"
-                f"📌 {reason.upper()}\n"
+                f"📌 {norm_reason}\n"
                 f"{direction_emoji} {pos.symbol}\n"
                 f"🚪 ₹{pos.entry_premium:.2f} → ₹{executed_price:.2f}\n"
                 f"💰 P&L: ₹{pnl:.0f} ({r_multiple:+.2f}R)\n"
@@ -3932,7 +4020,7 @@ class OrderManager:
                 self._risk.record_exit(pnl)
                 self._ws.unsubscribe(cfg.fno_exchange, pos.symbol)
                 self._ws.unsubscribe_spot(pos.spot_symbol)
-                self._write_journal(underlying, pos, float(executed_price), pnl, reason)
+                self._write_journal(underlying, pos, float(executed_price), pnl, norm_reason)
                 with self._state.state_lock:
                     self._state.positions.pop(underlying, None)
                 with self._state.exit_lock:
@@ -3967,11 +4055,11 @@ class OrderManager:
                 best_price = self._state.ltp_map.get(pos.symbol)
                 if best_price is not None:
                     pnl = (best_price - pos.entry_premium) * pos.qty
-                    journal_reason = "EOD-ForceUntrack-Estimated"
+                    journal_reason = ExitReason.FORCE_UNTRACK_EST
                 else:
                     best_price = 0.0
                     pnl = 0.0
-                    journal_reason = "EOD-ForceUntrack-NoBrokerPrice"
+                    journal_reason = ExitReason.FORCE_UNTRACK_UNKNOWN
                     
                 self._risk.record_exit(pnl)
                 self._write_journal(underlying, pos, best_price, pnl, journal_reason)
@@ -3998,7 +4086,7 @@ class OrderManager:
         with self._state.state_lock:
             self._state.pending_exits[underlying] = PendingExit(
                 order_id=order_id,
-                reason=reason,
+                reason=norm_reason,
                 created_at=datetime.now(),
             )
         filled = self.poll_order_status(order_id)
@@ -4019,7 +4107,7 @@ class OrderManager:
 
         pnl = (executed_price - pos.entry_premium) * pos.qty
         self._risk.record_exit(pnl)
-        self._write_journal(underlying, pos, executed_price, pnl, reason)
+        self._write_journal(underlying, pos, executed_price, pnl, norm_reason)
         self._ws.unsubscribe(cfg.fno_exchange, pos.symbol)
         self._ws.unsubscribe_spot(pos.spot_symbol)
         with self._state.state_lock:
@@ -4073,6 +4161,7 @@ class OrderManager:
                         pending_entry.spot, pending_entry.direction, price,
                         sl_pts=pending_entry.sl_pts,
                         entry_delta=pending_entry.entry_delta,
+                        entry_conviction=pending_entry.entry_conviction,
                     )
                     # WC-09: If filled after square_off_time, queue immediate exit
                     if square_off_hm and now_hm >= square_off_hm:
@@ -4126,8 +4215,9 @@ class OrderManager:
                 if status == "complete" and executed_price:
                     pnl = (executed_price - pos.entry_premium) * pos.qty
                     pnl_sign = "✅" if pnl >= 0 else "❌"
+                    norm_reason = ExitReason.normalize(pending_exit.reason)
                     self._risk.record_exit(pnl)
-                    self._write_journal(underlying, pos, executed_price, pnl, pending_exit.reason)
+                    self._write_journal(underlying, pos, executed_price, pnl, norm_reason)
                     self._ws.unsubscribe(self.config.fno_exchange, opt_sym)
                     self._ws.unsubscribe_spot(pos.spot_symbol)
                     with self._state.state_lock:
@@ -4135,7 +4225,7 @@ class OrderManager:
                         self._state.pending_exits.pop(underlying, None)
                     with self._state.exit_lock:
                         self._state.exit_queue.discard(underlying)
-                    print(f"[PENDING] EXIT {order_id} complete for {underlying} @ ₹{executed_price:.2f} | P&L ₹{pnl:.2f}")
+                    print(f"[PENDING] EXIT {order_id} complete for {underlying} @ ₹{executed_price:.2f} | P&L ₹{pnl:.2f} | reason={norm_reason}")
                     self._notify(
                         f"{pnl_sign} {self.config.strategy_name} EXIT confirmed\n"
                         f"{underlying} {pos.option_type} | {opt_sym}\n"
@@ -4151,11 +4241,11 @@ class OrderManager:
                         best_price = self._state.ltp_map.get(opt_sym)
                         if best_price is not None:
                             pnl = (best_price - pos.entry_premium) * pos.qty
-                            journal_reason = "EOD-ForceUntrack-Estimated"
+                            journal_reason = ExitReason.FORCE_UNTRACK_EST
                         else:
                             best_price = 0.0
                             pnl = 0.0
-                            journal_reason = "EOD-ForceUntrack-NoBrokerPrice"
+                            journal_reason = ExitReason.FORCE_UNTRACK_UNKNOWN
                             
                         self._risk.record_exit(pnl)
                         self._write_journal(underlying, pos, best_price, pnl, journal_reason)
@@ -4218,13 +4308,12 @@ class OptionsBuyerEdgeBot:
 
     def _send_alert(self, message: str, priority: int = 1) -> None:
         try:
-            result = self.client.telegram(
+            self.client.telegram(
                 username=self.config.openalgo_username,
                 strategy=self.config.strategy_name,
                 message=message,
                 priority=priority,
             )
-            print(f"[ALERT] Send result: {result}")
         except Exception as exc:
             print(f"[ALERT] Send error: {exc}")
 
