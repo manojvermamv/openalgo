@@ -620,6 +620,13 @@ class BotConfig:
     # Spot mode anchor (% of spot price = total spot reward distance):
     spot_reward_pct: float = 0.05   # env: SPOT_REWARD_PCT
 
+    # ── Key Level Trail (structure-driven) ─────────────────────────────────────
+    key_level_spacing: dict = field(default_factory=lambda: {"NIFTY": 50, "BANKNIFTY": 100, "FINNIFTY": 50, "MIDCPNIFTY": 50, "SENSEX": 100, "BANKEX": 100})
+    key_level_trail_style: str = "capture_pct"   # "fixed" | "capture_pct"; env: KEY_LEVEL_TRAIL_STYLE
+    key_level_capture_pct: float = 25.0          # % of captured premium range to lock per level; env: KEY_LEVEL_CAPTURE_PCT
+    key_level_fixed_pts: float = 15.0            # Fixed premium pts to lock per level (fixed style); env: KEY_LEVEL_FIXED_PTS
+    key_level_breakeven_after_levels: int = 1    # Move SL to entry after N completed levels; 0=disable; env: KEY_LEVEL_BE_AFTER_LEVELS
+
     # ── Mode Flags ─────────────────────────────────────────────────────────────
     long_only_mode:        bool = True
     broker_sl_orders:      bool = True
@@ -782,6 +789,11 @@ class BotConfig:
             trail_tracking_mode=os.getenv("TRAIL_TRACKING_MODE", defaults.trail_tracking_mode).strip().lower(),
             trail_sl_method=os.getenv("TRAIL_SL_METHOD", defaults.trail_sl_method).strip().lower(),
             spot_reward_pct=float(os.getenv("SPOT_REWARD_PCT", str(defaults.spot_reward_pct))),
+            key_level_spacing=eval(os.getenv("KEY_LEVEL_SPACING", str(defaults.key_level_spacing))),
+            key_level_trail_style=os.getenv("KEY_LEVEL_TRAIL_STYLE", defaults.key_level_trail_style).strip().lower(),
+            key_level_capture_pct=float(os.getenv("KEY_LEVEL_CAPTURE_PCT", str(defaults.key_level_capture_pct))),
+            key_level_fixed_pts=float(os.getenv("KEY_LEVEL_FIXED_PTS", str(defaults.key_level_fixed_pts))),
+            key_level_breakeven_after_levels=int(os.getenv("KEY_LEVEL_BE_AFTER_LEVELS", str(defaults.key_level_breakeven_after_levels))),
             trail_activate_at_pct=float(os.getenv("TRAIL_ACTIVATE_AT_PCT", str(defaults.trail_activate_at_pct))),
             trail_activate_at_max_pts=float(os.getenv("TRAIL_ACTIVATE_AT_MAX_PTS", str(defaults.trail_activate_at_max_pts))),
             trail_step_pct=float(os.getenv("TRAIL_STEP_PCT", str(defaults.trail_step_pct))),
@@ -923,6 +935,16 @@ class BotConfig:
             errors.append(f"ORDER_STATUS_MAX_RETRIES={self.order_status_max_retries} must be >= 1")
         if self.order_status_poll_interval < 0:
             errors.append(f"ORDER_STATUS_POLL_INTERVAL={self.order_status_poll_interval} must be >= 0")
+        if self.trail_sl_method not in ("fixed_pct", "fixed_pts", "atr", "delta", "key_level"):
+            errors.append(f"TRAIL_SL_METHOD={self.trail_sl_method!r} must be 'fixed_pct', 'fixed_pts', 'atr', 'delta', or 'key_level'")
+        if self.key_level_trail_style not in ("fixed", "capture_pct"):
+            errors.append(f"KEY_LEVEL_TRAIL_STYLE={self.key_level_trail_style!r} must be 'fixed' or 'capture_pct'")
+        if self.key_level_capture_pct < 0 or self.key_level_capture_pct > 100:
+            errors.append(f"KEY_LEVEL_CAPTURE_PCT={self.key_level_capture_pct} must be in range [0, 100]")
+        if self.key_level_fixed_pts <= 0:
+            errors.append(f"KEY_LEVEL_FIXED_PTS={self.key_level_fixed_pts} must be > 0")
+        if self.key_level_breakeven_after_levels < 0:
+            errors.append(f"KEY_LEVEL_BE_AFTER_LEVELS={self.key_level_breakeven_after_levels} must be >= 0")
         # Validate time strings (HH:MM 24-hour format)
         _hhmm = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
         for _fname, _val in (
@@ -1004,6 +1026,11 @@ class OptionPosition:
     breakeven_moved:      bool          = False   # True once SL has been shifted to entry cost
     entry_conviction:     float         = 0.0     # ∈ [0,1] conviction at entry; drives adaptive risk engine
     trail_act_mult:       float         = 1.0     # Scaler for trail activation based on moneyness
+    # ── key_level trail state ──────────────────────────────────────────────
+    kl_active:            bool          = False
+    kl_next_level:        float | None  = None
+    kl_levels_completed:  int           = 0
+    kl_level_premium:     float | None  = None    # Premium at last completed level
 
 
 @dataclass
@@ -2259,7 +2286,23 @@ class TrailSLEngine:
             opt_ltp = state.ltp_map.get(pos.symbol)
             spot_ltp = state.ltp_map.get(pos.spot_symbol)
             if not opt_ltp or not spot_ltp:
+                # Diagnostic: show what's missing
+                if not hasattr(self, '_data_skip_logged'):
+                    self._data_skip_logged: set[str] = set()
+                _key = f"{underlying}|{pos.symbol}|{'opt' if not opt_ltp else ''}{'spot' if not spot_ltp else ''}"
+                if _key not in self._data_skip_logged:
+                    self._data_skip_logged.add(_key)
+                    print(
+                        f"[DATA-MISS] {underlying}: "
+                        f"option={pos.symbol} premium={'₹'+str(opt_ltp) if opt_ltp else 'MISSING'} | "
+                        f"spot={pos.spot_symbol} spot_ltp={'₹'+str(spot_ltp) if spot_ltp else 'MISSING'} | "
+                        f"ws_desired={list(state.ltp_map.keys())}"
+                    )
                 continue
+            # Clear skip flag when data arrives
+            self._data_skip_logged.discard(f"{underlying}|{pos.symbol}|opt")
+            self._data_skip_logged.discard(f"{underlying}|{pos.symbol}|spot")
+            self._data_skip_logged.discard(f"{underlying}|{pos.symbol}|optspot")
 
             confirmed_close = opt_ltp
             prior_trail_peak_close = (
@@ -2290,7 +2333,9 @@ class TrailSLEngine:
             _trail_conv_adj = CONV_TRAIL_ACT_BASE - pos.entry_conviction * CONV_TRAIL_ACT_RANGE
             
             # ── 3. Mode Processing ────────
-            if cfg.trail_tracking_mode == "premium":
+            if cfg.trail_sl_method == "key_level":
+                self._process_key_level_trail(underlying, pos, spot_ltp, confirmed_close)
+            elif cfg.trail_tracking_mode == "premium":
                 self._process_premium_trail(
                     underlying,
                     pos,
@@ -2521,6 +2566,199 @@ class TrailSLEngine:
                     if pos.trail_sl_spot is None or new_sl_spot < pos.trail_sl_spot:
                         pos.trail_sl_spot = new_sl_spot
                         print(f"[TRAIL] Spot RATCHET {underlying}: peak {spot_ltp:.2f}, SL spot → {new_sl_spot:.2f}")
+
+    # ── Key Level Trail Helpers ──────────────────────────────────────────────
+
+    def _get_key_levels(self, spot: float, underlying: str) -> list[float]:
+        """Generate a symmetric strike ladder around spot using per-instrument spacing.
+
+        Returns a sorted list of price levels (e.g. for NIFTY with spacing=50:
+        [..., 24750, 24800, 24850, 24900, 24950, ...]).
+        """
+        cfg = self._config
+        # Resolve spacing from config dict; fallback to 50 for unknown instruments
+        spacing = cfg.key_level_spacing.get(underlying, 50)
+        if spacing <= 0:
+            spacing = 50
+
+        # Nearest level at or below spot (floor to spacing grid)
+        floor_level = math.floor(spot / spacing) * spacing
+        # Generate ~20 levels in each direction (enough for the session)
+        levels = []
+        for i in range(-20, 21):
+            lvl = floor_level + i * spacing
+            if lvl > 0:
+                levels.append(lvl)
+        levels.sort()
+        return levels
+
+    def _get_next_key_level(
+        self,
+        spot: float,
+        direction: str,
+        underlying: str,
+        current_level: float | None,
+    ) -> float | None:
+        """Return the next structure level the spot must cross to trigger a trail ratchet.
+
+        CE: next level ABOVE current_level (upward targets).
+        PE: next level BELOW current_level (downward targets).
+        If current_level is None, finds the nearest level on the correct side of spot.
+        """
+        levels = self._get_key_levels(spot, underlying)
+        if not levels:
+            return None
+
+        if current_level is None:
+            # First call: pick the nearest level on the favorable side of spot
+            if direction == "CE":
+                above = [l for l in levels if l > spot]
+                return min(above) if above else None
+            else:
+                below = [l for l in levels if l < spot]
+                return max(below) if below else None
+
+        # Find the next level beyond current_level in the trade direction
+        if direction == "CE":
+            above = [l for l in levels if l > current_level]
+            return min(above) if above else None
+        else:
+            below = [l for l in levels if l < current_level]
+            return max(below) if below else None
+
+    def _process_key_level_trail(
+        self,
+        underlying: str,
+        pos: OptionPosition,
+        spot_ltp: float,
+        premium_ltp: float,
+    ) -> None:
+        """Structure-driven trailing SL based on key strike levels.
+
+        Logic:
+          1. When spot crosses the next structure level → lock in a portion of
+             the premium move since the last level (capture_pct) or a fixed pts
+             amount.
+          2. After key_level_breakeven_after_levels completed levels, SL moves
+             to entry cost (breakeven).
+          3. SL ratchets UP for both CE and PE (long options profit from
+             increasing premium). The one-way ratchet is: SL only moves higher,
+             never lower. Spot levels move opposite directions (CE: up, PE: down)
+             but premium-based SL always ratchets upward.
+
+        Gap-jump handling: uses a while loop so multiple levels crossed in a
+        single tick are all processed immediately.
+        """
+        cfg = self._config
+        ep = pos.entry_premium
+
+        # ── Diagnostic: data snapshot on every key_level trail call ─────────
+        _roi_pct = ((premium_ltp - ep) / ep * 100.0) if ep > 0 else 0.0
+        if not hasattr(self, '_kl_tick_count'):
+            self._kl_tick_count: dict[str, int] = {}
+        self._kl_tick_count[underlying] = self._kl_tick_count.get(underlying, 0) + 1
+        _kl_cnt = self._kl_tick_count[underlying]
+        if _kl_cnt <= 5 or _kl_cnt % 10 == 0:
+            print(
+                f"[DATA-KL] {underlying} tick#{_kl_cnt}: "
+                f"spot=₹{spot_ltp:.2f} premium=₹{premium_ltp:.2f} | "
+                f"entry=₹{ep:.2f} ROI={_roi_pct:.1f}% | "
+                f"SL=₹{pos.sl:.2f} initial=₹{pos.initial_sl:.2f} | "
+                f"direction={pos.option_type} moneyness={pos.moneyness} | "
+                f"kl_active={pos.kl_active} kl_next={pos.kl_next_level} "
+                f"kl_completed={pos.kl_levels_completed} "
+                f"kl_level_premium={pos.kl_level_premium if pos.kl_level_premium else 'N/A'}"
+            )
+
+        # ── Initialization on first tick ────────────────────────────────────
+        if not pos.kl_active:
+            pos.kl_active = True
+            pos.kl_next_level = self._get_next_key_level(
+                spot_ltp, pos.option_type, underlying, None
+            )
+            pos.kl_levels_completed = 0
+            pos.kl_level_premium = premium_ltp
+            print(
+                f"[TRAIL] KeyLevel INIT {underlying}: "
+                f"next_level={pos.kl_next_level:.0f} | "
+                f"premium={premium_ltp:.2f}"
+            )
+            return
+
+        # ── Guard: no next level computed ───────────────────────────────────
+        if pos.kl_next_level is None:
+            return
+
+        # ── Process all crossed levels in a loop (handles gap jumps) ────────
+        # CE: spot rising crosses upward levels; PE: spot falling crosses downward levels.
+        while pos.kl_next_level is not None:
+            if pos.option_type == "CE" and spot_ltp < pos.kl_next_level:
+                break
+            elif pos.option_type == "PE" and spot_ltp > pos.kl_next_level:
+                break
+
+            # ── Level crossed — compute trail step ─────────────────────────
+            pos.kl_levels_completed += 1
+            captured_range = premium_ltp - (pos.kl_level_premium or ep)
+
+            if cfg.key_level_trail_style == "capture_pct":
+                trail_step = max(1.0, captured_range * (cfg.key_level_capture_pct / 100.0))
+            else:
+                trail_step = max(1.0, cfg.key_level_fixed_pts)
+
+            # ── Breakeven after N completed levels ─────────────────────────
+            if (
+                cfg.key_level_breakeven_after_levels > 0
+                and pos.kl_levels_completed >= cfg.key_level_breakeven_after_levels
+                and not pos.breakeven_moved
+                and ep > pos.sl
+            ):
+                pos.sl = ep
+                pos.breakeven_moved = True
+                print(
+                    f"[TRAIL] KeyLevel BREAKEVEN {underlying}: "
+                    f"SL → entry ₹{ep:.2f} after {pos.kl_levels_completed} level(s)"
+                )
+
+            # ── Compute new SL from captured range ─────────────────────────
+            new_sl = premium_ltp - trail_step
+
+            # One-directional ratchet (SL only moves UP for both CE and PE)
+            if new_sl > pos.sl:
+                pos.sl = new_sl
+                pos.premium_trail_sl = new_sl
+                print(
+                    f"[TRAIL] KeyLevel RATCHET {underlying}: "
+                    f"level_crossed={pos.kl_next_level:.0f} | "
+                    f"captured={captured_range:.2f}pts → step={trail_step:.2f} | "
+                    f"SL→₹{new_sl:.2f} | completed={pos.kl_levels_completed}"
+                )
+                if cfg.broker_sl_orders and pos.sl_order_id and self.modify_callback:
+                    self.modify_callback(underlying, new_sl)
+            else:
+                print(
+                    f"[TRAIL] KeyLevel CROSS {underlying}: "
+                    f"level_crossed={pos.kl_next_level:.0f} | "
+                    f"captured={captured_range:.2f}pts → step={trail_step:.2f} | "
+                    f"SL unchanged ₹{pos.sl:.2f} (new_sl={new_sl:.2f} not higher)"
+                )
+
+            # ── Advance to next level ──────────────────────────────────────
+            pos.kl_level_premium = premium_ltp
+            pos.kl_next_level = self._get_next_key_level(
+                spot_ltp, pos.option_type, underlying, pos.kl_next_level
+            )
+
+        # Log distance to next level (only when no level was crossed this tick)
+        if pos.kl_next_level is not None:
+            _move_to_level = abs(spot_ltp - pos.kl_next_level)
+            print(
+                f"[TRAIL] KeyLevel {underlying}: "
+                f"spot={spot_ltp:.0f} → next_level={pos.kl_next_level:.0f} "
+                f"({_move_to_level:.0f}pts away) | "
+                f"completed={pos.kl_levels_completed} | "
+                f"SL={pos.sl:.2f} | premium={premium_ltp:.2f}"
+            )
 
 
 # ===============================================================================
@@ -3150,6 +3388,39 @@ class WebSocketManager:
         self._last_tick_time = time.time()    # feed heartbeat for watchdog
         with self._state.state_lock:
             self._state.ltp_map[symbol] = ltp
+
+        # ── Diagnostic: log ticks for active position symbols ───────────────
+        for underlying, pos in list(self._state.positions.items()):
+            if pos.exit_pending:
+                continue
+            if pos.symbol == symbol:
+                if not hasattr(self, '_tick_counts'):
+                    self._tick_counts: dict[str, int] = {}
+                self._tick_counts[symbol] = self._tick_counts.get(symbol, 0) + 1
+                cnt = self._tick_counts[symbol]
+                # Log every 5th tick to avoid flooding, plus first tick
+                if cnt <= 3 or cnt % 5 == 0:
+                    spot_ltp = self._state.ltp_map.get(pos.spot_symbol)
+                    print(
+                        f"[WS-TICK] {underlying} option={symbol} "
+                        f"premium=₹{ltp:.2f} spot={spot_ltp if spot_ltp else 'N/A'} | "
+                        f"tick#{cnt} SL=₹{pos.sl:.2f} TGT=₹{pos.tgt:.2f} | "
+                        f"kl_active={pos.kl_active} kl_next={pos.kl_next_level}"
+                    )
+            elif pos.spot_symbol == symbol:
+                if not hasattr(self, '_spot_tick_counts'):
+                    self._spot_tick_counts: dict[str, int] = {}
+                self._spot_tick_counts[underlying] = self._spot_tick_counts.get(underlying, 0) + 1
+                cnt = self._spot_tick_counts[underlying]
+                if cnt <= 3 or cnt % 5 == 0:
+                    opt_ltp = self._state.ltp_map.get(pos.symbol)
+                    print(
+                        f"[WS-TICK] {underlying} spot={symbol} "
+                        f"spot_ltp=₹{ltp:.2f} premium={opt_ltp if opt_ltp else 'N/A'} | "
+                        f"spot_tick#{cnt} | "
+                        f"kl_active={pos.kl_active} kl_next={pos.kl_next_level}"
+                    )
+
         # ── Part A: Premium Trail (option LTP → trail SL) ──────────────────
         for underlying, pos in list(self._state.positions.items()):
             if pos.exit_pending or pos.symbol != symbol:
@@ -3659,6 +3930,15 @@ class OrderManager:
 
         self._ws.subscribe(cfg.fno_exchange, option_symbol)
         self._ws.subscribe_spot(underlying)
+        print(
+            f"[DATA] TRADE REGISTERED {underlying}: "
+            f"option={option_symbol} exchange={cfg.fno_exchange} | "
+            f"spot={underlying} spot_exchange={'NSE_INDEX' if underlying in cfg.index_underlyings else cfg.spot_exchange} | "
+            f"entry=₹{executed:.2f} spot_entry=₹{spot:.2f} direction={direction} | "
+            f"SL=₹{sl:.2f} TGT=₹{tgt:.2f} | "
+            f"delta={entry_delta if entry_delta else 'N/A'} conviction={entry_conviction:.2f} | "
+            f"ws_desired={list(self._ws._desired)}"
+        )
 
         if cfg.broker_sl_orders and not cfg.paper_trade:
             if getattr(cfg, "use_basket_protection", True) and hasattr(self.client, "basketorder"):
@@ -4506,6 +4786,13 @@ class OptionsBuyerEdgeBot:
                 f"  Trail Delta     : ITM={cfg.trail_delta_itm_step_pct:.0f}%  "
                 f"ATM={cfg.trail_delta_atm_step_pct:.0f}%  OTM={cfg.trail_delta_otm_step_pct:.0f}%  (cap: 50% of entry premium)"
             )
+        elif cfg.trail_sl_method == "key_level":
+            style = cfg.key_level_trail_style
+            if style == "capture_pct":
+                print(f"  Key Level Trail : capture_pct={cfg.key_level_capture_pct:.0f}% per level, spacing={cfg.key_level_spacing}")
+            else:
+                print(f"  Key Level Trail : fixed={cfg.key_level_fixed_pts:.0f}pts per level, spacing={cfg.key_level_spacing}")
+            print(f"  Key Level BE    : after {cfg.key_level_breakeven_after_levels} level(s)")
         print(f"  Breakeven SL    : {'disabled' if cfg.breakeven_at_gain_pct <= 0 else f'{cfg.breakeven_at_gain_pct:.0f}% of target gain'}")
         print(f"  Long Only Mode  : {cfg.long_only_mode}")
         print(f"  Broker SL Orders: {cfg.broker_sl_orders}")
