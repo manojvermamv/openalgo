@@ -1,0 +1,14 @@
+strategies/examples/BuyerEdgeStrategy.py
+  h_90988d5629fc41 715-724,3373-3389,4741,4750-4752,4756,4759-4779,4781,4785-4791,4802-4806
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "408c3c46ecda9a84c55e1cc76ac6dedd331ddf5b",
+  "prompts": {},
+  "humans": {
+    "h_90988d5629fc41": {
+      "author": "Manoj Verma <71809372+manojvermamv@users.noreply.github.com>"
+    }
+  }
+}
