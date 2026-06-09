@@ -712,14 +712,16 @@ class BotConfig:
     @classmethod
     def from_env(cls) -> "BotConfig":
         """Construct a BotConfig from environment variables."""
-        underlyings_csv = os.getenv(
-            "UNDERLYINGS",
-            "NIFTY,BANKNIFTY,FINNIFTY,RELIANCE,HDFCBANK,ICICIBANK,SBIN,INFY,TCS",
-        )
-        index_csv = os.getenv(
-            "INDEX_UNDERLYINGS",
-            "NIFTY,BANKNIFTY,FINNIFTY,MIDCPNIFTY,SENSEX,BANKEX,NIFTYNXT50",
-        )
+        # underlyings_csv = os.getenv(
+        #     "UNDERLYINGS",
+        #     "NIFTY,BANKNIFTY,FINNIFTY,RELIANCE,HDFCBANK,ICICIBANK,SBIN,INFY,TCS",
+        # )
+        # index_csv = os.getenv(
+        #     "INDEX_UNDERLYINGS",
+        #     "NIFTY,BANKNIFTY,FINNIFTY,MIDCPNIFTY,SENSEX,BANKEX,NIFTYNXT50",
+        # )
+        underlyings_csv = os.getenv("UNDERLYINGS", "NIFTY")
+        index_csv = os.getenv("INDEX_UNDERLYINGS", "NIFTY")
         underlyings = sorted(set(u.strip() for u in underlyings_csv.split(",") if u.strip()))
         index_underlyings: frozenset[str] = frozenset(
             u.strip() for u in index_csv.split(",") if u.strip()
@@ -3368,6 +3370,23 @@ class WebSocketManager:
           Part A — option premium trail (premium trail SL)
           Part B — spot trail (spot-based SL ratchet for indices)
         """
+        # ── RAW CALLBACK DIAGNOSTIC — fires on EVERY WS message ────────────
+        if not hasattr(self, '_raw_cb_count'):
+            self._raw_cb_count = 0
+        self._raw_cb_count += 1
+        _raw_cnt = self._raw_cb_count
+        if _raw_cnt <= 5 or _raw_cnt % 50 == 0:
+            _dtype = type(data).__name__
+            _keys = list(data.keys()) if isinstance(data, dict) else "N/A"
+            _inner = data.get("data") if isinstance(data, dict) else None
+            _inner_keys = list(_inner.keys()) if isinstance(_inner, dict) else type(_inner).__name__ if _inner else "None"
+            print(
+                f"[WS-RAW] cb#{_raw_cnt}: type={_dtype} keys={_keys} | "
+                f"inner_type={type(data.get('data')).__name__ if isinstance(data, dict) else 'N/A'} "
+                f"inner_keys={_inner_keys}"
+            )
+        # ── END RAW DIAGNOSTIC ─────────────────────────────────────────────
+
         if not isinstance(data, dict):
             return
             
@@ -4719,6 +4738,7 @@ class OptionsBuyerEdgeBot:
         """Fetch live positions and dispatch a single-line active PNL alert."""
         try:
             broker_pnl_map = {}
+            broker_raw_data = {}
             if not self.config.paper_trade and hasattr(self.client, "positions"):
                 resp = self.client.positions(strategy=self.config.strategy_name)
                 if isinstance(resp, dict) and resp.get("status") == "success":
@@ -4727,15 +4747,48 @@ class OptionsBuyerEdgeBot:
                         unrealized = float(p.get("unrealized_pnl", 0) or p.get("pnl", 0) or 0)
                         if sym:
                             broker_pnl_map[sym] = unrealized
+                            broker_raw_data[sym] = p
+                else:
+                    print(f"[PNL-DBG] Broker positions response: {resp}")
 
             for pos in open_positions:
                 pnl = 0.0
+                source = "none"
                 if not self.config.paper_trade and pos.symbol in broker_pnl_map:
                     pnl = broker_pnl_map[pos.symbol]
-                else:
+                    source = "broker"
+                elif not self.config.paper_trade:
+                    # Broker didn't return this symbol — diagnostic
+                    raw = broker_raw_data.get(pos.symbol)
+                    print(
+                        f"[PNL-DBG] {pos.underlying}: symbol={pos.symbol} "
+                        f"NOT in broker_pnl_map. "
+                        f"broker_symbols={list(broker_pnl_map.keys())} | "
+                        f"raw_entry={raw}"
+                    )
+                    # Fallback to WS LTP
                     ltp = self.state.ltp_map.get(pos.symbol)
                     if ltp:
                         pnl = (ltp - pos.entry_premium) * pos.qty
+                        source = "ws_fallback"
+                    else:
+                        print(
+                            f"[PNL-DBG] {pos.underlying}: WS fallback also failed — "
+                            f"ltp_map has {pos.symbol}={ltp} | "
+                            f"ltp_map_keys={list(self.state.ltp_map.keys())}"
+                        )
+                else:
+                    # Paper trade mode
+                    ltp = self.state.ltp_map.get(pos.symbol)
+                    if ltp:
+                        pnl = (ltp - pos.entry_premium) * pos.qty
+                        source = "paper_ws"
+                    else:
+                        print(
+                            f"[PNL-DBG] {pos.underlying} PAPER: "
+                            f"ltp_map missing {pos.symbol} | "
+                            f"ltp_map_keys={list(self.state.ltp_map.keys())}"
+                        )
 
                 hold_mins = max(0, int((get_ist_now() - pos.entry_time).total_seconds() / 60))
                 hours = hold_mins // 60
@@ -4746,6 +4799,11 @@ class OptionsBuyerEdgeBot:
                 emoji = "🟢" if pnl >= 0 else "🔴"
                 sign  = "+" if pnl >= 0 else ""
 
+                print(
+                    f"[PNL-DBG] {pos.underlying}: pnl=₹{pnl:.2f} source={source} | "
+                    f"entry=₹{pos.entry_premium:.2f} qty={pos.qty} | "
+                    f"ws_ltp={self.state.ltp_map.get(pos.symbol, 'N/A')}"
+                )
                 self._send_alert(
                     f"{emoji} {pos.underlying} {side} | PNL: ₹{sign}{pnl:.0f} | Hold: {hold_str}",
                     3,
