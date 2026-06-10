@@ -50,6 +50,35 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 # ===============================================================================
+# Logging — global toggle constants
+# ===============================================================================
+DEBUG_ENABLED = False
+INFO_ENABLED  = True
+
+def dbg(*args, **kwargs):
+    if DEBUG_ENABLED:
+        print(*args, **kwargs)
+
+def inf(*args, **kwargs):
+    if INFO_ENABLED:
+        print(*args, **kwargs)
+
+def err(msg: str, exc: BaseException | None = None, *, always: bool = True):
+    """Error log — always visible regardless of INFO_ENABLED / DEBUG_ENABLED.
+
+    Args:
+        msg:   Human-readable error description.
+        exc:   Exception object (optional). When provided, traceback is printed.
+        always: If True (default), output is unconditional. Set False to respect
+                a future ERROR_ENABLED toggle.
+    """
+    if always:
+        if exc is not None:
+            print(f"[ERROR] {msg}: {exc}")
+        else:
+            print(f"[ERROR] {msg}")
+
+# ===============================================================================
 # AUDIT STATUS (Post Conviction-Risk-Engine + Confirmed-Close Trail +
 # WS Recovery + Basket Protection + Exit Attribution Upgrade)
 # ===============================================================================
@@ -781,7 +810,7 @@ class BotConfig:
         )
         if _is_plain_ws_for_https:
             _corrected = f"wss://{_ws_domain}/ws"
-            print(
+            inf(
                 f"[CONFIG] WARNING: WEBSOCKET_URL='{_ws_env}' auto-corrected to '{_corrected}'."
                 f"\n[CONFIG]          Update your .env: WEBSOCKET_URL={_corrected}"
             )
@@ -893,7 +922,7 @@ class BotConfig:
             if s not in cfg.index_underlyings and s not in _known_equity
         ]
         if _unclassified:
-            print(
+            inf(
                 f"[CONFIG] WARNING: {_unclassified} are in UNDERLYINGS but not in "
                 "INDEX_UNDERLYINGS. If these are index symbols they will be routed via "
                 f"SPOT_EXCHANGE ({cfg.spot_exchange}) which may cause bad data. "
@@ -1000,14 +1029,14 @@ class BotConfig:
         if self.breakeven_at_gain_pct < 0 or self.breakeven_at_gain_pct > 200:
             errors.append(f"BREAKEVEN_AT_GAIN_PCT={self.breakeven_at_gain_pct} must be in [0, 200]")
         if errors:
-            print("[CONFIG] Startup validation failed:")
+            inf("[CONFIG] Startup validation failed:")
             for e in errors:
-                print(f"  ✗ {e}")
+                inf(f"  ✗ {e}")
             raise SystemExit(
                 "Fix the configuration errors above before running. "
                 "See env-var comments at the top of the file."
             )
-        print("[CONFIG] All configuration values validated OK")
+        inf("[CONFIG] All configuration values validated OK")
 
 
 # ===============================================================================
@@ -1115,7 +1144,6 @@ class MarketSnapshot:
     chain_oi:      float | None     = None   # Total OI for the active option
     chain_volume:  float | None     = None
 
-    @property
     def is_stale(self, max_age: float = 5.0) -> bool:
         return (time.time() - self.timestamp) > max_age if self.timestamp else True
 
@@ -2001,8 +2029,7 @@ class DataFetcher:
                     self._greeks_cache.popitem(last=False)
                 self._greeks_cache[cache_key] = parsed
                 return parsed
-        except Exception as exc:
-            print(f"[DATA] optiongreeks error for {option_symbol}: {exc}")
+        except Exception as exc: err(f"[DATA] optiongreeks error for {option_symbol}: ", exc)
         return None
 
     def greeks_perf_snapshot(self, symbol: str | None = None) -> dict[str, float | int]:
@@ -2041,7 +2068,7 @@ class DataFetcher:
                 end_date=end.strftime("%Y-%m-%d"),
             )
         except Exception as exc:
-            print(f"[DATA] Candle fetch error for {symbol}@{exchange}: {exc}")
+            err(f"[DATA] Candle fetch error for {symbol}@{exchange}", exc)
             return None
 
     def fetch_spot_candles(self, symbol: str) -> pd.DataFrame | None:
@@ -2107,7 +2134,7 @@ class DataFetcher:
                 })
             return flat_rows, expiry_date
         except Exception as exc:
-            print(f"[DATA] Option chain error for {symbol}: {exc}")
+            err(f"[DATA] Option chain error for {symbol}", exc)
             return [], None
 
     def fetch_quote(self, symbol: str, exchange: str) -> dict:
@@ -2118,7 +2145,7 @@ class DataFetcher:
             
             error_msg = response.get("message", "")
             if isinstance(error_msg, str) and ("Invalid token" in error_msg or "UDAPI100050" in error_msg):
-                print(f"[ERROR] {symbol}@{exchange}: broker token invalid (UDAPI100050): {response}")
+                inf(f"[ERROR] {symbol}@{exchange}: broker token invalid (UDAPI100050): {response}")
                 if self._notify and not self._auth_error_notified:
                     self._auth_error_notified = True
                     self._notify(
@@ -2128,11 +2155,11 @@ class DataFetcher:
                         9,
                     )
             else:
-                print(f"[ERROR] {symbol}@{exchange}: quotes API error: {response}")
+                inf(f"[ERROR] {symbol}@{exchange}: quotes API error: {response}")
             return {}
         except Exception as e:
             if "Invalid token" in str(e) or "UDAPI100050" in str(e):
-                print(f"[ERROR] {symbol}@{exchange}: broker token invalid (exception): {e}")
+                err(f"[ERROR] {symbol}@{exchange}: broker token invalid", e)
                 if self._notify and not self._auth_error_notified:
                     self._auth_error_notified = True
                     self._notify(
@@ -2141,7 +2168,7 @@ class DataFetcher:
                         9,
                     )
             else:
-                print(f"[ERROR] {symbol}@{exchange}: quotes API exception: {e}")
+                err(f"[ERROR] {symbol}@{exchange}: quotes API exception", e)
             return {}
 
     def fetch_synthetic_future(self, symbol: str, expiry: str | None) -> float | None:
@@ -2155,15 +2182,14 @@ class DataFetcher:
                 if resp and resp.get("status") == "success":
                     price = float(resp.get("synthetic_future_price") or 0)
                     return price if price else None
-            except Exception as exc:
-                print(f"[DATA] syntheticfuture error for {symbol}: {exc}")
+            except Exception as exc: err(f"[DATA] syntheticfuture error for {symbol}: ", exc)
         if expiry:
             fut_symbol = f"{symbol}{expiry}FUT"
             sf_q = self.fetch_quote(fut_symbol, self.config.fno_exchange)
             ltp  = float(sf_q.get("ltp", 0) or 0)
             if ltp:
                 return ltp
-            print(f"[DATA] syntheticfuture fallback: {fut_symbol} returned no LTP")
+            inf(f"[DATA] syntheticfuture fallback: {fut_symbol} returned no LTP")
         return None
 
     def fetch_atm_greeks(
@@ -2348,8 +2374,7 @@ class DataFetcher:
             elif pe_ivr is not None:
                 result["best_fit"] = "PE"
             
-        except Exception as exc:
-            print(f"[DATA] IV ranks fetch error: {exc}")
+        except Exception as exc: err(f"[DATA] IV ranks fetch error: ", exc)
         
         return result
 
@@ -2388,7 +2413,7 @@ class DataFetcher:
                     return exp_date.strftime("%d%b%y").upper()
             return None
         except Exception as exc:
-            print(f"[DATA] expiry fetch error for {symbol}: {exc}")
+            err(f"[DATA] expiry fetch error for {symbol}", exc)
             return None
 
 
@@ -2487,7 +2512,7 @@ class TrailSLEngine:
                 _key = f"{underlying}|{'_'.join(_missing)}"
                 if _key not in self._data_skip_logged:
                     self._data_skip_logged.add(_key)
-                    print(
+                    dbg(
                         f"[DATA-MISS] {underlying}: {_missing} — "
                         f"snapshot={snap.timestamp if snap else 'NONE'} | "
                         f"age={(time.time() - snap.timestamp):.1f}s" if snap and snap.timestamp else ""
@@ -2523,7 +2548,7 @@ class TrailSLEngine:
                         if _broker_ok:
                             pos.sl = ep
                             pos.breakeven_moved = True
-                            print(f"[TRAIL] BREAKEVEN SL {underlying}: moved to cost ₹{ep:.2f}")
+                            inf(f"[TRAIL] BREAKEVEN SL {underlying}: moved to cost ₹{ep:.2f}")
 
             # ── 2. Activation Buffer ────────
             _trail_conv_adj = CONV_TRAIL_ACT_BASE - pos.entry_conviction * CONV_TRAIL_ACT_RANGE
@@ -2571,8 +2596,7 @@ class TrailSLEngine:
                 atr_val = float(atr_series.iloc[-2])
                 if math.isfinite(atr_val) and atr_val > 0:
                     return atr_val * cfg.trail_atr_mult
-            except Exception as e:
-                print(f"[TRAIL] ATR compute error: {e}")
+            except Exception as e: err(f"[TRAIL] ATR compute error: ", e)
 
         # ── delta: tier-based pct ──────────────────────────────────────────
         if method == "delta" and current_delta is not None:
@@ -2668,7 +2692,7 @@ class TrailSLEngine:
         _unrealized_pnl_abs = _unrealized_pnl_pts * pos.qty
         
         # ── Detailed Trail Logging ──
-        print(
+        inf(
             f"[TRAIL] {underlying} | ROI={_roi_pct:.1f}% ({_gamma_tier}) | "
             f"KER={trend_efficiency:.3f} (net={_net_move:.2f}/path={_path_length:.2f}) → "
             f"KER_factor={trend_efficiency_factor:.3f} | "
@@ -2690,7 +2714,7 @@ class TrailSLEngine:
                 if _broker_ok:
                     pos.premium_trail_sl = new_sl
                     pos.sl = new_sl
-                    print(f"[TRAIL] Premium ACTIVATED {underlying}: peak {ltp:.2f} SL→{new_sl:.2f} (speed={_trail_speed:.1f}x)")
+                    inf(f"[TRAIL] Premium ACTIVATED {underlying}: peak {ltp:.2f} SL→{new_sl:.2f} (speed={_trail_speed:.1f}x)")
         else:
             if is_new_confirmed_close_high:
                 pos.premium_trail_peak = pos.trail_peak_close
@@ -2702,7 +2726,7 @@ class TrailSLEngine:
                     if _broker_ok:
                         pos.premium_trail_sl = new_sl
                         pos.sl = new_sl
-                        print(f"[TRAIL] Premium RATCHET {underlying}: peak {ltp:.2f} SL→{new_sl:.2f} (speed={_trail_speed:.1f}x)")
+                        inf(f"[TRAIL] Premium RATCHET {underlying}: peak {ltp:.2f} SL→{new_sl:.2f} (speed={_trail_speed:.1f}x)")
 
     def _process_spot_trail(self, underlying: str, pos: OptionPosition, spot_ltp: float, conv_adj: float) -> None:
         cfg = self._config
@@ -2738,7 +2762,7 @@ class TrailSLEngine:
         _spot_move_pts = move
         _spot_move_pct = (_spot_move_pts / pos.spot_entry * 100.0) if pos.spot_entry > 0 else 0.0
 
-        print(
+        inf(
             f"[TRAIL] {underlying} SPOT | Move={_spot_move_pts:.2f}pts ({_spot_move_pct:.2f}%) | "
             f"ActivateReq={activate_pts:.2f} | Step={step_pts:.2f} | Cap={reward_dist*0.50:.2f} | "
             f"Peak={pos.trail_peak if pos.trail_peak else 'N/A'} | LTP={spot_ltp:.2f} | "
@@ -2750,7 +2774,7 @@ class TrailSLEngine:
             pos.trail_peak = spot_ltp
             new_sl_spot = (spot_ltp - step_pts) if pos.option_type == "CE" else (spot_ltp + step_pts)
             pos.trail_sl_spot = new_sl_spot
-            print(f"[TRAIL] Spot ACTIVATED {underlying}: peak {spot_ltp:.2f}, SL spot → {new_sl_spot:.2f}")
+            inf(f"[TRAIL] Spot ACTIVATED {underlying}: peak {spot_ltp:.2f}, SL spot → {new_sl_spot:.2f}")
         else:
             if pos.option_type == "CE":
                 if pos.trail_peak is None or spot_ltp > pos.trail_peak:
@@ -2758,14 +2782,14 @@ class TrailSLEngine:
                     new_sl_spot = spot_ltp - step_pts
                     if pos.trail_sl_spot is None or new_sl_spot > pos.trail_sl_spot:
                         pos.trail_sl_spot = new_sl_spot
-                        print(f"[TRAIL] Spot RATCHET {underlying}: peak {spot_ltp:.2f}, SL spot → {new_sl_spot:.2f}")
+                        inf(f"[TRAIL] Spot RATCHET {underlying}: peak {spot_ltp:.2f}, SL spot → {new_sl_spot:.2f}")
             else:
                 if pos.trail_peak is None or spot_ltp < pos.trail_peak:
                     pos.trail_peak = spot_ltp
                     new_sl_spot = spot_ltp + step_pts
                     if pos.trail_sl_spot is None or new_sl_spot < pos.trail_sl_spot:
                         pos.trail_sl_spot = new_sl_spot
-                        print(f"[TRAIL] Spot RATCHET {underlying}: peak {spot_ltp:.2f}, SL spot → {new_sl_spot:.2f}")
+                        inf(f"[TRAIL] Spot RATCHET {underlying}: peak {spot_ltp:.2f}, SL spot → {new_sl_spot:.2f}")
 
     # ── Key Level Trail Helpers ──────────────────────────────────────────────
 
@@ -2859,7 +2883,7 @@ class TrailSLEngine:
         self._kl_tick_count[underlying] = self._kl_tick_count.get(underlying, 0) + 1
         _kl_cnt = self._kl_tick_count[underlying]
         if _kl_cnt <= 5 or _kl_cnt % 10 == 0:
-            print(
+            inf(
                 f"[DATA-KL] {underlying} tick#{_kl_cnt}: "
                 f"spot=₹{spot_ltp:.2f} premium=₹{premium_ltp:.2f} | "
                 f"entry=₹{ep:.2f} ROI={_roi_pct:.1f}% | "
@@ -2878,7 +2902,7 @@ class TrailSLEngine:
             )
             pos.kl_levels_completed = 0
             pos.kl_level_premium = premium_ltp
-            print(
+            inf(
                 f"[TRAIL] KeyLevel INIT {underlying}: "
                 f"next_level={pos.kl_next_level:.0f} | "
                 f"premium={premium_ltp:.2f}"
@@ -2919,7 +2943,7 @@ class TrailSLEngine:
                 if _broker_ok:
                     pos.sl = ep
                     pos.breakeven_moved = True
-                    print(
+                    inf(
                         f"[TRAIL] KeyLevel BREAKEVEN {underlying}: "
                         f"SL → entry ₹{ep:.2f} after {pos.kl_levels_completed} level(s)"
                     )
@@ -2935,14 +2959,14 @@ class TrailSLEngine:
                 if _broker_ok:
                     pos.sl = new_sl
                     pos.premium_trail_sl = new_sl
-                    print(
+                    inf(
                         f"[TRAIL] KeyLevel RATCHET {underlying}: "
                         f"level_crossed={pos.kl_next_level:.0f} | "
                         f"captured={captured_range:.2f}pts → step={trail_step:.2f} | "
                         f"SL→₹{new_sl:.2f} | completed={pos.kl_levels_completed}"
                     )
             else:
-                print(
+                inf(
                     f"[TRAIL] KeyLevel CROSS {underlying}: "
                     f"level_crossed={pos.kl_next_level:.0f} | "
                     f"captured={captured_range:.2f}pts → step={trail_step:.2f} | "
@@ -2958,7 +2982,7 @@ class TrailSLEngine:
         # Log distance to next level (only when no level was crossed this tick)
         if pos.kl_next_level is not None:
             _move_to_level = abs(spot_ltp - pos.kl_next_level)
-            print(
+            inf(
                 f"[TRAIL] KeyLevel {underlying}: "
                 f"spot={spot_ltp:.0f} → next_level={pos.kl_next_level:.0f} "
                 f"({_move_to_level:.0f}pts away) | "
@@ -3034,13 +3058,13 @@ class StrikeSelector:
 
         # ── Guard: IVR too high for buyer edge ────────────────────────────────
         if iv_rank is not None and iv_rank >= cfg.iv_rank_max_entry:
-            print(f"[STRIKE] IVR {iv_rank:.1f}% >= max {cfg.iv_rank_max_entry:.1f}% — buyer edge rejected")
+            inf(f"[STRIKE] IVR {iv_rank:.1f}% >= max {cfg.iv_rank_max_entry:.1f}% — buyer edge rejected")
             return None
 
         # ── Guard: insufficient signal conviction ─────────────────────────────
         abs_score = abs(signal_score)
         if abs_score < cfg.min_score:
-            print(f"[STRIKE] Signal score {signal_score:.0f} < min {cfg.min_score} — insufficient edge")
+            inf(f"[STRIKE] Signal score {signal_score:.0f} < min {cfg.min_score} — insufficient edge")
             return None
 
         # ── Conviction scalar ─────────────────────────────────────────────────
@@ -3067,7 +3091,7 @@ class StrikeSelector:
             target_delta = STRIKE_DELTA_PIVOT + fraction * (STRIKE_DELTA_MAX - STRIKE_DELTA_PIVOT)
         target_delta_low  = max(0.01, target_delta - STRIKE_DELTA_BAND)
         target_delta_high = min(0.99, target_delta + STRIKE_DELTA_BAND)
-        print(
+        inf(
             f"[STRIKE] conviction={conviction:.2f} "
             f"target_delta={target_delta:.3f} "
             f"band=[{target_delta_low:.2f},{target_delta_high:.2f}]"
@@ -3116,7 +3140,7 @@ class StrikeSelector:
 
         if delta_available:
             if not delta_checked:
-                print(
+                inf(
                     f"[STRIKE] No candidate delta in "
                     f"[{target_delta_low:.2f}, {target_delta_high:.2f}] "
                     f"— conviction={conviction:.2f}, relaxing to closest available"
@@ -3137,7 +3161,7 @@ class StrikeSelector:
                 else:
                     # Gap too large — pathological fallback; bypass delta filter
                     if best_fallback:
-                        print(
+                        inf(
                             f"[STRIKE] Fallback gap {best_gap:.2f} > MAX_DELTA_GAP {MAX_DELTA_GAP:.2f} "
                             f"— delta filter bypassed, using liquidity ranking only"
                         )
@@ -3209,7 +3233,7 @@ class StrikeSelector:
         #   conviction=1.0 → min = threshold × 0.80  (relaxed 20%)
         min_asym = cfg.asym_score_threshold * (1.00 - conviction * 0.20)
         if best_asym < min_asym:
-            print(
+            inf(
                 f"[STRIKE] Best asym {best_asym:.3f} < conviction-scaled min "
                 f"{min_asym:.3f} (conviction={conviction:.2f}) — no qualifying strike"
             )
@@ -3264,9 +3288,9 @@ class RiskManager:
                     self._funds_cache_time  = now
                     self._pnl_at_last_fetch = self._daily_pnl
                     return capital
-            print(f"[FUNDS] available cash not found in funds() response: {resp}")
+            inf(f"[FUNDS] available cash not found in funds() response: {resp}")
         except Exception as exc:
-            print(f"[FUNDS] funds() fetch error: {exc}")
+            err(f"[FUNDS] funds() fetch error", exc)
             if self._funds_cache_time:
                 delta_pnl = self._daily_pnl - self._pnl_at_last_fetch
                 return max(0.0, self._funds_cache + delta_pnl)
@@ -3276,7 +3300,7 @@ class RiskManager:
         today = get_ist_now().strftime("%Y-%m-%d")
         with self._state.state_lock:
             if today != self._session_date:
-                print(f"[RISK] New trading day {today} — resetting session state")
+                inf(f"[RISK] New trading day {today} — resetting session state")
                 self._session_date               = today
                 self._session_trade_count        = 0
                 self._session_consecutive_losses = 0
@@ -3373,7 +3397,7 @@ class RiskManager:
             if pnl < 0:
                 self._session_consecutive_losses += 1
                 self._session_consecutive_wins = 0
-                print(f"[RISK] Loss streak: {self._session_consecutive_losses} | "
+                inf(f"[RISK] Loss streak: {self._session_consecutive_losses} | "
                       f"Daily P&L ₹{self._daily_pnl:.0f}")
             else:
                 self._session_consecutive_losses = 0
@@ -3469,7 +3493,7 @@ class WebSocketManager:
                     # Pass fetcher to reuse cached greeks instead of duplicate API call
                     self._delta_executor.submit(self._fetch_and_cache_delta, underlying, option_symbol, self._fetcher)
                 else:
-                    print(f"[WS] Delta fetch suppressed because {len(self._delta_fetch_inflight)} requests are pending")
+                    inf(f"[WS] Delta fetch suppressed because {len(self._delta_fetch_inflight)} requests are pending")
             return cached[0] if cached else None
 
     def _fetch_and_cache_delta(self, underlying: str, option_symbol: str, fetcher: DataFetcher | None = None) -> None:
@@ -3529,9 +3553,8 @@ class WebSocketManager:
                     on_data_received=self._on_ws_data,
                 )
                 self._actual.add((exchange, symbol))
-                print(f"[WS] Subscribed option {exchange}:{symbol}")
-            except Exception as exc:
-                print(f"[WS] Subscribe error {exchange}:{symbol}: {exc}")
+                inf(f"[WS] Subscribed option {exchange}:{symbol}")
+            except Exception as exc: err(f"[WS] Subscribe error {exchange}:{symbol}: ", exc)
 
     def subscribe_spot(self, symbol: str) -> None:
         exch = self.config.index_exchange if symbol in self.config.index_underlyings else self.config.spot_exchange
@@ -3543,9 +3566,8 @@ class WebSocketManager:
                     on_data_received=self._on_ws_data,
                 )
                 self._actual.add((exch, symbol))
-                print(f"[WS] Subscribed spot {exch}:{symbol}")
-            except Exception as exc:
-                print(f"[WS] Subscribe spot error {symbol}: {exc}")
+                inf(f"[WS] Subscribed spot {exch}:{symbol}")
+            except Exception as exc: err(f"[WS] Subscribe spot error {symbol}: ", exc)
 
     def unsubscribe(self, exchange: str, symbol: str) -> None:
         with self._subscribe_lock:
@@ -3555,7 +3577,7 @@ class WebSocketManager:
                 self._actual.discard((exchange, symbol))
             except Exception as exc:
                 self._actual.discard((exchange, symbol))
-                print(f"[WS] Unsubscribe error {exchange}:{symbol}: {exc}")
+                err(f"[WS] Unsubscribe error {exchange}:{symbol}", exc)
 
     def unsubscribe_spot(self, symbol: str) -> None:
         exch = self.config.index_exchange if symbol in self.config.index_underlyings else self.config.spot_exchange
@@ -3566,7 +3588,7 @@ class WebSocketManager:
                 self._actual.discard((exch, symbol))
             except Exception as exc:
                 self._actual.discard((exch, symbol))
-                print(f"[WS] Unsubscribe spot error {symbol}: {exc}")
+                err(f"[WS] Unsubscribe spot error {symbol}", exc)
 
     def _on_ws_data(self, data: dict) -> None:
         """
@@ -3574,6 +3596,7 @@ class WebSocketManager:
           Part A — option premium trail (premium trail SL)
           Part B — spot trail (spot-based SL ratchet for indices)
         """
+        dbg(f"[WS] Received data: {data}")
         # ── RAW CALLBACK DIAGNOSTIC — fires on EVERY WS message ────────────
         if not hasattr(self, '_raw_cb_count'):
             self._raw_cb_count = 0
@@ -3584,8 +3607,7 @@ class WebSocketManager:
             _keys = list(data.keys()) if isinstance(data, dict) else "N/A"
             _inner = data.get("data") if isinstance(data, dict) else None
             _inner_keys = list(_inner.keys()) if isinstance(_inner, dict) else type(_inner).__name__ if _inner else "None"
-            print(
-                f"[WS-RAW] cb#{_raw_cnt}: type={_dtype} keys={_keys} | "
+            dbg(f"[WS-RAW] cb#{_raw_cnt}: type={_dtype} keys={_keys} | "
                 f"inner_type={type(data.get('data')).__name__ if isinstance(data, dict) else 'N/A'} "
                 f"inner_keys={_inner_keys}"
             )
@@ -3647,7 +3669,7 @@ class WebSocketManager:
                 if cnt <= 3 or cnt % 5 == 0:
                     spot_snap = self._state.snapshot_cache.get(underlying)
                     spot_ltp = spot_snap.spot_ltp if spot_snap else None
-                    print(
+                    inf(
                         f"[WS-TICK] {underlying} option={symbol} "
                         f"premium=₹{ltp:.2f} spot={spot_ltp if spot_ltp else 'N/A'} | "
                         f"tick#{cnt} SL=₹{pos.sl:.2f} TGT=₹{pos.tgt:.2f} | "
@@ -3661,7 +3683,7 @@ class WebSocketManager:
                 if cnt <= 3 or cnt % 5 == 0:
                     opt_snap = self._state.snapshot_cache.get(underlying)
                     opt_ltp = opt_snap.option_ltp if opt_snap else None
-                    print(
+                    inf(
                         f"[WS-TICK] {underlying} spot={symbol} "
                         f"spot_ltp=₹{ltp:.2f} premium={opt_ltp if opt_ltp else 'N/A'} | "
                         f"spot_tick#{cnt} | "
@@ -3685,28 +3707,28 @@ class WebSocketManager:
         if cfg.delta_exit_threshold > 0 and not pos.exit_pending:
             live_delta = self._get_cached_delta(underlying, pos.symbol)
             if live_delta is not None and live_delta < cfg.delta_exit_threshold:
-                print(
+                inf(
                     f"[WS] DEEP OTM EXIT {underlying}: delta {live_delta:.3f} "
                     f"< threshold {cfg.delta_exit_threshold:.3f}"
                 )
                 self._trigger_exit(underlying, f"DeepOTM_delta_{live_delta:.3f}")
                 return
         if ltp <= pos.sl:
-            print(f"[WS] PREMIUM SL HIT {underlying}: LTP {ltp:.2f} <= SL {pos.sl:.2f}")
+            inf(f"[WS] PREMIUM SL HIT {underlying}: LTP {ltp:.2f} <= SL {pos.sl:.2f}")
             self._trigger_exit(underlying, "premium_sl_hit")
             return
         if ltp >= pos.tgt:
-            print(f"[WS] PREMIUM TARGET HIT {underlying}: LTP {ltp:.2f} >= TGT {pos.tgt:.2f}")
+            inf(f"[WS] PREMIUM TARGET HIT {underlying}: LTP {ltp:.2f} >= TGT {pos.tgt:.2f}")
             self._trigger_exit(underlying, "premium_target_hit")
             return
 
     def _check_spot_trail(self, underlying: str, pos: OptionPosition, spot_ltp: float) -> None:
         if pos.trail_sl_spot is not None:
             if pos.option_type == "CE" and spot_ltp <= pos.trail_sl_spot:
-                print(f"[WS] SPOT TRAIL SL HIT {underlying}: spot {spot_ltp:.2f} <= trail_sl_spot {pos.trail_sl_spot:.2f}")
+                inf(f"[WS] SPOT TRAIL SL HIT {underlying}: spot {spot_ltp:.2f} <= trail_sl_spot {pos.trail_sl_spot:.2f}")
                 self._trigger_exit(underlying, "spot_trail_sl_hit")
             elif pos.option_type == "PE" and spot_ltp >= pos.trail_sl_spot:
-                print(f"[WS] SPOT TRAIL SL HIT {underlying}: spot {spot_ltp:.2f} >= trail_sl_spot {pos.trail_sl_spot:.2f}")
+                inf(f"[WS] SPOT TRAIL SL HIT {underlying}: spot {spot_ltp:.2f} >= trail_sl_spot {pos.trail_sl_spot:.2f}")
                 self._trigger_exit(underlying, "spot_trail_sl_hit")
 
     def _trigger_exit(self, underlying: str, reason: str) -> None:
@@ -3729,7 +3751,7 @@ class WebSocketManager:
             ).start()
 
     def _ws_thread(self) -> None:
-        print("[WS] WebSocket thread starting...")
+        inf("[WS] WebSocket thread starting...")
         self._ws_started.set()
         ws_url = self.config.ws_url or "(SDK default)"
         backoff_secs = 5
@@ -3745,7 +3767,7 @@ class WebSocketManager:
                 # without cleaning up the old ones, exhausting the OS thread limit.
                 # Fix: reuse self.client (constructed once in BuyerEdgeStrategy.__init__);
                 # disconnect() the previous transport before reconnecting.
-                print(f"[WS] Connecting... (active OS threads: {threading.active_count()})")
+                inf(f"[WS] Connecting... (active OS threads: {threading.active_count()})")
                 try:
                     self.client.disconnect()   # Release previous transport threads
                 except Exception:
@@ -3756,13 +3778,13 @@ class WebSocketManager:
 
                 ok = self.client.connect()
                 _actual_url = getattr(self.client, 'ws_url', ws_url)
-                print(f"[WS] Client connects using {_actual_url} (expected {ws_url})")
+                inf(f"[WS] Client connects using {_actual_url} (expected {ws_url})")
                 if ok:
                     if not is_first_connect:
                         self._reconnect_count += 1
                     is_first_connect = False
                     self._ws_connected = True
-                    print(f"[WS] Connected to {_actual_url} — SDK managing reconnects automatically")
+                    inf(f"[WS] Connected to {_actual_url} — SDK managing reconnects automatically")
                     backoff_secs = 5  # Reset backoff on successful connect
                     consecutive_failures = 0
                     # ── Diff-based subscription reconciliation ──────────────────────────────
@@ -3772,14 +3794,13 @@ class WebSocketManager:
                         to_add    = self._desired - self._actual
                         to_remove = self._actual  - self._desired  # stale cleanup (edge case)
                     if to_add or to_remove:
-                        print(f"[WS] Reconciling: +{len(to_add)} subscribe / -{len(to_remove)} unsubscribe")
+                        inf(f"[WS] Reconciling: +{len(to_add)} subscribe / -{len(to_remove)} unsubscribe")
                     for (exch, sym) in to_remove:
                         try:
                             self.client.unsubscribe_ltp([{"exchange": exch, "symbol": sym}])
                             with self._subscribe_lock:
                                 self._actual.discard((exch, sym))
-                        except Exception as _un_exc:
-                            print(f"[WS] Reconcile unsubscribe error {exch}:{sym}: {_un_exc}")
+                        except Exception as _un_exc: err(f"[WS] Reconcile unsubscribe error {exch}:{sym}: ", _un_exc)
                     for (exch, sym) in to_add:
                         with self._subscribe_lock:
                             if (exch, sym) not in self._desired:
@@ -3792,15 +3813,14 @@ class WebSocketManager:
                             with self._subscribe_lock:
                                 if (exch, sym) in self._desired:
                                     self._actual.add((exch, sym))
-                        except Exception as _re_exc:
-                            print(f"[WS] Reconcile subscribe error {exch}:{sym}: {_re_exc}")
+                        except Exception as _re_exc: err(f"[WS] Reconcile subscribe error {exch}:{sym}: ", _re_exc)
                     while True:  # watchdog: graduated alerts then force-reconnect if feed silent
                         time.sleep(30)
                         elapsed = time.time() - self._last_tick_time
                         hm = int(get_ist_now().strftime("%H%M"))
                         in_market = self._last_tick_time and MARKET_HOURS_START <= hm <= MARKET_HOURS_END
                         if in_market and elapsed > 30 and not self._ws_stale_alerted:
-                            print(f"[WS] WARNING: Stale tick feed — no ticks in {int(elapsed)}s (market hours active)")
+                            inf(f"[WS] WARNING: Stale tick feed — no ticks in {int(elapsed)}s (market hours active)")
                             self._ws_stale_alerted = True
                         if in_market and elapsed > 120:
                             _msg = f"⚠️ WS Feed STALE: No ticks for {int(elapsed)}s during market hours. Forcing reconnect — check broker/VPS connectivity."
@@ -3809,7 +3829,7 @@ class WebSocketManager:
                                     self._notify_callback(_msg, 9)
                                 except Exception:
                                     pass
-                            print(f"[WS] Feed silent {int(elapsed)}s — forcing hard reconnect...")
+                            inf(f"[WS] Feed silent {int(elapsed)}s — forcing hard reconnect...")
                             self._ws_stale_alerted = False   # reset for next connection window
                             try:
                                 self.client.disconnect()
@@ -3826,7 +3846,7 @@ class WebSocketManager:
                         if missing:
                             self._reconcile_cycles += 1
                             self._repaired_subscriptions += len(missing)
-                            print(f"[WS] Watchdog: Found {len(missing)} missing subscriptions. Attempting to reconcile...")
+                            inf(f"[WS] Watchdog: Found {len(missing)} missing subscriptions. Attempting to reconcile...")
                             for (exch, sym) in missing:
                                 with self._subscribe_lock:
                                     if (exch, sym) not in self._desired:
@@ -3839,8 +3859,7 @@ class WebSocketManager:
                                     with self._subscribe_lock:
                                         if (exch, sym) in self._desired:
                                             self._actual.add((exch, sym))
-                                except Exception as _re_exc:
-                                    print(f"[WS] Watchdog subscribe error {exch}:{sym}: {_re_exc}")
+                                except Exception as _re_exc: err(f"[WS] Watchdog subscribe error {exch}:{sym}: ", _re_exc)
 
                         # ── Telemetry Logging ──
                         now_ts = time.time()
@@ -3851,8 +3870,7 @@ class WebSocketManager:
                                 a_len = len(self._actual)
                             uptime_mins = (now_ts - self._ws_start_time) / 60.0
                             last_tick_sec = (now_ts - self._last_tick_time) if self._last_tick_time else 0.0
-                            print(
-                                f"[WS-HEALTH] Uptime: {uptime_mins:.1f}m | Threads: {threading.active_count()} | "
+                            dbg(f"[WS-HEALTH] Uptime: {uptime_mins:.1f}m | Threads: {threading.active_count()} | "
                                 f"Subs: {d_len}/{a_len} | Reconnects: {self._reconnect_count} | "
                                 f"Reconciles: {self._reconcile_cycles} (Repaired: {self._repaired_subscriptions}) | "
                                 f"LastTick: {last_tick_sec:.1f}s"
@@ -3861,20 +3879,20 @@ class WebSocketManager:
                     continue        # skip backoff sleep — reconnect without delay
                 consecutive_failures += 1
                 self._ws_connected = False
-                print(f"[WS] Connection failed, Verify [WEBSOCKET_URL={self.config.ws_url}, API Key: {self.config.api_key}], attempt {consecutive_failures}/{max_consecutive_failures}")
+                inf(f"[WS] Connection failed, Verify [WEBSOCKET_URL={self.config.ws_url}, API Key: {self.config.api_key}], attempt {consecutive_failures}/{max_consecutive_failures}")
             except Exception as exc:
                 _emsg = str(exc)
                 consecutive_failures += 1
                 self._ws_connected = False
-                print(f"[WS] Connection error: {exc}. Attempt {consecutive_failures}/{max_consecutive_failures}")
+                err(f"[WS] Connection error: {exc}. Attempt {consecutive_failures}/{max_consecutive_failures}", exc)
                 if "Invalid API key" in _emsg or "AUTHENTICATION_ERROR" in _emsg:
-                    print("[WS] HINT: Check OPENALGO_API_KEY — copy the key from OpenAlgo dashboard \u2192 API Key page")
+                    inf("[WS] HINT: Check OPENALGO_API_KEY — copy the key from OpenAlgo dashboard \u2192 API Key page")
                 elif "InvalidStatus" in type(exc).__name__ or "HTTP 200" in _emsg:
-                    print("[WS] HINT: Reverse proxy (/ws) not routing to port 8765 — fix Caddyfile or use ws://127.0.0.1:8765")
+                    inf("[WS] HINT: Reverse proxy (/ws) not routing to port 8765 — fix Caddyfile or use ws://127.0.0.1:8765")
             # Circuit breaker: if persistent failures, give up to prevent memory accumulation
             if consecutive_failures >= max_consecutive_failures:
-                print(f"[WS] Circuit breaker triggered: {consecutive_failures} consecutive failures. Giving up.")
-                print("[WS] Check broker connectivity, credentials, and reverse proxy configuration.")
+                inf(f"[WS] Circuit breaker triggered: {consecutive_failures} consecutive failures. Giving up.")
+                inf("[WS] Check broker connectivity, credentials, and reverse proxy configuration.")
                 if self._notify_callback:
                     try:
                         self._notify_callback(
@@ -3887,7 +3905,7 @@ class WebSocketManager:
                 return  # Exit thread to prevent infinite retry accumulation
             # Exponential backoff (5s → 7.5s → 11.25s ... → 300s max)
             current_backoff = min(backoff_secs, max_backoff_secs)
-            print(f"[WS] Retrying in {current_backoff:.0f}s...")
+            inf(f"[WS] Retrying in {current_backoff:.0f}s...")
             time.sleep(current_backoff)
             backoff_secs = min(backoff_secs * 1.5, max_backoff_secs)
 
@@ -3951,20 +3969,19 @@ class OrderManager:
                     # ORD-2: only return on a confirmed terminal fill state
                     return resp
                 if order_status in _TERMINAL_FAIL:
-                    print(f"[ORDER] Order {order_id} {order_status}")
+                    inf(f"[ORDER] Order {order_id} {order_status}")
                     return None
                 # ORD-2: detect partial fill near end of retry window
                 filled_qty = int(data.get("filled_quantity", 0) or 0)
                 if filled_qty > 0 and attempt >= int(max_r * 0.8):
-                    print(
+                    inf(
                         f"[ORDER] Partial fill detected: {filled_qty} units "
                         f"for {order_id} (attempt {attempt+1}/{max_r}) — treating as fill"
                     )
                     return resp
-            except Exception as exc:
-                print(f"[ORDER] orderstatus error (attempt {attempt+1}): {exc}")
+            except Exception as exc: err(f"[ORDER] orderstatus error (attempt {attempt+1}): ", exc)
             time.sleep(slp)
-        print(f"[ORDER] Timed out polling order {order_id} after {max_r} attempts")
+        inf(f"[ORDER] Timed out polling order {order_id} after {max_r} attempts")
         return None
 
     def cancel_broker_orders(self, underlying: str) -> dict:
@@ -3990,9 +4007,8 @@ class OrderManager:
                             "executed":    float(data.get("average_price", 0) or 0),
                             "order_status": broker_stat,
                         }
-                        print(f"[ORDER] Broker {attr_name} already filled: {oid}")
-            except Exception as exc:
-                print(f"[ORDER] pre-check fill error {oid}: {exc}")
+                        inf(f"[ORDER] Broker {attr_name} already filled: {oid}")
+            except Exception as exc: err(f"[ORDER] pre-check fill error {oid}: ", exc)
 
         for attr_name, oid in (("sl_order_id", sl_id), ("tgt_order_id", tgt_id)):
             if not oid or attr_name in broker_filled:
@@ -4000,11 +4016,10 @@ class OrderManager:
             try:
                 resp = self.client.cancelorder(order_id=oid, strategy=self.config.strategy_name)
                 if isinstance(resp, dict) and resp.get("status") in ("success", "cancelled"):
-                    print(f"[ORDER] Cancelled broker {attr_name} {oid}")
+                    inf(f"[ORDER] Cancelled broker {attr_name} {oid}")
                 else:
-                    print(f"[ORDER] Cancel resp for {oid}: {resp}")
-            except Exception as exc:
-                print(f"[ORDER] Cancel error {oid}: {exc}")
+                    inf(f"[ORDER] Cancel resp for {oid}: {resp}")
+            except Exception as exc: err(f"[ORDER] Cancel error {oid}: ", exc)
 
         for attr_name, oid in (("sl_order_id", sl_id), ("tgt_order_id", tgt_id)):
             if not oid:
@@ -4014,9 +4029,8 @@ class OrderManager:
                 if isinstance(resp, dict) and resp.get("status") == "success":
                     data = resp.get("data") or resp
                     broker_stat = str(data.get("order_status", "")).lower()
-                    print(f"[ORDER] Post-cancel status {oid}: {broker_stat}")
-            except Exception as exc:
-                print(f"[ORDER] Post-cancel check error {oid}: {exc}")
+                    inf(f"[ORDER] Post-cancel status {oid}: {broker_stat}")
+            except Exception as exc: err(f"[ORDER] Post-cancel check error {oid}: ", exc)
         pos.sl_order_id  = None
         pos.tgt_order_id = None
         pos.broker_protection = False
@@ -4037,11 +4051,10 @@ class OrderManager:
             if isinstance(pre, dict) and pre.get("status") == "success":
                 _data = pre.get("data") or pre
                 if str(_data.get("order_status", "")).lower() in ("complete", "filled", "executed"):
-                    print(f"[ORDER] SL already filled for {underlying} — skipping modify, triggering exit")
+                    inf(f"[ORDER] SL already filled for {underlying} — skipping modify, triggering exit")
                     self.place_exit(underlying, "broker_sl_filled_on_modify")
                     return False
-        except Exception as _pre_exc:
-            print(f"[ORDER] modify_broker_sl pre-check error for {underlying}: {_pre_exc}")
+        except Exception as _pre_exc: err(f"[ORDER] modify_broker_sl pre-check error for {underlying}: ", _pre_exc)
         try:
             resp = self.client.modifyorder(
                 order_id=pos.sl_order_id,
@@ -4056,10 +4069,10 @@ class OrderManager:
                 trigger_price=new_trigger,
             )
             if isinstance(resp, dict) and resp.get("status") == "success":
-                print(f"[ORDER] Broker SL modified for {underlying} → trigger ₹{new_trigger:.2f}")
+                inf(f"[ORDER] Broker SL modified for {underlying} → trigger ₹{new_trigger:.2f}")
                 return True
             else:
-                print(f"[ORDER] modifyorder resp for {underlying}: {resp}")
+                inf(f"[ORDER] modifyorder resp for {underlying}: {resp}")
                 # TOCTOU guard: modify may have failed because SL filled in the
                 # window between pre-check and modifyorder. Re-query immediately.
                 try:
@@ -4069,13 +4082,13 @@ class OrderManager:
                     if isinstance(post, dict) and post.get("status") == "success":
                         _post_data = post.get("data") or post
                         if str(_post_data.get("order_status", "")).lower() in ("complete", "filled", "executed"):
-                            print(f"[ORDER] SL filled in modify window for {underlying} — triggering exit")
+                            inf(f"[ORDER] SL filled in modify window for {underlying} — triggering exit")
                             self.place_exit(underlying, "broker_sl_filled_on_modify")
                 except Exception:
                     pass
                 return False
         except Exception as exc:
-            print(f"[ORDER] modify_broker_sl error for {underlying}: {exc}")
+            err(f"[ORDER] modify_broker_sl error for {underlying}", exc)
             # TOCTOU guard: same immediate status check on exception
             try:
                 post = self.client.orderstatus(
@@ -4084,7 +4097,7 @@ class OrderManager:
                 if isinstance(post, dict) and post.get("status") == "success":
                     _post_data = post.get("data") or post
                     if str(_post_data.get("order_status", "")).lower() in ("complete", "filled", "executed"):
-                        print(f"[ORDER] SL filled in modify window (exc) for {underlying} — triggering exit")
+                        inf(f"[ORDER] SL filled in modify window (exc) for {underlying} — triggering exit")
                         self.place_exit(underlying, "broker_sl_filled_on_modify")
             except Exception:
                 pass
@@ -4117,17 +4130,16 @@ class OrderManager:
                             pos.exit_pending = True
                             with self._state.exit_lock:
                                 self._state.exit_queue.add(underlying)
-                        print(f"[ORDER] Broker {attr_name} filled for {underlying} ({oid})")
+                        inf(f"[ORDER] Broker {attr_name} filled for {underlying} ({oid})")
                         
                         # --- CANCEL THE OTHER LEG ---
                         other_oid = pos.tgt_order_id if attr_name == "sl_order_id" else pos.sl_order_id
                         other_name = "tgt_order_id" if attr_name == "sl_order_id" else "sl_order_id"
                         if other_oid:
                             try:
-                                print(f"[ORDER] Cancelling opposite broker order {other_name} ({other_oid})...")
+                                inf(f"[ORDER] Cancelling opposite broker order {other_name} ({other_oid})...")
                                 self.client.cancelorder(order_id=other_oid, strategy=self.config.strategy_name)
-                            except Exception as c_exc:
-                                print(f"[ORDER] Cancel opposite broker order error {other_name} ({other_oid}): {c_exc}")
+                            except Exception as c_exc: err(f"[ORDER] Cancel opposite broker order error {other_name} ({other_oid}): ", c_exc)
                         # ----------------------------
                         executed_price = float(data.get("average_price", 0) or 0)
                         pnl = 0.0
@@ -4159,8 +4171,7 @@ class OrderManager:
                             self._state.positions.pop(underlying, None)
                         with self._state.exit_lock:
                             self._state.exit_queue.discard(underlying)
-                except Exception as exc:
-                    print(f"[ORDER] check_broker_order_fills error ({underlying}, {oid}): {exc}")
+                except Exception as exc: err(f"[ORDER] check_broker_order_fills error ({underlying}, {oid}): ", exc)
 
     def register_filled_entry(
         self,
@@ -4210,7 +4221,7 @@ class OrderManager:
 
         self._ws.subscribe(cfg.fno_exchange, option_symbol)
         self._ws.subscribe_spot(underlying)
-        print(
+        inf(
             f"[DATA] TRADE REGISTERED {underlying}: "
             f"option={option_symbol} exchange={cfg.fno_exchange} | "
             f"spot={underlying} spot_exchange={'NSE_INDEX' if underlying in cfg.index_underlyings else cfg.spot_exchange} | "
@@ -4229,7 +4240,7 @@ class OrderManager:
             if pos.sl_order_id or pos.tgt_order_id:
                 pos.broker_protection = True
 
-        print(
+        inf(
             f"[ORDER] Position registered for {underlying}: {option_symbol} "
             f"QTY={qty} ENTRY=₹{executed:.2f} SL=₹{sl:.2f} "
             f"(pts={resolved_sl_pts:.2f}) TGT=₹{tgt:.2f}"
@@ -4290,7 +4301,7 @@ class OrderManager:
                 results = basket_resp.get("results", [])
                 for i, leg in enumerate(results):
                     if leg.get("status") != "success" or not leg.get("orderid"):
-                        print(f"[ORDER] Basket leg {i} rejected for {underlying}: {leg}")
+                        inf(f"[ORDER] Basket leg {i} rejected for {underlying}: {leg}")
                         continue
                     
                     pt = str(leg.get("pricetype", leg.get("price_type", leg.get("ordertype", "")))).upper()
@@ -4298,17 +4309,16 @@ class OrderManager:
                     
                     if is_sl:
                         pos.sl_order_id = leg.get("orderid")
-                        print(f"[ORDER] Basket SL-M placed for {underlying}: trigger ₹{sl:.2f} (id:{pos.sl_order_id})")
+                        inf(f"[ORDER] Basket SL-M placed for {underlying}: trigger ₹{sl:.2f} (id:{pos.sl_order_id})")
                     else:
                         pos.tgt_order_id = leg.get("orderid")
-                        print(f"[ORDER] Basket LIMIT placed for {underlying}: ₹{tgt:.2f} (id:{pos.tgt_order_id})")
+                        inf(f"[ORDER] Basket LIMIT placed for {underlying}: ₹{tgt:.2f} (id:{pos.tgt_order_id})")
 
                 if pos.sl_order_id and pos.tgt_order_id:
                     return
-        except Exception as exc:
-            print(f"[ORDER] Basket order error for {underlying}: {exc}")
+        except Exception as exc: err(f"[ORDER] Basket order error for {underlying}: ", exc)
 
-        print(f"[ORDER] Falling back to sequential protective orders for {underlying}...")
+        inf(f"[ORDER] Falling back to sequential protective orders for {underlying}...")
         self._place_protection_orders_sequential(underlying, pos, option_symbol, qty, sl, tgt)
 
     def _place_protection_orders_sequential(
@@ -4336,9 +4346,8 @@ class OrderManager:
                 )
                 if isinstance(sl_resp, dict) and sl_resp.get("status") == "success":
                     pos.sl_order_id = sl_resp.get("orderid")
-                    print(f"[ORDER] Broker SL-M placed for {underlying}: trigger ₹{sl:.2f} (id:{pos.sl_order_id})")
-            except Exception as exc:
-                print(f"[ORDER] Broker SL-M error for {underlying}: {exc}")
+                    inf(f"[ORDER] Broker SL-M placed for {underlying}: trigger ₹{sl:.2f} (id:{pos.sl_order_id})")
+            except Exception as exc: err(f"[ORDER] Broker SL-M error for {underlying}: ", exc)
                 
         if not pos.tgt_order_id:
             try:
@@ -4354,9 +4363,8 @@ class OrderManager:
                 )
                 if isinstance(tgt_resp, dict) and tgt_resp.get("status") == "success":
                     pos.tgt_order_id = tgt_resp.get("orderid")
-                    print(f"[ORDER] Broker LIMIT placed for {underlying}: ₹{tgt:.2f} (id:{pos.tgt_order_id})")
-            except Exception as exc:
-                print(f"[ORDER] Broker LIMIT target error for {underlying}: {exc}")
+                    inf(f"[ORDER] Broker LIMIT placed for {underlying}: ₹{tgt:.2f} (id:{pos.tgt_order_id})")
+            except Exception as exc: err(f"[ORDER] Broker LIMIT target error for {underlying}: ", exc)
 
     # ── Trade Journal ──────────────────────────────────────────────────────────
 
@@ -4414,7 +4422,7 @@ class OrderManager:
                     w.writerow(header)
                 w.writerow(row)
         except OSError as exc:
-            print(f"[JOURNAL] Write error: {exc}")
+            err(f"[JOURNAL] Write error", exc)
 
     def place_entry(
         self,
@@ -4431,7 +4439,7 @@ class OrderManager:
         cfg = self.config
         resolved_sl_pts = sl_pts if (sl_pts is not None and sl_pts > 0) else cfg.premium_stop_pts
         if underlying in self._state.positions:
-            print(f"[ORDER] {underlying} already has an open position — skip entry")
+            inf(f"[ORDER] {underlying} already has an open position — skip entry")
             return False
 
         if cfg.paper_trade:
@@ -4439,7 +4447,7 @@ class OrderManager:
             executed = (snap.option_ltp if snap and snap.option_ltp is not None
                         else self._state.ltp_map.get(option_symbol))
             executed = executed or spot * 0.01
-            print(f"[PAPER] Simulated BUY {qty}x {option_symbol} @ ₹{executed:.2f}")
+            inf(f"[PAPER] Simulated BUY {qty}x {option_symbol} @ ₹{executed:.2f}")
             self._risk.record_entry(underlying)
             self.register_filled_entry(
                 underlying, option_symbol, qty, spot, direction, executed,
@@ -4459,7 +4467,7 @@ class OrderManager:
                     ltp = float(live_q.get("ltp", 0) or 0)
                     mid = (bid + ask) / 2 if (bid and ask) else ltp
                     if cfg.preflight_min_bid > 0 and bid < cfg.preflight_min_bid:
-                        print(
+                        inf(
                             f"[ORDER] Pre-flight FAIL {option_symbol}: "
                             f"bid ₹{bid:.2f} < min ₹{cfg.preflight_min_bid:.2f}"
                         )
@@ -4471,7 +4479,7 @@ class OrderManager:
                     ):
                         spread_pct = (ask - bid) / mid * 100
                         if spread_pct > cfg.preflight_max_spread_pct:
-                            print(
+                            inf(
                                 f"[ORDER] Pre-flight FAIL {option_symbol}: "
                                 f"spread {spread_pct:.1f}% > max {cfg.preflight_max_spread_pct:.1f}%"
                             )
@@ -4487,10 +4495,10 @@ class OrderManager:
                 quantity=qty,
             )
             if not isinstance(resp, dict) or resp.get("status") != "success":
-                print(f"[ORDER] Entry order rejected for {underlying}: {resp}")
+                inf(f"[ORDER] Entry order rejected for {underlying}: {resp}")
                 return False
             order_id = resp.get("orderid")
-            print(f"[ORDER] Entry order {order_id} placed for {underlying} ({option_symbol} x{qty})")
+            inf(f"[ORDER] Entry order {order_id} placed for {underlying} ({option_symbol} x{qty})")
 
             # Add to pending entries for reconciliation
             with self._state.state_lock:
@@ -4510,7 +4518,7 @@ class OrderManager:
             with self._state.state_lock:
                 self._state.pending_entries.pop(underlying, None)
             if not filled:
-                print(f"[ORDER] Entry order {order_id} not filled within poll window — abandoning")
+                inf(f"[ORDER] Entry order {order_id} not filled within poll window — abandoning")
                 return False
 
             data       = filled.get("data") or filled
@@ -4518,12 +4526,12 @@ class OrderManager:
             if not executed:
                 executed = float(data.get("price", 0) or 0)
             if not executed:
-                print(f"[ORDER] Executed price is zero for {order_id} — cannot register position")
+                inf(f"[ORDER] Executed price is zero for {order_id} — cannot register position")
                 return False
 
             filled_qty = int(data.get("filled_quantity", 0) or data.get("filled_qty", 0) or 0)
             if filled_qty > 0 and filled_qty != qty:
-                print(
+                inf(
                     f"[ORDER] Partial fill accepted for {order_id}: requested {qty}, "
                     f"filled {filled_qty}"
                 )
@@ -4537,7 +4545,7 @@ class OrderManager:
             )
             return True
         except Exception as exc:
-            print(f"[ORDER] placeorder error for {underlying}: {exc}")
+            err(f"[ORDER] placeorder error for {underlying}", exc)
             return False
         finally:
             with self._state.state_lock:
@@ -4551,7 +4559,7 @@ class OrderManager:
             return
         # Normalize exit reason to enum for consistent attribution
         norm_reason = ExitReason.normalize(reason)
-        print(f"[ORDER] Exiting {underlying} — reason: {reason} → {norm_reason}")
+        inf(f"[ORDER] Exiting {underlying} — reason: {reason} → {norm_reason}")
 
         if cfg.paper_trade:
             snap = self._state.snapshot_cache.get(underlying)
@@ -4559,7 +4567,7 @@ class OrderManager:
                               else self._state.ltp_map.get(pos.symbol))
             executed_price = executed_price or pos.entry_premium
             pnl = (executed_price - pos.entry_premium) * pos.qty
-            print(f"[PAPER] Simulated SELL {pos.qty}x {pos.symbol} @ ₹{executed_price:.2f} | P&L ₹{pnl:.2f}")
+            inf(f"[PAPER] Simulated SELL {pos.qty}x {pos.symbol} @ ₹{executed_price:.2f} | P&L ₹{pnl:.2f}")
             self._risk.record_exit(pnl)
             self._ws.unsubscribe(cfg.fno_exchange, pos.symbol)
             self._ws.unsubscribe_spot(pos.spot_symbol)
@@ -4593,7 +4601,7 @@ class OrderManager:
         for attr_name, info in broker_filled.items():
             if isinstance(info, dict) and info.get("order_status") in ("complete", "filled", "executed"):
                 executed_price = info.get("executed", 0)
-                print(f"[ORDER] Broker {attr_name} already filled at ₹{executed_price:.2f} — skipping SELL")
+                inf(f"[ORDER] Broker {attr_name} already filled at ₹{executed_price:.2f} — skipping SELL")
                 pnl = (float(executed_price) - pos.entry_premium) * pos.qty
                 self._risk.record_exit(pnl)
                 self._ws.unsubscribe(cfg.fno_exchange, pos.symbol)
@@ -4620,11 +4628,10 @@ class OrderManager:
             )
             if isinstance(resp, dict) and resp.get("status") == "success":
                 order_id = resp.get("orderid")
-                print(f"[ORDER] Exit order {order_id} placed for {underlying}")
+                inf(f"[ORDER] Exit order {order_id} placed for {underlying}")
             else:
-                print(f"[ORDER] Exit order response: {resp}")
-        except Exception as exc:
-            print(f"[ORDER] place_exit error for {underlying}: {exc}")
+                inf(f"[ORDER] Exit order response: {resp}")
+        except Exception as exc: err(f"[ORDER] place_exit error for {underlying}: ", exc)
 
         if order_id is None:
             now_hm = get_ist_now().strftime("%H:%M")
@@ -4647,7 +4654,7 @@ class OrderManager:
                                     exit_price_source="estimated")
                 self._ws.unsubscribe(cfg.fno_exchange, pos.symbol)
                 self._ws.unsubscribe_spot(pos.spot_symbol)
-                print(
+                inf(
                     f"[ORDER] Exit order rejected after EOD cutoff — untracking {underlying} "
                     f"({journal_reason} price ₹{best_price:.2f} | P&L ₹{pnl:.0f})"
                 )
@@ -4659,7 +4666,7 @@ class OrderManager:
 
             # Order was not submitted — safe to release exit lock so the next SL
             # trigger from the WS trail can retry the exit on the next tick.
-            print(f"[ORDER] Exit order not submitted for {underlying} — releasing for retry")
+            inf(f"[ORDER] Exit order not submitted for {underlying} — releasing for retry")
             with self._state.exit_lock:
                 self._state.exit_queue.discard(underlying)
             pos.exit_pending = False
@@ -4676,7 +4683,7 @@ class OrderManager:
             # Order submitted but fill could not be confirmed within the poll window.
             # Leave pending_exits intact so check_pending_exits() reconciles on the
             # next strategy cycle; position and exit_pending stay as-is.
-            print(
+            inf(
                 f"[ORDER] Exit fill unconfirmed for {underlying} (order {order_id}) "
                 f"— leaving in pending_exits for reconciliation"
             )
@@ -4738,10 +4745,10 @@ class OrderManager:
                             9,
                         )
                         continue
-                    print(f"[PENDING] BUY {order_id} filled for {underlying} @ ₹{price:.2f}; activating protection")
+                    inf(f"[PENDING] BUY {order_id} filled for {underlying} @ ₹{price:.2f}; activating protection")
                     filled_qty = int(data.get("filled_quantity", 0) or data.get("filled_qty", 0) or 0)
                     if filled_qty > 0 and filled_qty != pending_entry.qty:
-                        print(f"[PENDING] Partial fill: requested {pending_entry.qty}, filled {filled_qty}")
+                        inf(f"[PENDING] Partial fill: requested {pending_entry.qty}, filled {filled_qty}")
                     use_qty = filled_qty if filled_qty > 0 else pending_entry.qty
                     self.register_filled_entry(
                         underlying, pending_entry.symbol, use_qty,
@@ -4752,7 +4759,7 @@ class OrderManager:
                     )
                     # WC-09: If filled after square_off_time, queue immediate exit
                     if square_off_hm and now_hm >= square_off_hm:
-                        print(f"[PENDING] Entry {order_id} filled AFTER cutoff ({now_hm} >= {square_off_hm}) — queuing exit")
+                        inf(f"[PENDING] Entry {order_id} filled AFTER cutoff ({now_hm} >= {square_off_hm}) — queuing exit")
                         with self._state.state_lock:
                             pos = self._state.positions.get(underlying)
                             if pos:
@@ -4768,7 +4775,7 @@ class OrderManager:
                 elif status in ("rejected", "cancelled", "canceled"):
                     with self._state.state_lock:
                         self._state.pending_entries.pop(underlying, None)
-                    print(f"[PENDING] BUY {order_id} {status}; removed from pending entries")
+                    inf(f"[PENDING] BUY {order_id} {status}; removed from pending entries")
             elif square_off_hm and now_hm >= square_off_hm:
                 # WC-09: Cancel unfilled pending entry after square_off_time cutoff
                 try:
@@ -4777,9 +4784,8 @@ class OrderManager:
                     if cancel_status == "success" or "cancel" in str(cancel_resp).lower():
                         with self._state.state_lock:
                             self._state.pending_entries.pop(underlying, None)
-                        print(f"[PENDING] Cancelled unfilled entry {order_id} after {now_hm} cutoff")
-                except Exception as _exc:
-                    print(f"[PENDING] Cancel error for {order_id}: {_exc}")
+                        inf(f"[PENDING] Cancelled unfilled entry {order_id} after {now_hm} cutoff")
+                except Exception as _exc: err(f"[PENDING] Cancel error for {order_id}: ", _exc)
 
     def check_pending_exits(self) -> None:
         """Reconcile stale pending exit orders (safety net — runs every cycle)."""
@@ -4813,7 +4819,7 @@ class OrderManager:
                         self._state.pending_exits.pop(underlying, None)
                     with self._state.exit_lock:
                         self._state.exit_queue.discard(underlying)
-                    print(f"[PENDING] EXIT {order_id} complete for {underlying} @ ₹{executed_price:.2f} | P&L ₹{pnl:.2f} | reason={norm_reason}")
+                    inf(f"[PENDING] EXIT {order_id} complete for {underlying} @ ₹{executed_price:.2f} | P&L ₹{pnl:.2f} | reason={norm_reason}")
                     self._notify(
                         f"{pnl_sign} {self.config.strategy_name} EXIT confirmed\n"
                         f"{underlying} {pos.option_type} | {opt_sym}\n"
@@ -4847,7 +4853,7 @@ class OrderManager:
                             self._state.positions.pop(underlying, None)
                         with self._state.exit_lock:
                             self._state.exit_queue.discard(underlying)
-                        print(
+                        inf(
                             f"[PENDING] EXIT {order_id} {status} after EOD cutoff — untracking {underlying} "
                             f"({journal_reason} price ₹{best_price:.2f} | P&L ₹{pnl:.0f})"
                         )
@@ -4905,8 +4911,7 @@ class OptionsBuyerEdgeBot:
                 message=message,
                 priority=priority,
             )
-        except Exception as exc:
-            print(f"[ALERT] Send error: {exc}")
+        except Exception as exc: err(f"[ALERT] Send error: ", exc)
 
     def _verify_registration(self) -> None:
         """WC-14: Verify strategy is registered in broker's strategy configs."""
@@ -4914,14 +4919,14 @@ class OptionsBuyerEdgeBot:
         try:
             resp = self.client.orderbook(strategy=cfg.strategy_name)
             if isinstance(resp, dict) and resp.get("status") == "success":
-                print(f"[STARTUP] ✓ Strategy '{cfg.strategy_name}' registered OK")
+                inf(f"[STARTUP] ✓ Strategy '{cfg.strategy_name}' registered OK")
                 return
         except Exception:
             pass
-        print(f"[STARTUP] ⚠️  Strategy '{cfg.strategy_name}' not found in strategy configs.")
-        print(f"[STARTUP]    Run: python3 /app/strategies/register_strategy.py")
-        print(f"[STARTUP]    Then restart this script.")
-        print(f"[STARTUP] Continuing anyway (may cause runtime errors)...\n")
+        inf(f"[STARTUP] ⚠️  Strategy '{cfg.strategy_name}' not found in strategy configs.")
+        inf(f"[STARTUP]    Run: python3 /app/strategies/register_strategy.py")
+        inf(f"[STARTUP]    Then restart this script.")
+        inf(f"[STARTUP] Continuing anyway (may cause runtime errors)...\n")
 
     def _check_open_positions_on_startup(self) -> None:
         """WC-01: Restore broker positions + resubscribe WS + reconcile protection orders.
@@ -4937,14 +4942,14 @@ class OptionsBuyerEdgeBot:
         """
         try:
             cfg = self.config
-            resp = self.client.positionbook(strategy=cfg.strategy_name)
+            resp = self.client.positionbook()
             if not isinstance(resp, dict) or resp.get("status") != "success":
                 return
             positions = resp.get("data", []) or []
             if not positions:
-                print("[STARTUP] No open positions found in broker position book")
+                inf("[STARTUP] No open positions found in broker position book")
                 return
-            print(f"[STARTUP] Found {len(positions)} broker position(s). Restoring...")
+            inf(f"[STARTUP] Found {len(positions)} broker position(s). Restoring...")
 
             # Fetch orderbook to find SL/TGT orders
             orderbook_resp = self.client.orderbook(strategy=cfg.strategy_name)
@@ -4971,11 +4976,11 @@ class OptionsBuyerEdgeBot:
                             resp_c = self.client.cancelorder(order_id=oid, strategy=cfg.strategy_name)
                             if isinstance(resp_c, dict) and resp_c.get("status") in ("success", "cancelled"):
                                 orphan_orders_cancelled += 1
-                                print(f"[STARTUP] Cancelled orphan order {oid} for {o_sym}")
+                                inf(f"[STARTUP] Cancelled orphan order {oid} for {o_sym}")
                         except Exception:
                             pass
             if orphan_orders_cancelled:
-                print(f"[STARTUP] Cancelled {orphan_orders_cancelled} orphan order(s)")
+                inf(f"[STARTUP] Cancelled {orphan_orders_cancelled} orphan order(s)")
 
             # ── Phase 1: Restore positions ──────────────────────────────────
             for p in positions:
@@ -4994,7 +4999,7 @@ class OptionsBuyerEdgeBot:
                     candidates = sorted(cfg.underlyings, key=len, reverse=True)
                     underlying = next((u for u in candidates if sym.startswith(u)), "")
                 if not underlying:
-                    print(f"[STARTUP] Could not derive underlying from {sym} — skipping restore")
+                    inf(f"[STARTUP] Could not derive underlying from {sym} — skipping restore")
                     continue
 
                 opt_type = "CE" if sym.endswith("CE") else ("PE" if sym.endswith("PE") else None)
@@ -5040,7 +5045,7 @@ class OptionsBuyerEdgeBot:
                 self.state.snapshot_cache.set_option_symbol(underlying, sym)
                 self.ws.subscribe(cfg.fno_exchange, sym)
                 self.ws.subscribe_spot(underlying)
-                print(f"[STARTUP] ✓ Restored {underlying}: {sym} x{qty} @ ₹{entry_px:.2f} "
+                inf(f"[STARTUP] ✓ Restored {underlying}: {sym} x{qty} @ ₹{entry_px:.2f} "
                       f"SL_id={pos.sl_order_id or 'MISSING'} TGT_id={pos.tgt_order_id or 'MISSING'}")
 
                 # ── Phase 2: Re-issue missing protection orders ─────────────
@@ -5048,14 +5053,13 @@ class OptionsBuyerEdgeBot:
                     sl_ok = bool(pos.sl_order_id)
                     tgt_ok = bool(pos.tgt_order_id)
                     if not sl_ok or not tgt_ok:
-                        print(f"[STARTUP] Reconciling protection orders for {underlying}: "
+                        inf(f"[STARTUP] Reconciling protection orders for {underlying}: "
                               f"SL={'OK' if sl_ok else 'MISSING'} TGT={'OK' if tgt_ok else 'MISSING'}")
                         self._place_protection_orders_sequential(underlying, pos, sym, qty, pos.sl, pos.tgt)
                         if pos.sl_order_id or pos.tgt_order_id:
                             pos.broker_protection = True
 
-        except Exception as exc:
-            print(f"[STARTUP] positionbook error: {exc}")
+        except Exception as exc: err(f"[STARTUP] positionbook error: ", exc)
 
     def _check_max_hold(self) -> None:
         """Exit positions held > max_hold_minutes (theta decay guard). 0=disabled."""
@@ -5070,7 +5074,7 @@ class OptionsBuyerEdgeBot:
                 continue
             held_minutes = (now - pos.entry_time).total_seconds() / 60.0
             if held_minutes >= cfg.max_hold_minutes:
-                print(
+                inf(
                     f"[TIME-EXIT] {ul}: held {held_minutes:.0f}m "
                     f">= max {cfg.max_hold_minutes}m — exiting (theta guard)"
                 )
@@ -5082,77 +5086,54 @@ class OptionsBuyerEdgeBot:
 
     def _send_live_pnl_alert(self, open_positions: list[OptionPosition]) -> None:
         """Fetch live positions and dispatch a single-line active PNL alert."""
-        print(f"[PNL] Checking PNL for {len(open_positions)} position(s)")
+        dbg(f"[PNL] Checking PNL for {len(open_positions)} position(s)")
         try:
             broker_pnl_map: dict[str, float] = {}
             broker_raw_data: dict[str, dict] = {}
-            if not self.config.paper_trade and hasattr(self.client, "positions"):
-                resp = self.client.positions(strategy=self.config.strategy_name)
+            if not self.config.paper_trade and hasattr(self.client, "positionbook"):
+                resp = self.client.positionbook()
                 if isinstance(resp, dict) and resp.get("status") == "success":
                     for p in resp.get("data", []):
                         sym = p.get("symbol", "")
-                        unrealized = float(p.get("unrealized_pnl", 0) or p.get("pnl", 0) or 0)
+                        pnl = float(p.get("pnl", 0) or 0)
                         if sym:
-                            broker_pnl_map[sym] = unrealized
+                            broker_pnl_map[sym] = pnl
                             broker_raw_data[sym] = p
+                    dbg(f"[PNL] {len(broker_pnl_map)} position(s): {list(broker_pnl_map.keys())}")
                 else:
-                    print(f"[PNL] Broker positions call failed or returned no data: {resp}")
+                    inf(f"[PNL] Broker positionbook call failed: {resp}")
 
             for pos in open_positions:
                 pnl = 0.0
                 source = "none"
-                if not self.config.paper_trade and pos.symbol in broker_pnl_map:
-                    pnl = broker_pnl_map[pos.symbol]
-                    source = "broker"
-                    print(
-                        f"[PNL] {pos.underlying}: source=broker pnl=₹{pnl:.2f} "
-                        f"raw={broker_raw_data.get(pos.symbol, {})}"
-                    )
-                elif not self.config.paper_trade:
-                    broker_symbols = list(broker_pnl_map.keys())
-                    raw_entry = broker_raw_data.get(pos.symbol)
-                    print(
-                        f"[PNL] {pos.underlying}: symbol={pos.symbol} NOT in broker data. "
-                        f"broker_symbols={broker_symbols} raw_entry={raw_entry}"
-                    )
+                if self.config.paper_trade:
                     snap = self.state.snapshot_cache.get(pos.underlying)
                     if snap and snap.option_ltp is not None:
                         ltp = snap.option_ltp
                         pnl = (ltp - pos.entry_premium) * pos.qty
                         source = "snapshot_cache"
-                        print(
-                            f"[PNL] {pos.underlying}: source=snapshot_cache "
-                            f"ltp=₹{ltp:.2f} entry=₹{pos.entry_premium:.2f} "
-                            f"qty={pos.qty} pnl=₹{pnl:.2f} snap_age={time.time()-snap.timestamp:.1f}s"
-                        )
-                    else:
-                        print(
-                            f"[PNL] {pos.underlying}: snapshot_cache fallback FAILED — "
-                            f"snap_exists={snap is not None} "
-                            f"opt_ltp={'₹{:.2f}'.format(snap.option_ltp) if snap and snap.option_ltp is not None else 'None'} "
-                            f"spot_ltp={'₹{:.2f}'.format(snap.spot_ltp) if snap and snap.spot_ltp is not None else 'None'} "
-                            f"snap_age={'N/A' if not snap else f'{time.time()-snap.timestamp:.1f}s'} "
-                            f"snapshot_keys={list(self.state.snapshot_cache._cache.keys())}"
-                        )
-                else:
-                    snap = self.state.snapshot_cache.get(pos.underlying)
-                    if snap and snap.option_ltp is not None:
-                        ltp = snap.option_ltp
-                        pnl = (ltp - pos.entry_premium) * pos.qty
-                        source = "snapshot_cache"
-                        print(
-                            f"[PNL] {pos.underlying} PAPER: source=snapshot_cache "
+                        dbg(f"[PNL] "
                             f"ltp=₹{ltp:.2f} entry=₹{pos.entry_premium:.2f} "
                             f"qty={pos.qty} pnl=₹{pnl:.2f}"
                         )
                     else:
-                        print(
-                            f"[PNL] {pos.underlying} PAPER: snapshot_cache MISSING — "
-                            f"snapshot_exists={snap is not None} "
-                            f"opt_ltp={'None' if not snap or snap.option_ltp is None else 'set'} "
-                            f"spot_ltp={'None' if not snap or snap.spot_ltp is None else 'set'} "
-                            f"snapshot_keys={list(self.state.snapshot_cache._cache.keys())}"
+                        dbg(f"[PNL] — no snapshot data. "
+                            f"snap_exists={snap is not None} "
+                            f"opt_ltp={snap.option_ltp if snap else 'None'}"
                         )
+                elif pos.symbol in broker_pnl_map:
+                    pnl = broker_pnl_map[pos.symbol]
+                    source = "broker"
+                    dbg(f"[PNL] pnl=₹{pnl:.2f} "
+                        f"raw={broker_raw_data.get(pos.symbol, {})}"
+                    )
+                else:
+                    broker_symbols = list(broker_pnl_map.keys())
+                    raw_entry = broker_raw_data.get(pos.symbol)
+                    inf(
+                        f"[PNL] {pos.underlying}: symbol={pos.symbol} NOT in broker data. "
+                        f"broker_symbols={broker_symbols} raw_entry={raw_entry}"
+                    )
 
                 hold_mins = max(0, int((get_ist_now() - pos.entry_time).total_seconds() / 60))
                 hours = hold_mins // 60
@@ -5163,13 +5144,10 @@ class OptionsBuyerEdgeBot:
                 emoji = "🟢" if pnl >= 0 else "🔴"
                 sign  = "+" if pnl >= 0 else ""
 
-                if pnl == 0.0 and source != "none":
-                    print(f"[PNL] {pos.underlying}: PNL_ZERO — source={source} returned ₹0")
-                elif pnl == 0.0 and source == "none":
-                    print(f"[PNL] {pos.underlying}: PNL_ZERO — no data source available")
+                if pnl == 0.0 and source == "none":
+                    dbg(f"[PNL] — no data source")
                 else:
-                    print(
-                        f"[PNL] {pos.underlying}: final pnl=₹{pnl:.2f} source={source} "
+                    dbg(f"[PNL]₹{pnl:.2f} source={source} "
                         f"hold={hold_str} alert_sent=True"
                     )
 
@@ -5178,9 +5156,7 @@ class OptionsBuyerEdgeBot:
                     3,
                 )
                 
-        except Exception as exc:
-            print(f"[PNL REPORT] Error checking active PNL: {exc}")
-            traceback.print_exc()
+        except Exception as exc: err(f"[PNL REPORT] Error checking active PNL: ", exc)
 
     def _is_market_hours(self) -> bool:
         hm = int(get_ist_now().strftime("%H%M"))
@@ -5188,62 +5164,62 @@ class OptionsBuyerEdgeBot:
 
     def _print_startup_info(self) -> None:
         cfg = self.config
-        print("=" * 70)
-        print(f"  {cfg.strategy_name}{'  [PAPER TRADE]' if cfg.paper_trade else ''}")
-        print("=" * 70)
-        print(f"  API Host        : {cfg.api_host}")
-        print(f"  WebSocket URL   : {cfg.ws_url if cfg.ws_url else '(SDK auto-derive from host)'}")
-        print(f"  Underlyings     : {', '.join(cfg.underlyings)}")
-        print(f"  FNO Exchange    : {cfg.fno_exchange}")
-        print(f"  Min Score       : {cfg.min_score} | Max Trap: {cfg.max_trap}")
-        print(f"  SL Points       : {cfg.premium_stop_pts} (Phase A hard SL fallback)")
-        print(f"  Phase A SL      : moneyness-adapted from entry_delta or fallback to PREMIUM_STOP_PTS")
+        inf("=" * 70)
+        inf(f"  {cfg.strategy_name}{'  [PAPER TRADE]' if cfg.paper_trade else ''}")
+        inf("=" * 70)
+        inf(f"  API Host        : {cfg.api_host}")
+        inf(f"  WebSocket URL   : {cfg.ws_url if cfg.ws_url else '(SDK auto-derive from host)'}")
+        inf(f"  Underlyings     : {', '.join(cfg.underlyings)}")
+        inf(f"  FNO Exchange    : {cfg.fno_exchange}")
+        inf(f"  Min Score       : {cfg.min_score} | Max Trap: {cfg.max_trap}")
+        inf(f"  SL Points       : {cfg.premium_stop_pts} (Phase A hard SL fallback)")
+        inf(f"  Phase A SL      : moneyness-adapted from entry_delta or fallback to PREMIUM_STOP_PTS")
         _max_pts_str = f" (hard cap {cfg.trail_activate_at_max_pts:.0f}pts)" if cfg.trail_activate_at_max_pts > 0 else ""
-        print(
+        inf(
             f"  Phase B Trail   : tracking={cfg.trail_tracking_mode}  method={cfg.trail_sl_method}  "
             f"activate={cfg.trail_activate_at_pct:.0f}%{_max_pts_str}"
         )
         if cfg.trail_sl_method == "fixed_pct":
-            print(f"  Trail Step      : {cfg.trail_step_pct:.1f}% of base distance (cap: 50% of entry premium)")
+            inf(f"  Trail Step      : {cfg.trail_step_pct:.1f}% of base distance (cap: 50% of entry premium)")
         elif cfg.trail_sl_method == "fixed_pts":
-            print(f"  Trail Step      : {cfg.trail_step_pts:.1f} raw pts (no scaling — use for high-VIX/high-premium options)")
+            inf(f"  Trail Step      : {cfg.trail_step_pts:.1f} raw pts (no scaling — use for high-VIX/high-premium options)")
         elif cfg.trail_sl_method == "atr":
-            print(f"  Trail ATR       : period={cfg.trail_atr_period}, mult={cfg.trail_atr_mult}")
+            inf(f"  Trail ATR       : period={cfg.trail_atr_period}, mult={cfg.trail_atr_mult}")
         elif cfg.trail_sl_method == "delta":
-            print(
+            inf(
                 f"  Trail Delta     : ITM={cfg.trail_delta_itm_step_pct:.0f}%  "
                 f"ATM={cfg.trail_delta_atm_step_pct:.0f}%  OTM={cfg.trail_delta_otm_step_pct:.0f}%  (cap: 50% of entry premium)"
             )
         elif cfg.trail_sl_method == "key_level":
             style = cfg.key_level_trail_style
             if style == "capture_pct":
-                print(f"  Key Level Trail : capture_pct={cfg.key_level_capture_pct:.0f}% per level, spacing={cfg.key_level_spacing}")
+                inf(f"  Key Level Trail : capture_pct={cfg.key_level_capture_pct:.0f}% per level, spacing={cfg.key_level_spacing}")
             else:
-                print(f"  Key Level Trail : fixed={cfg.key_level_fixed_pts:.0f}pts per level, spacing={cfg.key_level_spacing}")
-            print(f"  Key Level BE    : after {cfg.key_level_breakeven_after_levels} level(s)")
-        print(f"  Breakeven SL    : {'disabled' if cfg.breakeven_at_gain_pct <= 0 else f'{cfg.breakeven_at_gain_pct:.0f}% of target gain'}")
-        print(f"  Long Only Mode  : {cfg.long_only_mode}")
-        print(f"  Broker SL Orders: {cfg.broker_sl_orders}")
-        print(f"  DTE Range       : {cfg.dte_min} – {cfg.dte_max} days")
-        print(f"  Candle Interval : {cfg.candle_interval}")
-        print(f"  Check Interval  : {cfg.signal_check_interval}s")
-        print("-" * 70)
-        print(f"  [RISK GATES]")
-        print(f"  Max Trades/Day  : {cfg.max_trades_per_session or 'unlimited'}")
-        print(f"  Max Consec Loss : {cfg.max_consecutive_losses}")
-        print(f"  Daily Loss Limit: ₹{cfg.max_daily_loss_amount:.0f}"
+                inf(f"  Key Level Trail : fixed={cfg.key_level_fixed_pts:.0f}pts per level, spacing={cfg.key_level_spacing}")
+            inf(f"  Key Level BE    : after {cfg.key_level_breakeven_after_levels} level(s)")
+        inf(f"  Breakeven SL    : {'disabled' if cfg.breakeven_at_gain_pct <= 0 else f'{cfg.breakeven_at_gain_pct:.0f}% of target gain'}")
+        inf(f"  Long Only Mode  : {cfg.long_only_mode}")
+        inf(f"  Broker SL Orders: {cfg.broker_sl_orders}")
+        inf(f"  DTE Range       : {cfg.dte_min} – {cfg.dte_max} days")
+        inf(f"  Candle Interval : {cfg.candle_interval}")
+        inf(f"  Check Interval  : {cfg.signal_check_interval}s")
+        inf("-" * 70)
+        inf(f"  [RISK GATES]")
+        inf(f"  Max Trades/Day  : {cfg.max_trades_per_session or 'unlimited'}")
+        inf(f"  Max Consec Loss : {cfg.max_consecutive_losses}")
+        inf(f"  Daily Loss Limit: ₹{cfg.max_daily_loss_amount:.0f}"
               + (f" | {cfg.max_daily_loss_pct:.1f}%" if cfg.max_daily_loss_pct > 0 else ""))
-        print(f"  Daily Profit Tgt: {'disabled' if cfg.max_daily_profit_amount <= 0 else f'₹{cfg.max_daily_profit_amount:.0f}'}")
-        print(f"  Entry Cooldown  : {cfg.entry_cooldown_secs}s per underlying")
-        print(f"  [TIMING]")
-        print(f"  No New Entries  : after {cfg.no_new_trade_after} IST")
-        print(f"  EOD Square-Off  : {cfg.square_off_time} IST")
-        print(f"  Max Hold Time   : {'disabled' if cfg.max_hold_minutes <= 0 else f'{cfg.max_hold_minutes}m per trade'}")
+        inf(f"  Daily Profit Tgt: {'disabled' if cfg.max_daily_profit_amount <= 0 else f'₹{cfg.max_daily_profit_amount:.0f}'}")
+        inf(f"  Entry Cooldown  : {cfg.entry_cooldown_secs}s per underlying")
+        inf(f"  [TIMING]")
+        inf(f"  No New Entries  : after {cfg.no_new_trade_after} IST")
+        inf(f"  EOD Square-Off  : {cfg.square_off_time} IST")
+        inf(f"  Max Hold Time   : {'disabled' if cfg.max_hold_minutes <= 0 else f'{cfg.max_hold_minutes}m per trade'}")
         if cfg.trade_journal_path:
-            print(f"  Trade Journal   : {cfg.trade_journal_path}")
+            inf(f"  Trade Journal   : {cfg.trade_journal_path}")
         if cfg.paper_trade:
-            print(f"\n  *** PAPER TRADE MODE — no real orders will be sent ***")
-        print("=" * 70)
+            inf(f"\n  *** PAPER TRADE MODE — no real orders will be sent ***")
+        inf("=" * 70)
 
     def scan_underlying(self, symbol: str) -> None:
         """Full scan pipeline for one underlying.  Called from strategy thread."""
@@ -5270,44 +5246,44 @@ class OptionsBuyerEdgeBot:
                 sep_char:  Separator character (default: ━).
             """
             perf = self.fetcher.greeks_perf_snapshot(symbol)
-            print(
+            dbg(
                 f"  [PERF] {symbol} [{stage}] greeks: "
                 f"hit={perf['hits']} miss={perf['misses']} "
                 f"api_calls={perf['api_calls']} hit_rate={perf['hit_rate']}% "
                 f"cache_size={perf['cache_size']}"
             )
             if sep_count > 0:
-                print(f"  {sep_char * sep_count}\n")
+                inf(f"  {sep_char * sep_count}\n")
 
         if symbol in state.positions:
             return
 
         allowed, gate_reason = self.risk.check_gates(symbol)
         if not allowed:
-            print(f"[SCAN] {symbol} blocked by risk gate: {gate_reason}")
+            inf(f"[SCAN] {symbol} blocked by risk gate: {gate_reason}")
             return
 
         # U-C: Session-Aware Min Score — use global helper for clean, testable logic
         _ist_now          = get_ist_now()
         effective_min_score, _session_label = _effective_min_score(_ist_now, cfg)
         if _session_label != "mid-session":
-            print(f"[SCAN] {symbol}: session regime [{_session_label}]")
+            inf(f"[SCAN] {symbol}: session regime [{_session_label}]")
 
         spot_q = self.fetcher.fetch_quote(symbol, self.fetcher.underlying_exchange(symbol))
         spot   = float(spot_q.get("ltp", 0) or 0)
         if not spot:
-            print(f"[SCAN] {symbol}: no spot LTP")
+            inf(f"[SCAN] {symbol}: no spot LTP")
             return
 
         expiry = self.fetcher.fetch_target_expiry(symbol)
         if not expiry and not cfg.allow_checkpoint_fallback:
-            print(f"[SCAN] {symbol}: no expiry in DTE range {cfg.dte_min}–{cfg.dte_max} — skip")
+            inf(f"[SCAN] {symbol}: no expiry in DTE range {cfg.dte_min}–{cfg.dte_max} — skip")
             return
 
         # Fetch option chain
         chain_rows, expiry_used = self.fetcher.fetch_option_chain(symbol, expiry)
         if not chain_rows:
-            print(f"[SCAN] {symbol}: empty option chain")
+            inf(f"[SCAN] {symbol}: empty option chain")
             return
         if expiry_used and not expiry:
             expiry = expiry_used
@@ -5437,19 +5413,19 @@ class OptionsBuyerEdgeBot:
         _time_str   = _now_hdr.strftime("%H:%M:%S")
         _spot_fmt   = f"{spot:,.0f}" if spot else ""
         _header_txt = f"  ━━ SCAN · {symbol} · {_spot_fmt} · {_time_str}  "
-        print(_header_txt + "━" * max(1, 79 - len(_header_txt)))
-        print(f"      {_dir_ico} {result.label:<10}  score {_s:+d}/100  {_score_bar}  trap {_trap}/100   {_sig_ico} {_signal}")
-        print(f"  {_sep}")
+        inf(_header_txt + "━" * max(1, 79 - len(_header_txt)))
+        inf(f"      {_dir_ico} {result.label:<10}  score {_s:+d}/100  {_score_bar}  trap {_trap}/100   {_sig_ico} {_signal}")
+        inf(f"  {_sep}")
         _cbar_w = 8
         for c in result.components:
             _cfill = int(abs(c.score) / max(c.score_max, 0.01) * _cbar_w)
             _cbar  = "█" * _cfill + "░" * (_cbar_w - _cfill)
-            print(f"     {c.score:+.0f}/{c.score_max:.0f}  {_cbar}  {c.label:<20} {c.note}")
+            inf(f"     {c.score:+.0f}/{c.score_max:.0f}  {_cbar}  {c.label:<20} {c.note}")
         if result.trap_reasons:
-            print(f"  ⚠ TRAP {_trap}  ·  {'  ·  '.join(result.trap_reasons)}")
+            inf(f"  ⚠ TRAP {_trap}  ·  {'  ·  '.join(result.trap_reasons)}")
 
         if _signal != "EXECUTE":
-            print(
+            inf(
                 f"  {_sig_ico} {_signal}  —  not executing  "
                 f"(score {abs(_s)}/100, min {effective_min_score})"
             )
@@ -5457,7 +5433,7 @@ class OptionsBuyerEdgeBot:
             return
 
         # ✔ EXECUTE path — separator printed AFTER every blocking guard below
-        print(f"  ✔ EXECUTE  {_dir_ico}  {result.direction}")
+        inf(f"  ✔ EXECUTE  {_dir_ico}  {result.direction}")
 
         direction = result.direction
         if cfg.long_only_mode and direction not in ("CE", "PE"):
@@ -5475,23 +5451,23 @@ class OptionsBuyerEdgeBot:
             if cfg.allow_checkpoint_fallback:
                 best = StrikeSelector.simple_otm(smoothed, spot, direction, cfg.otm_offset)
                 if best:
-                    print(f"[SCAN] {symbol}: using simple OTM fallback strike {best.get('strike')}")
+                    inf(f"[SCAN] {symbol}: using simple OTM fallback strike {best.get('strike')}")
             if best is None:
-                print(f"[SCAN] {symbol}: no qualifying strike found — skip")
+                inf(f"[SCAN] {symbol}: no qualifying strike found — skip")
                 _log_greeks_perf("no-strike", sep_count=79)
                 return
 
         opt_key    = "ce_symbol" if direction == "CE" else "pe_symbol"
         opt_symbol = best.get(opt_key)
         if not opt_symbol:
-            print(f"[SCAN] {symbol}: strike {best.get('strike')} has no {direction} symbol — skip")
+            inf(f"[SCAN] {symbol}: strike {best.get('strike')} has no {direction} symbol — skip")
             _log_greeks_perf("missing-option-symbol", sep_count=79)
             return
 
         if cfg.same_strike_reentry_guard_enabled:
             traded_count = state.trade_count_today(opt_symbol, direction)
             if traded_count >= cfg.max_same_strike_trades_per_day:
-                print(
+                inf(
                     f"[SCAN] {symbol}: {opt_symbol} {direction} already traded "
                     f"{traded_count}x today (max {cfg.max_same_strike_trades_per_day}) — skip"
                 )
@@ -5507,7 +5483,7 @@ class OptionsBuyerEdgeBot:
             if mid > 0 and ask > bid:
                 live_spread_pct = (ask - bid) / mid * 100
                 if live_spread_pct > cfg.max_entry_spread_pct:
-                    print(
+                    inf(
                         f"[SCAN] {symbol}: entry blocked — spread {live_spread_pct:.1f}% "
                         f"> max {cfg.max_entry_spread_pct:.1f}% (bid={bid:.2f}, ask={ask:.2f})"
                     )
@@ -5538,7 +5514,7 @@ class OptionsBuyerEdgeBot:
         # Clamp to a safe minimum to prevent instant stop outs, but remove arbitrary dynamic limits
         entry_sl_pts = max(5.0, entry_sl_pts)
 
-        print(
+        inf(
             f"[SCAN] {symbol}: Phase A initial SL source={entry_sl_source} "
             f"base={base_sl_pts:.2f} × factor={sl_factor:.2f} (conv={entry_conviction:.2f})"
             f" → clamped={entry_sl_pts:.2f}pts"
@@ -5548,7 +5524,7 @@ class OptionsBuyerEdgeBot:
         effective_mult = self.risk.effective_lot_multiplier(cfg.lot_multiplier)
         fixed_qty = max(1, effective_mult) * lotsize
         if cfg.adaptive_sizing_enabled:
-            print(
+            inf(
                 f"[SCAN] {symbol}: lot_mult={effective_mult} "
                 f"(base={cfg.lot_multiplier}, wins={self.risk.consecutive_wins})"
             )
@@ -5562,7 +5538,7 @@ class OptionsBuyerEdgeBot:
             qty = min(fixed_qty, risk_qty) if risk_qty > 0 else 0
             if qty <= 0:
                 min_risk_pct = (entry_sl_pts * lotsize / available * 100) if available > 0 else 0.0
-                print(
+                inf(
                     f"[SCAN] {symbol}: qty=0 — 1 lot risk exceeds cap "
                     f"(stop ₹{entry_sl_pts:.2f} pts × {lotsize} units = ₹{entry_sl_pts*lotsize:.0f}/lot, "
                     f"risk cap ₹{risk_cap:.0f} @ {cfg.risk_percent}% of ₹{available:.0f} available; "
@@ -5572,27 +5548,27 @@ class OptionsBuyerEdgeBot:
                 return
         else:
             qty = fixed_qty
-            print(f"[SCAN] {symbol}: qty={qty} (risk-based sizing disabled — using fixed lot_mult)")
+            inf(f"[SCAN] {symbol}: qty={qty} (risk-based sizing disabled — using fixed lot_mult)")
 
         # ── WS connectivity guard — must run last so all preflight logs are printed ──
         # When WS is down, trail/target detection is blind; broker SL-M provides minimum protection.
         # Block entry entirely if broker_sl_orders=False (no fallback protection at all).
         if not self.ws.is_connected():
             if not cfg.broker_sl_orders:
-                print(
+                inf(
                     f"[SCAN] {symbol}: entry BLOCKED — WS disconnected and broker_sl_orders=False. "
                     f"No protection available."
                 )
                 _log_greeks_perf("ws-dead-no-broker-sl", sep_count=79)
                 return
-            print(
+            inf(
                 f"[RISK] {symbol}: WS disconnected — entry allowed (broker SL-M active). "
                 f"Trail/target hit detection blind until WS recovers."
             )
 
         # All guards passed — close the scan block then log intent
         _log_greeks_perf("entry-preflight", sep_count=79)
-        print(
+        inf(
             f"[SCAN] {symbol}: placing {direction} entry | strike {best.get('strike')} "
             f"| {opt_symbol} x{qty}"
         )
@@ -5665,8 +5641,7 @@ class OptionsBuyerEdgeBot:
                         snap2 = self.state.snapshot_cache.get(ul)
                         if snap2 is None or snap2.option_ltp is None:
                             self.state.snapshot_cache.update(ul, option_ltp=ltp)
-            except Exception as exc:
-                print(f"[SNAPSHOT] Quote refresh failed for {ul}: {exc}")
+            except Exception as exc: err(f"[SNAPSHOT] Quote refresh failed for {ul}: ", exc)
 
             # Spot refresh (indices and equities)
             try:
@@ -5684,7 +5659,7 @@ class OptionsBuyerEdgeBot:
     def _strategy_thread(self) -> None:
         """Clock-anchored strategy scan loop."""
         cfg = self.config
-        print("[STRATEGY] Strategy scan thread started")
+        inf("[STRATEGY] Strategy scan thread started")
         while True:
             try:
                 self.orders.check_pending_entries()
@@ -5698,7 +5673,7 @@ class OptionsBuyerEdgeBot:
                         with self.state.state_lock:
                             open_positions = list(self.state.positions.keys())
                         if open_positions:
-                            print(
+                            inf(
                                 f"[SQUAREOFF] {cfg.square_off_time} reached — "
                                 f"closing {len(open_positions)} position(s)"
                             )
@@ -5728,11 +5703,9 @@ class OptionsBuyerEdgeBot:
                     for symbol in cfg.underlyings:
                         self.scan_underlying(symbol)
                 else:
-                    print("[STRATEGY] Outside market hours — skipping signal scan")
+                    inf("[STRATEGY] Outside market hours — skipping signal scan")
 
-            except Exception as exc:
-                print(f"[STRATEGY ERROR] {exc}")
-                traceback.print_exc()
+            except Exception as exc: err(f"[STRATEGY ERROR] ", exc)
 
             # clock-anchored sleep: align to next N-second boundary
             interval = max(cfg.signal_check_interval, 1)
@@ -5753,13 +5726,13 @@ class OptionsBuyerEdgeBot:
         try:
             import websockets as _websockets
         except ImportError:
-            print("[WS-TEST] SKIP — 'websockets' package not installed")
+            inf("[WS-TEST] SKIP — 'websockets' package not installed")
             return
 
         cfg   = self.config
         ws_url = cfg.ws_url
         if not ws_url:
-            print("[WS-TEST] SKIP — ws_url not configured (set WEBSOCKET_URL)")
+            inf("[WS-TEST] SKIP — ws_url not configured (set WEBSOCKET_URL)")
             return
 
         TICK_WAIT   = 15   # seconds to wait for a live tick after subscribing
@@ -5776,21 +5749,20 @@ class OptionsBuyerEdgeBot:
             _rest_data = _rest_resp.json()
             if _rest_data.get("status") == "success":
                 _n = len(_rest_data.get("data", []))
-                print(f"[WS-TEST] REST API key OK (orderbook: {_n} order(s))")
+                inf(f"[WS-TEST] REST API key OK (orderbook: {_n} order(s))")
             else:
                 _rest_msg = _rest_data.get("message", str(_rest_data))
-                print(f"[WS-TEST] WARN: REST API key check failed: {_rest_msg}")
-                print(f"[WS-TEST]       If REST also returns 'Invalid API key', the key in OPENALGO_API_KEY is wrong.")
-                print(f"[WS-TEST]       Get the correct key from: {cfg.api_host}/apikey")
-        except Exception as _rest_exc:
-            print(f"[WS-TEST] REST check skipped: {_rest_exc}")
+                inf(f"[WS-TEST] WARN: REST API key check failed: {_rest_msg}")
+                inf(f"[WS-TEST]       If REST also returns 'Invalid API key', the key in OPENALGO_API_KEY is wrong.")
+                inf(f"[WS-TEST]       Get the correct key from: {cfg.api_host}/apikey")
+        except Exception as _rest_exc: err(f"[WS-TEST] REST check skipped: ", _rest_exc)
 
-        print(f"[WS-TEST] Testing {ws_url} ...")
+        inf(f"[WS-TEST] Testing {ws_url} ...")
 
         async def _run() -> None:
             try:
                 async with _websockets.connect(ws_url, open_timeout=10) as ws:
-                    print("[WS-TEST] Transport OK — WebSocket handshake succeeded")
+                    inf("[WS-TEST] Transport OK — WebSocket handshake succeeded")
 
                     await ws.send(_json.dumps({
                         "action": "authenticate",
@@ -5801,9 +5773,9 @@ class OptionsBuyerEdgeBot:
                     status = resp.get("status") or resp.get("type", "")
                     if status not in ("success", "authenticated"):
                         code = resp.get("code", "")
-                        print(f"[WS-TEST] FAIL — auth rejected: {resp}")
+                        inf(f"[WS-TEST] FAIL — auth rejected: {resp}")
                         if code == "AUTHENTICATION_ERROR" or "Invalid API key" in resp.get("message", ""):
-                            print(
+                            inf(
                                 f"[WS-TEST] HINT: The API key in OPENALGO_API_KEY does not match"
                                 f" any key stored in the OpenAlgo database."
                                 f"\n[WS-TEST]       1. Log in to your OpenAlgo dashboard"
@@ -5811,14 +5783,14 @@ class OptionsBuyerEdgeBot:
                                 f"\n[WS-TEST]       3. Copy the key and set OPENALGO_API_KEY=<copied-key> in your .env"
                             )
                         return
-                    print(f"[WS-TEST] Auth OK")
+                    inf(f"[WS-TEST] Auth OK")
 
                     await ws.send(_json.dumps({
                         "action": "subscribe",
                         "symbols": [TEST_SYMBOL],
                         "mode": "ltp",
                     }))
-                    print(f"[WS-TEST] Subscribed {TEST_SYMBOL['exchange']}:{TEST_SYMBOL['symbol']}")
+                    inf(f"[WS-TEST] Subscribed {TEST_SYMBOL['exchange']}:{TEST_SYMBOL['symbol']}")
 
                     deadline = _aio.get_event_loop().time() + TICK_WAIT
                     tick_count = 0
@@ -5832,23 +5804,23 @@ class OptionsBuyerEdgeBot:
                                 continue
                             tick_count += 1
                             ltp = msg.get("ltp") or msg.get("data", {}).get("ltp", "?")
-                            print(f"[WS-TEST] Tick #{tick_count} — ltp={ltp}")
+                            inf(f"[WS-TEST] Tick #{tick_count} — ltp={ltp}")
                             if tick_count >= 3:
                                 break
                         except _aio.TimeoutError:
-                            print(f"[WS-TEST] (no tick yet, {remaining:.0f}s remaining...)")
+                            inf(f"[WS-TEST] (no tick yet, {remaining:.0f}s remaining...)")
 
                     if tick_count == 0:
-                        print(
+                        inf(
                             f"[WS-TEST] WARNING — connected & authenticated but 0 ticks "
                             f"in {TICK_WAIT}s. Market may be closed or WS server has no feed."
                         )
                     else:
-                        print(f"[WS-TEST] PASS — received {tick_count} tick(s) ✓")
+                        inf(f"[WS-TEST] PASS — received {tick_count} tick(s) ✓")
 
             except OSError as exc:
-                print(f"[WS-TEST] FAIL — cannot reach {ws_url}: {exc}")
-                print("[WS-TEST] Check: Is the WebSocket server running? Is /ws proxied to port 8765 in Caddy/nginx?")
+                err(f"[WS-TEST] FAIL — cannot reach {ws_url}", exc)
+                inf("[WS-TEST] Check: Is the WebSocket server running? Is /ws proxied to port 8765 in Caddy/nginx?")
             except Exception as exc:
                 _hint = ""
                 _emsg = str(exc)
@@ -5872,13 +5844,13 @@ class OptionsBuyerEdgeBot:
                         f"\n[WS-TEST]       Then reload Caddy: sudo systemctl reload caddy"
                         f"\n[WS-TEST]       Until then, use ws://127.0.0.1:8765 if running on the same server."
                     )
-                print(f"[WS-TEST] FAIL — {_exc_type}: {exc}{_hint}")
+                err(f"[WS-TEST] FAIL — {_exc_type}: {exc}{_hint}", exc)
 
         try:
             _aio.run(_run())
         except RuntimeError:
             # Already inside a running event loop (e.g. eventlet) — skip test
-            print("[WS-TEST] SKIP — cannot run async test inside existing event loop")
+            inf("[WS-TEST] SKIP — cannot run async test inside existing event loop")
 
     # ------------------------------------------------------------------
 
@@ -5905,14 +5877,14 @@ class OptionsBuyerEdgeBot:
         )
         st_thread.start()
 
-        print(f"[BOT] {cfg.strategy_name} running. Press Ctrl+C to stop.")
+        inf(f"[BOT] {cfg.strategy_name} running. Press Ctrl+C to stop.")
         try:
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
-            print("\n[SHUTDOWN] Stopping bot...")
+            inf("\n[SHUTDOWN] Stopping bot...")
             for ul in list(self.state.positions.keys()):
-                print(f"[SHUTDOWN] Closing {ul} position...")
+                inf(f"[SHUTDOWN] Closing {ul} position...")
                 self.orders.place_exit(ul, "Bot Shutdown")
         finally:
             try:
@@ -5920,7 +5892,7 @@ class OptionsBuyerEdgeBot:
             except Exception:
                 pass
             self._send_alert(f"🛑 {cfg.strategy_name} stopped", 1)
-            print("[BOT] Shutdown complete")
+            inf("[BOT] Shutdown complete")
 
 
 # ===============================================================================
@@ -5932,7 +5904,7 @@ if __name__ == "__main__":
     config.validate()
 
     if not config.api_key or config.api_key == "openalgo-apikey":
-        print(
+        inf(
             "[WARNING] OPENALGO_API_KEY is not set in environment.\n"
             "          Export it before running: export OPENALGO_API_KEY=your-key"
         )
