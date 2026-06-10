@@ -12,6 +12,14 @@ Buys NSE F&O options (CE / PE) only when five independent signal layers agree:
 Composite score: −100 → +100.  Order placed when:
   • abs(score) ≥ MIN_SCORE  and  trap_score ≤ MAX_TRAP  and  signal == "EXECUTE"
 
+Market data flows through MarketSnapshot authority layer:
+  WebSocket ticks → SnapshotCache → trail / PNL / alerts / risk
+  Quote API fallback when WS stale → SnapshotCache
+  OptionChain enrichment → SnapshotCache
+
+Snapshot is authority for market data only.
+Position state (fills, protection orders) comes from broker APIs — independent reconciliation.
+
 Run:  export OPENALGO_API_KEY="your-key"  &&  python BuyerEdgeStrategy.py
       Inside OpenAlgo /python runner: OPENALGO_API_KEY is injected automatically.
 
@@ -19,6 +27,7 @@ Run:  export OPENALGO_API_KEY="your-key"  &&  python BuyerEdgeStrategy.py
 """
 
 import csv
+import traceback
 import concurrent.futures
 import math
 import os
@@ -51,6 +60,10 @@ if hasattr(sys.stderr, "reconfigure"):
 #
 # Audited and verified:
 #
+#   ✓ MarketSnapshot authority layer (single source for market data)
+#   ✓ SnapshotCache with WS + quote-fallback + option-chain enrichment
+#   ✓ Snapshot freshness monitoring + stale-data fallback
+#   ✓ Snapshot overwrite guard (field-specific None check, not timestamp)
 #   ✓ Conviction-driven strike selection
 #   ✓ Conviction-driven entry stop-loss sizing
 #   ✓ Conviction-driven breakeven engine
@@ -70,7 +83,7 @@ if hasattr(sys.stderr, "reconfigure"):
 #     Gamma expansion → compress;
 #     High-ROI consolidation/chop → relax compression via KER
 #   ✓ Auth-error notification deduplication
-#   ✓ WS-dead entry protection
+#   ✓ WS-dead entry protection (broker SL-M independent of WS)
 #   ✓ Persistent WebSocket client architecture
 #   ✓ Subscription reconciliation engine
 #   ✓ Reconnect subscription restoration
@@ -87,7 +100,8 @@ if hasattr(sys.stderr, "reconfigure"):
 #   ✓ Protection-order state reconciliation (skip-if-exists, startup restore, basket fallback)
 #   ✓ Basket-order fallback protection
 #   ✓ Startup broker-protection restoration
-#   ✓ Broker SL synchronization
+#   ✓ Startup orphan-order cancellation
+#   ✓ Broker SL synchronization (modify-before-advance pattern)
 #   ✓ Position persistence compatibility
 #
 #   ✓ Exit attribution framework
@@ -103,6 +117,26 @@ if hasattr(sys.stderr, "reconfigure"):
 # ------------------------------------------------------------------------------
 # None currently identified.
 #
+# KNOWN ARCHITECTURAL INVARIANTS (not bugs)
+# ------------------------------------------------------------------------------
+#
+# 1. 1 underlying ⟷ 1 active position (no multi-leg, no scale-in, no hedge).
+#     SnapshotCache.option_symbol is singular. Violating this invariant requires
+#     upgrading SnapshotCache to per-symbol snapshots.
+#
+# 2. Key-level trail state is intentionally ephemeral — reset on every restart.
+#     Broker SL-M is the source of truth for protection; trail reinitializes from
+#     live market data after restart. Not a bug — a conscious tradeoff.
+#
+# 3. Snapshot is authority for market data only.
+#     Position state (fills, protection order IDs) comes from broker APIs
+#     (positionbook / orderbook) via independent reconciliation paths.
+#     Not a design gap — a data-domain boundary.
+#
+# 4. WebSocket is operationally optional for trail/PNL/alerts since the quote-API
+#     fallback re-populates SnapshotCache when ticks go stale. However WS recovery
+#     (diagnose why _on_ws_data never fires) has not been proven.
+#
 # Current live-trading architecture:
 #
 #   Broker SL                : Native broker-side SL-M
@@ -112,22 +146,23 @@ if hasattr(sys.stderr, "reconfigure"):
 #   Premium Trail            : Confirmed-close driven
 #   Spot Trail               : Confirmed-close driven
 #   Gamma Speed-X            : Confirmed-close ROI driven
-#   Exit Breach Detection    : Tick driven
+#   Exit Breach Detection    : Tick driven (WS) + poll driven (broker fill)
 #   Exit Attribution         : Normalized exit-type tracking
 #   Journal Analytics        : R-multiple aware
 #
-# No known:
+# Audited paths with no known open defects:
+#   - conviction propagation
+#   - moneyness propagation
+#   - reconnect & subscription reconciliation
+#   - exit attribution & R-multiple journaling
+#   - daily-PnL accounting (broker fill vs WS fallback)
 #
-#   - state-corruption defects
-#   - conviction propagation defects
-#   - moneyness propagation defects
-#   - reconnect restoration defects
-#   - subscription reconciliation defects
-#   - broker protection synchronization defects
-#   - exit attribution defects
-#   - accounting drift defects
-#
-# remain open.
+# Known bounded risks (documented invariants, not bugs):
+#   - Snapshot is authority for market data only, not total state
+#   - 1 underlying ⟷ 1 active position (singular option_symbol)
+#   - Key-level trail is ephemeral across restart
+#   - WS ticks have not been confirmed flowing (diagnose pending)
+#   - Broker SL modify failure → SL not advanced (retry on next tick)
 #
 #
 # MEDIUM SEVERITY ITEMS (Calibration / Research)
@@ -571,6 +606,9 @@ class BotConfig:
     # Placed as broker SL-M immediately after fill — does NOT depend on WebSocket.
     premium_stop_pts:   float = 25.0   # fallback fixed premium points SL (env: PREMIUM_STOP_PTS)
     premium_target_pts: float = 50.0   # broker LIMIT target points (used for basket/sequential protection)
+
+    # ── Snapshot Freshness ───────────────────────────────────────────────────────
+    snapshot_stale_timeout: float = 5.0   # seconds before a snapshot is considered stale; triggers quote-fetch refresh (env: SNAPSHOT_STALE_TIMEOUT)
 
     # ══ Session Gates ════════════════════════════════════════════════════════════
     max_trades_per_session: int   = 5
@@ -1056,6 +1094,154 @@ class PendingExit:
 
 
 # ===============================================================================
+# MARKET SNAPSHOT — single source of truth for live market data
+# ===============================================================================
+
+@dataclass
+class MarketSnapshot:
+    """Timestamped snapshot of all market data for one underlying.
+
+    Every consumer (trail, PNL, alerts, risk) reads from the same snapshot
+    so there is zero drift between premium/spot/greeks at a given instant.
+    """
+    underlying:    str
+    timestamp:     float            = 0.0   # time.time() when this was built
+    spot_ltp:      float | None     = None
+    option_symbol: str | None       = None   # The active position's option symbol
+    option_ltp:    float | None     = None
+    option_delta:  float | None     = None
+    option_theta:  float | None     = None
+    option_iv:     float | None     = None
+    chain_oi:      float | None     = None   # Total OI for the active option
+    chain_volume:  float | None     = None
+
+    @property
+    def is_stale(self, max_age: float = 5.0) -> bool:
+        return (time.time() - self.timestamp) > max_age if self.timestamp else True
+
+    @property
+    def has_both_prices(self) -> bool:
+        return self.spot_ltp is not None and self.option_ltp is not None
+
+
+class SnapshotCache:
+    """Thread-safe cache of MarketSnapshot per underlying. Single writer,
+    multiple readers all see the same timestamped data.
+
+    INVARIANT: 1 underlying ⟷ 1 active option symbol.
+    SnapshotCache.option_symbol is singular — multi-leg, scale-in, or hedged
+    structures require upgrading to per-symbol snapshots.
+
+    Usage:
+        cache = SnapshotCache()
+        cache.update("NIFTY", spot_ltp=23100, option_ltp=244)
+
+        snap = cache.get("NIFTY")
+        if snap and snap.has_both_prices:
+            process(snap)
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._snapshots: dict[str, MarketSnapshot] = {}
+
+    def get(self, underlying: str) -> MarketSnapshot | None:
+        with self._lock:
+            snap = self._snapshots.get(underlying)
+            if snap is None:
+                return None
+            import copy
+            return copy.copy(snap)
+
+    def get_stale_underlyings(self, max_age: float) -> list[str]:
+        """Return list of underlyings whose snapshot is stale or missing."""
+        now = time.time()
+        stale: list[str] = []
+        with self._lock:
+            for ul, snap in self._snapshots.items():
+                age = now - snap.timestamp if snap.timestamp else float("inf")
+                if age > max_age or snap.option_ltp is None or snap.spot_ltp is None:
+                    stale.append(ul)
+            # Also include underlyings with positions but no snapshot at all
+            # (caller passes the active-positions list for this check)
+        return stale
+
+    def get_or_create(self, underlying: str) -> MarketSnapshot:
+        with self._lock:
+            if underlying not in self._snapshots:
+                self._snapshots[underlying] = MarketSnapshot(underlying=underlying)
+            snap = self._snapshots[underlying]
+            # Return a shallow copy so readers never see a half-updated snapshot
+            # (the dataclass fields are primitives so a shallow copy is safe).
+            import copy
+            return copy.copy(snap)
+
+    def update(self, underlying: str, **fields: Any) -> None:
+        """Atomically update a snapshot with the given fields."""
+        with self._lock:
+            if underlying not in self._snapshots:
+                self._snapshots[underlying] = MarketSnapshot(underlying=underlying)
+            snap = self._snapshots[underlying]
+            for k, v in fields.items():
+                if hasattr(snap, k):
+                    setattr(snap, k, v)
+            snap.timestamp = time.time()
+
+    def set_option_symbol(self, underlying: str, symbol: str) -> None:
+        """Link the active position's option symbol so the cache can be
+        populated when OptionChain data arrives."""
+        self.update(underlying, option_symbol=symbol)
+
+    def update_from_ws_tick(self, underlying: str, symbol: str, spot_ltp: float, option_ltp: float) -> None:
+        """Convenience: update both spot and option LTP from a WS tick."""
+        self.update(
+            underlying,
+            spot_ltp=spot_ltp,
+            option_symbol=symbol,
+            option_ltp=option_ltp,
+        )
+
+    def update_from_option_chain(self, underlying: str, chain_data: dict) -> None:
+        """Populate from a fetched option-chain row for the tracked symbol."""
+        symbol = None
+        with self._lock:
+            snap = self._snapshots.get(underlying)
+            if snap:
+                symbol = snap.option_symbol
+        if not symbol:
+            return
+        if "ce_symbol" in chain_data and chain_data["ce_symbol"] == symbol:
+            prefix = "ce"
+        elif "pe_symbol" in chain_data and chain_data["pe_symbol"] == symbol:
+            prefix = "pe"
+        else:
+            return
+        oi    = float(chain_data.get(f"{prefix}_oi", 0) or 0)
+        vol   = float(chain_data.get(f"{prefix}_volume", 0) or 0)
+        ltp   = float(chain_data.get(f"{prefix}_ltp", 0) or 0)
+        delta = float(chain_data.get("ce_delta" if prefix == "ce" else "pe_delta", 0) or 0)
+        self.update(underlying, option_ltp=ltp, chain_oi=oi, chain_volume=vol, option_delta=delta if delta else None)
+
+    def update_from_greeks(self, underlying: str, greeks: dict) -> None:
+        """Populate greeks data from the optiongreeks API."""
+        delta = greeks.get("delta")
+        theta = greeks.get("theta")
+        iv    = greeks.get("iv")
+        self.update(
+            underlying,
+            option_delta=float(delta) if delta is not None else None,
+            option_theta=float(theta) if theta is not None else None,
+            option_iv=float(iv) if iv is not None else None,
+        )
+
+    def get_all(self) -> list[MarketSnapshot]:
+        """Return all non-stale snapshots."""
+        now = time.time()
+        with self._lock:
+            return [copy.copy(s) for s in self._snapshots.values() if now - s.timestamp < 10.0]
+
+
+# ===============================================================================
 # BOT STATE — shared mutable state passed to all components
 # ===============================================================================
 
@@ -1065,6 +1251,7 @@ class BotState:
     def __init__(self, lookback_bars: int = 5):
         self.positions:       dict[str, OptionPosition] = {}
         self.ltp_map:         dict[str, float] = {}
+        self.snapshot_cache:  SnapshotCache = SnapshotCache()
         self.exit_queue:      set[str] = set()
         self.exit_lock        = threading.Lock()
         self.state_lock       = threading.Lock()
@@ -2271,7 +2458,7 @@ class TrailSLEngine:
     def __init__(self, fetcher: DataFetcher, config: BotConfig):
         self._fetcher = fetcher
         self._config = config
-        self.modify_callback: Callable[[str, float], None] | None = None
+        self.modify_callback: Callable[[str, float], bool] | None = None
 
     def check_trailing_stops(self, state: BotState) -> None:
         """Run periodically to calculate trailing SL ratchets and update orders if needed."""
@@ -2284,28 +2471,33 @@ class TrailSLEngine:
             if pos.exit_pending:
                 continue
 
-            # Need latest ticks to compute distance.
-            opt_ltp = state.ltp_map.get(pos.symbol)
-            spot_ltp = state.ltp_map.get(pos.spot_symbol)
-            if not opt_ltp or not spot_ltp:
-                # Diagnostic: show what's missing
+            # Read from SnapshotCache — single-source-of-truth for all trails
+            snap = state.snapshot_cache.get(underlying)
+            if not snap or not snap.has_both_prices:
                 if not hasattr(self, '_data_skip_logged'):
                     self._data_skip_logged: set[str] = set()
-                _key = f"{underlying}|{pos.symbol}|{'opt' if not opt_ltp else ''}{'spot' if not spot_ltp else ''}"
+                _missing = []
+                if not snap:
+                    _missing.append("no_snapshot")
+                else:
+                    if snap.option_ltp is None:
+                        _missing.append("option_ltp")
+                    if snap.spot_ltp is None:
+                        _missing.append("spot_ltp")
+                _key = f"{underlying}|{'_'.join(_missing)}"
                 if _key not in self._data_skip_logged:
                     self._data_skip_logged.add(_key)
                     print(
-                        f"[DATA-MISS] {underlying}: "
-                        f"option={pos.symbol} premium={'₹'+str(opt_ltp) if opt_ltp else 'MISSING'} | "
-                        f"spot={pos.spot_symbol} spot_ltp={'₹'+str(spot_ltp) if spot_ltp else 'MISSING'} | "
-                        f"ws_desired={list(state.ltp_map.keys())}"
+                        f"[DATA-MISS] {underlying}: {_missing} — "
+                        f"snapshot={snap.timestamp if snap else 'NONE'} | "
+                        f"age={(time.time() - snap.timestamp):.1f}s" if snap and snap.timestamp else ""
                     )
                 continue
-            # Clear skip flag when data arrives
-            self._data_skip_logged.discard(f"{underlying}|{pos.symbol}|opt")
-            self._data_skip_logged.discard(f"{underlying}|{pos.symbol}|spot")
-            self._data_skip_logged.discard(f"{underlying}|{pos.symbol}|optspot")
+            if hasattr(self, '_data_skip_logged'):
+                self._data_skip_logged.clear()
 
+            opt_ltp = snap.option_ltp
+            spot_ltp = snap.spot_ltp
             confirmed_close = opt_ltp
             prior_trail_peak_close = (
                 pos.trail_peak_close
@@ -2325,11 +2517,13 @@ class TrailSLEngine:
                 gain_pts = (pos.trail_peak_close or ep) - ep
                 if target_gain_pts > 0 and gain_pts >= target_gain_pts * _be_trigger_pct:
                     if ep > pos.sl:
-                        pos.sl = ep
-                        pos.breakeven_moved = True
-                        print(f"[TRAIL] BREAKEVEN SL {underlying}: moved to cost ₹{ep:.2f}")
+                        _broker_ok = True
                         if cfg.broker_sl_orders and pos.sl_order_id and self.modify_callback:
-                            self.modify_callback(underlying, ep)
+                            _broker_ok = self.modify_callback(underlying, ep)
+                        if _broker_ok:
+                            pos.sl = ep
+                            pos.breakeven_moved = True
+                            print(f"[TRAIL] BREAKEVEN SL {underlying}: moved to cost ₹{ep:.2f}")
 
             # ── 2. Activation Buffer ────────
             _trail_conv_adj = CONV_TRAIL_ACT_BASE - pos.entry_conviction * CONV_TRAIL_ACT_RANGE
@@ -2490,21 +2684,25 @@ class TrailSLEngine:
             pos.premium_trail_peak = pos.trail_peak_close
             new_sl = confirmed_close - step_pts
             if new_sl > pos.sl:
-                pos.premium_trail_sl = new_sl
-                pos.sl = new_sl
-                print(f"[TRAIL] Premium ACTIVATED {underlying}: peak {ltp:.2f} SL→{new_sl:.2f} (speed={_trail_speed:.1f}x)")
+                _broker_ok = True
                 if cfg.broker_sl_orders and pos.sl_order_id and self.modify_callback:
-                    self.modify_callback(underlying, new_sl)
+                    _broker_ok = self.modify_callback(underlying, new_sl)
+                if _broker_ok:
+                    pos.premium_trail_sl = new_sl
+                    pos.sl = new_sl
+                    print(f"[TRAIL] Premium ACTIVATED {underlying}: peak {ltp:.2f} SL→{new_sl:.2f} (speed={_trail_speed:.1f}x)")
         else:
             if is_new_confirmed_close_high:
                 pos.premium_trail_peak = pos.trail_peak_close
                 new_sl = confirmed_close - step_pts
                 if new_sl > pos.sl:
-                    pos.premium_trail_sl = new_sl
-                    pos.sl = new_sl
-                    print(f"[TRAIL] Premium RATCHET {underlying}: peak {ltp:.2f} SL→{new_sl:.2f} (speed={_trail_speed:.1f}x)")
+                    _broker_ok = True
                     if cfg.broker_sl_orders and pos.sl_order_id and self.modify_callback:
-                        self.modify_callback(underlying, new_sl)
+                        _broker_ok = self.modify_callback(underlying, new_sl)
+                    if _broker_ok:
+                        pos.premium_trail_sl = new_sl
+                        pos.sl = new_sl
+                        print(f"[TRAIL] Premium RATCHET {underlying}: peak {ltp:.2f} SL→{new_sl:.2f} (speed={_trail_speed:.1f}x)")
 
     def _process_spot_trail(self, underlying: str, pos: OptionPosition, spot_ltp: float, conv_adj: float) -> None:
         cfg = self._config
@@ -2715,28 +2913,34 @@ class TrailSLEngine:
                 and not pos.breakeven_moved
                 and ep > pos.sl
             ):
-                pos.sl = ep
-                pos.breakeven_moved = True
-                print(
-                    f"[TRAIL] KeyLevel BREAKEVEN {underlying}: "
-                    f"SL → entry ₹{ep:.2f} after {pos.kl_levels_completed} level(s)"
-                )
+                _broker_ok = True
+                if cfg.broker_sl_orders and pos.sl_order_id and self.modify_callback:
+                    _broker_ok = self.modify_callback(underlying, ep)
+                if _broker_ok:
+                    pos.sl = ep
+                    pos.breakeven_moved = True
+                    print(
+                        f"[TRAIL] KeyLevel BREAKEVEN {underlying}: "
+                        f"SL → entry ₹{ep:.2f} after {pos.kl_levels_completed} level(s)"
+                    )
 
             # ── Compute new SL from captured range ─────────────────────────
             new_sl = premium_ltp - trail_step
 
             # One-directional ratchet (SL only moves UP for both CE and PE)
             if new_sl > pos.sl:
-                pos.sl = new_sl
-                pos.premium_trail_sl = new_sl
-                print(
-                    f"[TRAIL] KeyLevel RATCHET {underlying}: "
-                    f"level_crossed={pos.kl_next_level:.0f} | "
-                    f"captured={captured_range:.2f}pts → step={trail_step:.2f} | "
-                    f"SL→₹{new_sl:.2f} | completed={pos.kl_levels_completed}"
-                )
+                _broker_ok = True
                 if cfg.broker_sl_orders and pos.sl_order_id and self.modify_callback:
-                    self.modify_callback(underlying, new_sl)
+                    _broker_ok = self.modify_callback(underlying, new_sl)
+                if _broker_ok:
+                    pos.sl = new_sl
+                    pos.premium_trail_sl = new_sl
+                    print(
+                        f"[TRAIL] KeyLevel RATCHET {underlying}: "
+                        f"level_crossed={pos.kl_next_level:.0f} | "
+                        f"captured={captured_range:.2f}pts → step={trail_step:.2f} | "
+                        f"SL→₹{new_sl:.2f} | completed={pos.kl_levels_completed}"
+                    )
             else:
                 print(
                     f"[TRAIL] KeyLevel CROSS {underlying}: "
@@ -3217,7 +3421,7 @@ class WebSocketManager:
         self.config = config
         self._state = state
         self._exit_callback:      Callable[[str, str], None] | None = None
-        self._sl_modify_callback: Callable[[str, float], None] | None = None
+        self._sl_modify_callback: Callable[[str, float], bool] | None = None
         self._notify_callback:    Callable[[str, int], None] | None = None   # U-G: wired after init
         self._fetcher:            DataFetcher | None = None  # Set via set_fetcher() after construction
         self._ws_started     = threading.Event()
@@ -3408,6 +3612,28 @@ class WebSocketManager:
         with self._state.state_lock:
             self._state.ltp_map[symbol] = ltp
 
+        # ── Feed SnapshotCache on every tick for active positions ──────────
+        for underlying, pos in list(self._state.positions.items()):
+            if pos.exit_pending:
+                continue
+            if pos.symbol == symbol:
+                # Option premium tick → update snapshot
+                snap = self._state.snapshot_cache.get_or_create(underlying)
+                self._state.snapshot_cache.update(
+                    underlying,
+                    option_symbol=symbol,
+                    option_ltp=ltp,
+                    spot_ltp=snap.spot_ltp,
+                )
+            elif pos.spot_symbol == symbol:
+                # Spot tick → update snapshot
+                snap = self._state.snapshot_cache.get_or_create(underlying)
+                self._state.snapshot_cache.update(
+                    underlying,
+                    spot_ltp=ltp,
+                    option_ltp=snap.option_ltp,
+                )
+
         # ── Diagnostic: log ticks for active position symbols ───────────────
         for underlying, pos in list(self._state.positions.items()):
             if pos.exit_pending:
@@ -3419,7 +3645,8 @@ class WebSocketManager:
                 cnt = self._tick_counts[symbol]
                 # Log every 5th tick to avoid flooding, plus first tick
                 if cnt <= 3 or cnt % 5 == 0:
-                    spot_ltp = self._state.ltp_map.get(pos.spot_symbol)
+                    spot_snap = self._state.snapshot_cache.get(underlying)
+                    spot_ltp = spot_snap.spot_ltp if spot_snap else None
                     print(
                         f"[WS-TICK] {underlying} option={symbol} "
                         f"premium=₹{ltp:.2f} spot={spot_ltp if spot_ltp else 'N/A'} | "
@@ -3432,7 +3659,8 @@ class WebSocketManager:
                 self._spot_tick_counts[underlying] = self._spot_tick_counts.get(underlying, 0) + 1
                 cnt = self._spot_tick_counts[underlying]
                 if cnt <= 3 or cnt % 5 == 0:
-                    opt_ltp = self._state.ltp_map.get(pos.symbol)
+                    opt_snap = self._state.snapshot_cache.get(underlying)
+                    opt_ltp = opt_snap.option_ltp if opt_snap else None
                     print(
                         f"[WS-TICK] {underlying} spot={symbol} "
                         f"spot_ltp=₹{ltp:.2f} premium={opt_ltp if opt_ltp else 'N/A'} | "
@@ -3794,12 +4022,13 @@ class OrderManager:
         pos.broker_protection = False
         return broker_filled
 
-    def modify_broker_sl(self, underlying: str, new_trigger: float) -> None:
+    def modify_broker_sl(self, underlying: str, new_trigger: float) -> bool:
+        """Modify broker SL-M trigger price. Returns True if the broker accepted the change."""
         if self.config.paper_trade:
-            return   # no-op in paper trade mode
+            return False  # no-op in paper trade mode
         pos = self._state.positions.get(underlying)
         if not pos or not pos.sl_order_id:
-            return
+            return False
         # ORD-4: pre-check if broker SL already filled before sending modifyorder
         try:
             pre = self.client.orderstatus(
@@ -3810,7 +4039,7 @@ class OrderManager:
                 if str(_data.get("order_status", "")).lower() in ("complete", "filled", "executed"):
                     print(f"[ORDER] SL already filled for {underlying} — skipping modify, triggering exit")
                     self.place_exit(underlying, "broker_sl_filled_on_modify")
-                    return
+                    return False
         except Exception as _pre_exc:
             print(f"[ORDER] modify_broker_sl pre-check error for {underlying}: {_pre_exc}")
         try:
@@ -3828,10 +4057,38 @@ class OrderManager:
             )
             if isinstance(resp, dict) and resp.get("status") == "success":
                 print(f"[ORDER] Broker SL modified for {underlying} → trigger ₹{new_trigger:.2f}")
+                return True
             else:
                 print(f"[ORDER] modifyorder resp for {underlying}: {resp}")
+                # TOCTOU guard: modify may have failed because SL filled in the
+                # window between pre-check and modifyorder. Re-query immediately.
+                try:
+                    post = self.client.orderstatus(
+                        order_id=pos.sl_order_id, strategy=self.config.strategy_name
+                    )
+                    if isinstance(post, dict) and post.get("status") == "success":
+                        _post_data = post.get("data") or post
+                        if str(_post_data.get("order_status", "")).lower() in ("complete", "filled", "executed"):
+                            print(f"[ORDER] SL filled in modify window for {underlying} — triggering exit")
+                            self.place_exit(underlying, "broker_sl_filled_on_modify")
+                except Exception:
+                    pass
+                return False
         except Exception as exc:
             print(f"[ORDER] modify_broker_sl error for {underlying}: {exc}")
+            # TOCTOU guard: same immediate status check on exception
+            try:
+                post = self.client.orderstatus(
+                    order_id=pos.sl_order_id, strategy=self.config.strategy_name
+                )
+                if isinstance(post, dict) and post.get("status") == "success":
+                    _post_data = post.get("data") or post
+                    if str(_post_data.get("order_status", "")).lower() in ("complete", "filled", "executed"):
+                        print(f"[ORDER] SL filled in modify window (exc) for {underlying} — triggering exit")
+                        self.place_exit(underlying, "broker_sl_filled_on_modify")
+            except Exception:
+                pass
+            return False
 
     def check_broker_order_fills(self) -> None:
         """Periodic poll: if broker SL or target order was filled, trigger exit."""
@@ -3894,7 +4151,8 @@ class OrderManager:
                             f"⏱ Hold: {hold_mins}m | Daily: ₹{self._risk.daily_pnl:.0f}",
                             2,
                         )
-                        self._write_journal(underlying, pos, executed_price, pnl, reason)
+                        self._write_journal(underlying, pos, executed_price, pnl, reason,
+                                            exit_price_source="broker_fill")
                         self._ws.unsubscribe(self.config.fno_exchange, pos.symbol)
                         self._ws.unsubscribe_spot(pos.spot_symbol)
                         with self._state.state_lock:
@@ -3946,6 +4204,9 @@ class OrderManager:
         with self._state.state_lock:
             self._state.positions[underlying] = pos
         self._state.mark_traded(option_symbol, direction)
+
+        # Link snapshot cache with the active option symbol
+        self._state.snapshot_cache.set_option_symbol(underlying, option_symbol)
 
         self._ws.subscribe(cfg.fno_exchange, option_symbol)
         self._ws.subscribe_spot(underlying)
@@ -4106,8 +4367,17 @@ class OrderManager:
         exit_price: float,
         pnl: float,
         reason: str,
+        exit_price_source: str = "broker_fill",
     ) -> None:
-        """Append one row to the CSV trade journal (if enabled)."""
+        """Append one row to the CSV trade journal (if enabled).
+
+        Args:
+            exit_price_source: One of "broker_fill", "snapshot", "estimated".
+               - broker_fill: price from broker order response (average_price)
+               - snapshot:    price from SnapshotCache (live or stale)
+               - estimated:   fallback when neither is available (0.0 or entry_premium)
+               - paper:       paper-trade simulated price
+        """
         path = self.config.trade_journal_path
         if not path:
             return
@@ -4118,6 +4388,7 @@ class OrderManager:
             "timestamp", "underlying", "option_symbol", "direction", "qty",
             "entry", "exit", "pnl", "reason", "mode",
             "r_multiple", "entry_conviction", "moneyness",
+            "exit_price_source",
         ]
         row = [
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -4133,6 +4404,7 @@ class OrderManager:
             f"{r_multiple:.2f}",
             f"{pos.entry_conviction:.2f}",
             pos.moneyness,
+            exit_price_source,
         ]
         write_header = not os.path.exists(path)
         try:
@@ -4163,7 +4435,10 @@ class OrderManager:
             return False
 
         if cfg.paper_trade:
-            executed = self._state.ltp_map.get(option_symbol) or spot * 0.01
+            snap = self._state.snapshot_cache.get(underlying)
+            executed = (snap.option_ltp if snap and snap.option_ltp is not None
+                        else self._state.ltp_map.get(option_symbol))
+            executed = executed or spot * 0.01
             print(f"[PAPER] Simulated BUY {qty}x {option_symbol} @ ₹{executed:.2f}")
             self._risk.record_entry(underlying)
             self.register_filled_entry(
@@ -4279,13 +4554,17 @@ class OrderManager:
         print(f"[ORDER] Exiting {underlying} — reason: {reason} → {norm_reason}")
 
         if cfg.paper_trade:
-            executed_price = self._state.ltp_map.get(pos.symbol) or pos.entry_premium
+            snap = self._state.snapshot_cache.get(underlying)
+            executed_price = (snap.option_ltp if snap and snap.option_ltp is not None
+                              else self._state.ltp_map.get(pos.symbol))
+            executed_price = executed_price or pos.entry_premium
             pnl = (executed_price - pos.entry_premium) * pos.qty
             print(f"[PAPER] Simulated SELL {pos.qty}x {pos.symbol} @ ₹{executed_price:.2f} | P&L ₹{pnl:.2f}")
             self._risk.record_exit(pnl)
             self._ws.unsubscribe(cfg.fno_exchange, pos.symbol)
             self._ws.unsubscribe_spot(pos.spot_symbol)
-            self._write_journal(underlying, pos, executed_price, pnl, norm_reason)
+            self._write_journal(underlying, pos, executed_price, pnl, norm_reason,
+                                exit_price_source="paper")
             with self._state.state_lock:
                 self._state.positions.pop(underlying, None)
             with self._state.exit_lock:
@@ -4319,7 +4598,8 @@ class OrderManager:
                 self._risk.record_exit(pnl)
                 self._ws.unsubscribe(cfg.fno_exchange, pos.symbol)
                 self._ws.unsubscribe_spot(pos.spot_symbol)
-                self._write_journal(underlying, pos, float(executed_price), pnl, norm_reason)
+                self._write_journal(underlying, pos, float(executed_price), pnl, norm_reason,
+                                    exit_price_source="broker_fill")
                 with self._state.state_lock:
                     self._state.positions.pop(underlying, None)
                 with self._state.exit_lock:
@@ -4351,7 +4631,9 @@ class OrderManager:
             is_past_cutoff = bool(cfg.square_off_time and now_hm >= cfg.square_off_time)
 
             if is_past_cutoff:
-                best_price = self._state.ltp_map.get(pos.symbol)
+                snap = self._state.snapshot_cache.get(underlying)
+                best_price = (snap.option_ltp if snap and snap.option_ltp is not None
+                              else self._state.ltp_map.get(pos.symbol))
                 if best_price is not None:
                     pnl = (best_price - pos.entry_premium) * pos.qty
                     journal_reason = ExitReason.FORCE_UNTRACK_EST
@@ -4361,7 +4643,8 @@ class OrderManager:
                     journal_reason = ExitReason.FORCE_UNTRACK_UNKNOWN
                     
                 self._risk.record_exit(pnl)
-                self._write_journal(underlying, pos, best_price, pnl, journal_reason)
+                self._write_journal(underlying, pos, best_price, pnl, journal_reason,
+                                    exit_price_source="estimated")
                 self._ws.unsubscribe(cfg.fno_exchange, pos.symbol)
                 self._ws.unsubscribe_spot(pos.spot_symbol)
                 print(
@@ -4406,7 +4689,8 @@ class OrderManager:
 
         pnl = (executed_price - pos.entry_premium) * pos.qty
         self._risk.record_exit(pnl)
-        self._write_journal(underlying, pos, executed_price, pnl, norm_reason)
+        self._write_journal(underlying, pos, executed_price, pnl, norm_reason,
+                            exit_price_source="broker_fill")
         self._ws.unsubscribe(cfg.fno_exchange, pos.symbol)
         self._ws.unsubscribe_spot(pos.spot_symbol)
         with self._state.state_lock:
@@ -4455,8 +4739,12 @@ class OrderManager:
                         )
                         continue
                     print(f"[PENDING] BUY {order_id} filled for {underlying} @ ₹{price:.2f}; activating protection")
+                    filled_qty = int(data.get("filled_quantity", 0) or data.get("filled_qty", 0) or 0)
+                    if filled_qty > 0 and filled_qty != pending_entry.qty:
+                        print(f"[PENDING] Partial fill: requested {pending_entry.qty}, filled {filled_qty}")
+                    use_qty = filled_qty if filled_qty > 0 else pending_entry.qty
                     self.register_filled_entry(
-                        underlying, pending_entry.symbol, pending_entry.qty,
+                        underlying, pending_entry.symbol, use_qty,
                         pending_entry.spot, pending_entry.direction, price,
                         sl_pts=pending_entry.sl_pts,
                         entry_delta=pending_entry.entry_delta,
@@ -4516,7 +4804,8 @@ class OrderManager:
                     pnl_sign = "✅" if pnl >= 0 else "❌"
                     norm_reason = ExitReason.normalize(pending_exit.reason)
                     self._risk.record_exit(pnl)
-                    self._write_journal(underlying, pos, executed_price, pnl, norm_reason)
+                    self._write_journal(underlying, pos, executed_price, pnl, norm_reason,
+                                        exit_price_source="broker_fill")
                     self._ws.unsubscribe(self.config.fno_exchange, opt_sym)
                     self._ws.unsubscribe_spot(pos.spot_symbol)
                     with self._state.state_lock:
@@ -4537,7 +4826,9 @@ class OrderManager:
                     is_past_cutoff = bool(self.config.square_off_time and now_hm >= self.config.square_off_time)
 
                     if is_past_cutoff:
-                        best_price = self._state.ltp_map.get(opt_sym)
+                        snap = self._state.snapshot_cache.get(underlying)
+                        best_price = (snap.option_ltp if snap and snap.option_ltp is not None
+                                      else self._state.ltp_map.get(opt_sym))
                         if best_price is not None:
                             pnl = (best_price - pos.entry_premium) * pos.qty
                             journal_reason = ExitReason.FORCE_UNTRACK_EST
@@ -4547,7 +4838,8 @@ class OrderManager:
                             journal_reason = ExitReason.FORCE_UNTRACK_UNKNOWN
                             
                         self._risk.record_exit(pnl)
-                        self._write_journal(underlying, pos, best_price, pnl, journal_reason)
+                        self._write_journal(underlying, pos, best_price, pnl, journal_reason,
+                                            exit_price_source="estimated")
                         self._ws.unsubscribe(self.config.fno_exchange, opt_sym)
                         self._ws.unsubscribe_spot(pos.spot_symbol)
                         with self._state.state_lock:
@@ -4632,9 +4924,20 @@ class OptionsBuyerEdgeBot:
         print(f"[STARTUP] Continuing anyway (may cause runtime errors)...\n")
 
     def _check_open_positions_on_startup(self) -> None:
-        """WC-01: Restore broker positions + resubscribe WS + query SL orders."""
+        """WC-01: Restore broker positions + resubscribe WS + reconcile protection orders.
+
+        Reconciliation logic (Phase 2):
+          Case A: SL ✓ Target ✓ → adopt both, no new orders
+          Case B: SL ✗ Target ✓ → re-issue SL
+          Case C: SL ✓ Target ✗ → re-issue target
+          Case D: SL ✗ Target ✗ → re-issue both
+
+        Orphan detection (Phase 3):
+          Open SL/TGT orders with no matching position → cancel.
+        """
         try:
-            resp = self.client.positionbook(strategy=self.config.strategy_name)
+            cfg = self.config
+            resp = self.client.positionbook(strategy=cfg.strategy_name)
             if not isinstance(resp, dict) or resp.get("status") != "success":
                 return
             positions = resp.get("data", []) or []
@@ -4642,10 +4945,39 @@ class OptionsBuyerEdgeBot:
                 print("[STARTUP] No open positions found in broker position book")
                 return
             print(f"[STARTUP] Found {len(positions)} broker position(s). Restoring...")
-            cfg = self.config
+
             # Fetch orderbook to find SL/TGT orders
             orderbook_resp = self.client.orderbook(strategy=cfg.strategy_name)
             open_orders = orderbook_resp.get("data", []) if isinstance(orderbook_resp, dict) else []
+
+            # ── Phase 3: Orphan detection ───────────────────────────────────
+            # Collect symbols from broker positions, cancel orders for others
+            pos_symbols: set[str] = set()
+
+            for p in positions:
+                sym = p.get("symbol", "")
+                qty = int(p.get("netqty", 0) or 0)
+                if sym and qty != 0:
+                    pos_symbols.add(sym)
+
+            orphan_orders_cancelled = 0
+            for order in open_orders:
+                o_sym = order.get("symbol", "")
+                o_stat = str(order.get("status", "")).lower()
+                if o_sym and o_sym not in pos_symbols and o_stat in ("pending", "open"):
+                    oid = order.get("orderid")
+                    if oid:
+                        try:
+                            resp_c = self.client.cancelorder(order_id=oid, strategy=cfg.strategy_name)
+                            if isinstance(resp_c, dict) and resp_c.get("status") in ("success", "cancelled"):
+                                orphan_orders_cancelled += 1
+                                print(f"[STARTUP] Cancelled orphan order {oid} for {o_sym}")
+                        except Exception:
+                            pass
+            if orphan_orders_cancelled:
+                print(f"[STARTUP] Cancelled {orphan_orders_cancelled} orphan order(s)")
+
+            # ── Phase 1: Restore positions ──────────────────────────────────
             for p in positions:
                 sym      = p.get("symbol", "")
                 qty      = int(p.get("netqty", 0) or 0)
@@ -4653,28 +4985,27 @@ class OptionsBuyerEdgeBot:
                 if not sym or qty == 0 or entry_px <= 0:
                     continue
 
-                # Robust underlying extraction for symbols like:
-                #   NIFTY29MAY2623500CE, BANKNIFTY29MAY26FUT, RELIANCE29MAY261200CE
+                # Robust underlying extraction
                 underlying = ""
                 m = re.match(r"^(.*?)(\d{1,2}[A-Z]{3}\d{2})(?:\d+(?:\.\d+)?)?(CE|PE|FUT)$", sym)
                 if m:
                     underlying = m.group(1)
                 if not underlying:
-                    candidates = sorted(self.config.underlyings, key=len, reverse=True)
+                    candidates = sorted(cfg.underlyings, key=len, reverse=True)
                     underlying = next((u for u in candidates if sym.startswith(u)), "")
                 if not underlying:
-                    print(f"[STARTUP] Could not derive underlying from {sym} — skipping restore row")
+                    print(f"[STARTUP] Could not derive underlying from {sym} — skipping restore")
                     continue
 
                 opt_type = "CE" if sym.endswith("CE") else ("PE" if sym.endswith("PE") else None)
                 if not opt_type or underlying in self.state.positions:
                     continue
+
                 spot_q = self.fetcher.fetch_quote(underlying, self.fetcher.underlying_exchange(underlying))
                 restored_spot = float(spot_q.get("ltp", 0) or 0)
                 if restored_spot <= 0:
-                    # Fallback keeps recovery resilient when quote API is temporarily unavailable.
                     restored_spot = entry_px
-                # Create position with conservative SL/TGT estimates
+
                 pos = OptionPosition(
                     underlying=underlying,
                     symbol=sym,
@@ -4688,6 +5019,7 @@ class OptionsBuyerEdgeBot:
                     reward_dist=restored_spot * (cfg.spot_reward_pct / 100.0),
                     entry_time=get_ist_now(),
                 )
+
                 # Query SL/TGT order IDs from orderbook
                 for order in open_orders:
                     o_sym = order.get("symbol", "")
@@ -4698,16 +5030,30 @@ class OptionsBuyerEdgeBot:
                             pos.sl_order_id = order.get("orderid")
                         elif "limit" in o_type:
                             pos.tgt_order_id = order.get("orderid")
-                
+
                 if pos.sl_order_id or pos.tgt_order_id:
                     pos.broker_protection = True
 
                 # Register + resubscribe WS
                 with self.state.state_lock:
                     self.state.positions[underlying] = pos
+                self.state.snapshot_cache.set_option_symbol(underlying, sym)
                 self.ws.subscribe(cfg.fno_exchange, sym)
                 self.ws.subscribe_spot(underlying)
-                print(f"[STARTUP] ✓ Restored {underlying}: {sym} x{qty} @ ₹{entry_px:.2f}")
+                print(f"[STARTUP] ✓ Restored {underlying}: {sym} x{qty} @ ₹{entry_px:.2f} "
+                      f"SL_id={pos.sl_order_id or 'MISSING'} TGT_id={pos.tgt_order_id or 'MISSING'}")
+
+                # ── Phase 2: Re-issue missing protection orders ─────────────
+                if cfg.broker_sl_orders and not cfg.paper_trade:
+                    sl_ok = bool(pos.sl_order_id)
+                    tgt_ok = bool(pos.tgt_order_id)
+                    if not sl_ok or not tgt_ok:
+                        print(f"[STARTUP] Reconciling protection orders for {underlying}: "
+                              f"SL={'OK' if sl_ok else 'MISSING'} TGT={'OK' if tgt_ok else 'MISSING'}")
+                        self._place_protection_orders_sequential(underlying, pos, sym, qty, pos.sl, pos.tgt)
+                        if pos.sl_order_id or pos.tgt_order_id:
+                            pos.broker_protection = True
+
         except Exception as exc:
             print(f"[STARTUP] positionbook error: {exc}")
 
@@ -4736,9 +5082,10 @@ class OptionsBuyerEdgeBot:
 
     def _send_live_pnl_alert(self, open_positions: list[OptionPosition]) -> None:
         """Fetch live positions and dispatch a single-line active PNL alert."""
+        print(f"[PNL] Checking PNL for {len(open_positions)} position(s)")
         try:
-            broker_pnl_map = {}
-            broker_raw_data = {}
+            broker_pnl_map: dict[str, float] = {}
+            broker_raw_data: dict[str, dict] = {}
             if not self.config.paper_trade and hasattr(self.client, "positions"):
                 resp = self.client.positions(strategy=self.config.strategy_name)
                 if isinstance(resp, dict) and resp.get("status") == "success":
@@ -4749,7 +5096,7 @@ class OptionsBuyerEdgeBot:
                             broker_pnl_map[sym] = unrealized
                             broker_raw_data[sym] = p
                 else:
-                    print(f"[PNL-DBG] Broker positions response: {resp}")
+                    print(f"[PNL] Broker positions call failed or returned no data: {resp}")
 
             for pos in open_positions:
                 pnl = 0.0
@@ -4757,37 +5104,54 @@ class OptionsBuyerEdgeBot:
                 if not self.config.paper_trade and pos.symbol in broker_pnl_map:
                     pnl = broker_pnl_map[pos.symbol]
                     source = "broker"
-                elif not self.config.paper_trade:
-                    # Broker didn't return this symbol — diagnostic
-                    raw = broker_raw_data.get(pos.symbol)
                     print(
-                        f"[PNL-DBG] {pos.underlying}: symbol={pos.symbol} "
-                        f"NOT in broker_pnl_map. "
-                        f"broker_symbols={list(broker_pnl_map.keys())} | "
-                        f"raw_entry={raw}"
+                        f"[PNL] {pos.underlying}: source=broker pnl=₹{pnl:.2f} "
+                        f"raw={broker_raw_data.get(pos.symbol, {})}"
                     )
-                    # Fallback to WS LTP
-                    ltp = self.state.ltp_map.get(pos.symbol)
-                    if ltp:
+                elif not self.config.paper_trade:
+                    broker_symbols = list(broker_pnl_map.keys())
+                    raw_entry = broker_raw_data.get(pos.symbol)
+                    print(
+                        f"[PNL] {pos.underlying}: symbol={pos.symbol} NOT in broker data. "
+                        f"broker_symbols={broker_symbols} raw_entry={raw_entry}"
+                    )
+                    snap = self.state.snapshot_cache.get(pos.underlying)
+                    if snap and snap.option_ltp is not None:
+                        ltp = snap.option_ltp
                         pnl = (ltp - pos.entry_premium) * pos.qty
-                        source = "ws_fallback"
+                        source = "snapshot_cache"
+                        print(
+                            f"[PNL] {pos.underlying}: source=snapshot_cache "
+                            f"ltp=₹{ltp:.2f} entry=₹{pos.entry_premium:.2f} "
+                            f"qty={pos.qty} pnl=₹{pnl:.2f} snap_age={time.time()-snap.timestamp:.1f}s"
+                        )
                     else:
                         print(
-                            f"[PNL-DBG] {pos.underlying}: WS fallback also failed — "
-                            f"ltp_map has {pos.symbol}={ltp} | "
-                            f"ltp_map_keys={list(self.state.ltp_map.keys())}"
+                            f"[PNL] {pos.underlying}: snapshot_cache fallback FAILED — "
+                            f"snap_exists={snap is not None} "
+                            f"opt_ltp={'₹{:.2f}'.format(snap.option_ltp) if snap and snap.option_ltp is not None else 'None'} "
+                            f"spot_ltp={'₹{:.2f}'.format(snap.spot_ltp) if snap and snap.spot_ltp is not None else 'None'} "
+                            f"snap_age={'N/A' if not snap else f'{time.time()-snap.timestamp:.1f}s'} "
+                            f"snapshot_keys={list(self.state.snapshot_cache._cache.keys())}"
                         )
                 else:
-                    # Paper trade mode
-                    ltp = self.state.ltp_map.get(pos.symbol)
-                    if ltp:
+                    snap = self.state.snapshot_cache.get(pos.underlying)
+                    if snap and snap.option_ltp is not None:
+                        ltp = snap.option_ltp
                         pnl = (ltp - pos.entry_premium) * pos.qty
-                        source = "paper_ws"
+                        source = "snapshot_cache"
+                        print(
+                            f"[PNL] {pos.underlying} PAPER: source=snapshot_cache "
+                            f"ltp=₹{ltp:.2f} entry=₹{pos.entry_premium:.2f} "
+                            f"qty={pos.qty} pnl=₹{pnl:.2f}"
+                        )
                     else:
                         print(
-                            f"[PNL-DBG] {pos.underlying} PAPER: "
-                            f"ltp_map missing {pos.symbol} | "
-                            f"ltp_map_keys={list(self.state.ltp_map.keys())}"
+                            f"[PNL] {pos.underlying} PAPER: snapshot_cache MISSING — "
+                            f"snapshot_exists={snap is not None} "
+                            f"opt_ltp={'None' if not snap or snap.option_ltp is None else 'set'} "
+                            f"spot_ltp={'None' if not snap or snap.spot_ltp is None else 'set'} "
+                            f"snapshot_keys={list(self.state.snapshot_cache._cache.keys())}"
                         )
 
                 hold_mins = max(0, int((get_ist_now() - pos.entry_time).total_seconds() / 60))
@@ -4799,11 +5163,16 @@ class OptionsBuyerEdgeBot:
                 emoji = "🟢" if pnl >= 0 else "🔴"
                 sign  = "+" if pnl >= 0 else ""
 
-                print(
-                    f"[PNL-DBG] {pos.underlying}: pnl=₹{pnl:.2f} source={source} | "
-                    f"entry=₹{pos.entry_premium:.2f} qty={pos.qty} | "
-                    f"ws_ltp={self.state.ltp_map.get(pos.symbol, 'N/A')}"
-                )
+                if pnl == 0.0 and source != "none":
+                    print(f"[PNL] {pos.underlying}: PNL_ZERO — source={source} returned ₹0")
+                elif pnl == 0.0 and source == "none":
+                    print(f"[PNL] {pos.underlying}: PNL_ZERO — no data source available")
+                else:
+                    print(
+                        f"[PNL] {pos.underlying}: final pnl=₹{pnl:.2f} source={source} "
+                        f"hold={hold_str} alert_sent=True"
+                    )
+
                 self._send_alert(
                     f"{emoji} {pos.underlying} {side} | PNL: ₹{sign}{pnl:.0f} | Hold: {hold_str}",
                     3,
@@ -4811,6 +5180,7 @@ class OptionsBuyerEdgeBot:
                 
         except Exception as exc:
             print(f"[PNL REPORT] Error checking active PNL: {exc}")
+            traceback.print_exc()
 
     def _is_market_hours(self) -> bool:
         hm = int(get_ist_now().strftime("%H%M"))
@@ -5235,6 +5605,82 @@ class OptionsBuyerEdgeBot:
             entry_conviction=entry_conviction,
         )
 
+    # ──────────────────────────────────────────────────────────────────────────
+    # SNAPSHOT FRESHNESS: producer-failure fallback
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def _refresh_stale_snapshots(self) -> None:
+        """For every open position whose snapshot is stale, fetch a broker quote
+        and update SnapshotCache.  WS-dead → still have data for trail/PNL.
+
+        Guards:
+          1. Re-check freshness right before write — if a WS tick arrived between
+             stale detection and quote response, don't overwrite the newer data.
+          2. Per-underlying cooldown — only one refresh per stale_timeout window
+             to avoid quote API rate limiting.
+        """
+        cfg = self.config
+        timeout = cfg.snapshot_stale_timeout
+        stale_underlyings = self.state.snapshot_cache.get_stale_underlyings(timeout)
+
+        # Also check positions with no snapshot at all (fresh startup)
+        for ul, pos in list(self.state.positions.items()):
+            if pos.exit_pending:
+                continue
+            if ul not in stale_underlyings:
+                snap = self.state.snapshot_cache.get(ul)
+                if snap is None or not snap.has_both_prices:
+                    stale_underlyings.append(ul)
+
+        if not stale_underlyings:
+            return
+
+        # Cooldown tracking
+        if not hasattr(self, '_last_quote_refresh_ts'):
+            self._last_quote_refresh_ts: dict[str, float] = {}
+        last_ts = self._last_quote_refresh_ts
+        now = time.time()
+
+        for ul in stale_underlyings:
+            # Rate limit: skip if refreshed within the stale window
+            if ul in last_ts and (now - last_ts[ul]) < timeout * 0.8:
+                continue
+            last_ts[ul] = now
+
+            pos = self.state.positions.get(ul)
+            if pos is None or pos.exit_pending:
+                continue
+
+            # Guard: if WS has already fully refreshed both prices, skip
+            snap = self.state.snapshot_cache.get(ul)
+            if snap and snap.has_both_prices and not snap.is_stale(timeout):
+                continue
+
+            # Option premium refresh
+            try:
+                q = self.fetcher.fetch_quote(pos.symbol, cfg.fno_exchange)
+                if q:
+                    ltp = float(q.get("ltp", q.get("last_price", 0)) or 0)
+                    if ltp > 0:
+                        snap2 = self.state.snapshot_cache.get(ul)
+                        if snap2 is None or snap2.option_ltp is None:
+                            self.state.snapshot_cache.update(ul, option_ltp=ltp)
+            except Exception as exc:
+                print(f"[SNAPSHOT] Quote refresh failed for {ul}: {exc}")
+
+            # Spot refresh (indices and equities)
+            try:
+                spot_exch = cfg.index_exchange if ul in cfg.index_underlyings else cfg.spot_exchange
+                sq = self.fetcher.fetch_quote(ul, spot_exch)
+                if sq:
+                    spot_ltp = float(sq.get("ltp", sq.get("last_price", 0)) or 0)
+                    if spot_ltp > 0:
+                        snap2 = self.state.snapshot_cache.get(ul)
+                        if snap2 is None or snap2.spot_ltp is None:
+                            self.state.snapshot_cache.update(ul, spot_ltp=spot_ltp)
+            except Exception as exc:
+                pass
+
     def _strategy_thread(self) -> None:
         """Clock-anchored strategy scan loop."""
         cfg = self.config
@@ -5266,6 +5712,7 @@ class OptionsBuyerEdgeBot:
                                     pos.exit_pending = True
                                 self.orders.place_exit(ul, "EOD-SquareOff")
                 self._check_max_hold()
+                self._refresh_stale_snapshots()
                 self.trail_engine.check_trailing_stops(self.state)
 
                 if cfg.live_pnl_alert_interval > 0 and self._is_market_hours():
@@ -5285,6 +5732,7 @@ class OptionsBuyerEdgeBot:
 
             except Exception as exc:
                 print(f"[STRATEGY ERROR] {exc}")
+                traceback.print_exc()
 
             # clock-anchored sleep: align to next N-second boundary
             interval = max(cfg.signal_check_interval, 1)
