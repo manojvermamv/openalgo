@@ -727,6 +727,10 @@ class BotConfig:
     order_status_max_retries:   int   = 15
     order_status_poll_interval: float = 2.0
 
+    # ── Quote API Rate Limiting ────────────────────────────────────────────────
+    quote_api_rps:   float = 30.0   # max requests per second (env: QUOTE_API_RPS)
+    quote_api_burst: int   = 10     # burst allowance (env: QUOTE_API_BURST)
+
     # ── U2 Greeks-Aware Deep OTM Exit ─────────────────────────────────────────
     delta_exit_threshold: float = 0.10
 
@@ -915,6 +919,8 @@ class BotConfig:
             max_hold_minutes=int(os.getenv("MAX_HOLD_MINUTES", str(defaults.max_hold_minutes))),
             breakeven_at_gain_pct=float(os.getenv("BREAKEVEN_AT_GAIN_PCT", str(defaults.breakeven_at_gain_pct))),
             trade_journal_path=os.getenv("TRADE_JOURNAL_PATH", defaults.trade_journal_path),
+            quote_api_rps=float(os.getenv("QUOTE_API_RPS", str(defaults.quote_api_rps))),
+            quote_api_burst=int(os.getenv("QUOTE_API_BURST", str(defaults.quote_api_burst))),
         )
         _known_equity = {"RELIANCE", "HDFCBANK", "ICICIBANK", "SBIN", "INFY", "TCS"}
         _unclassified = [
@@ -1980,6 +1986,12 @@ class DataFetcher:
         self._greeks_api_calls: int = 0
         self._greeks_cache_max_size: int = 500  # LRU: prevent unbounded growth
         self._auth_error_notified: bool = False  # One-time alert per session for UDAPI100050
+        # Token bucket rate limiter for fetch_quote (global across all callers)
+        self._quote_rate_limit_rps: float = config.quote_api_rps
+        self._quote_burst: int = config.quote_api_burst
+        self._quote_tokens: float = float(self._quote_burst)
+        self._quote_last_refill: float = time.time()
+        self._quote_lock = threading.Lock()
 
     def clear_greeks_cache(self, symbol: str | None = None) -> None:
         """Clear cached option greeks. Called once per scan to avoid stale reads."""
@@ -2137,7 +2149,29 @@ class DataFetcher:
             err(f"[DATA] Option chain error for {symbol}", exc)
             return [], None
 
+    def _acquire_quote_token(self) -> bool:
+        """Acquire a token from the quote API rate limiter.
+        Returns True if token acquired, False if rate limited.
+        """
+        with self._quote_lock:
+            now = time.time()
+            # Refill tokens based on elapsed time
+            elapsed = now - self._quote_last_refill
+            self._quote_tokens = min(
+                self._quote_burst,
+                self._quote_tokens + elapsed * self._quote_rate_limit_rps
+            )
+            self._quote_last_refill = now
+            if self._quote_tokens >= 1.0:
+                self._quote_tokens -= 1.0
+                return True
+            return False
+
     def fetch_quote(self, symbol: str, exchange: str) -> dict:
+        # Rate limit: return empty if rate limited
+        if not self._acquire_quote_token():
+            dbg(f"[RATE] fetch_quote rate limited for {symbol}@{exchange}")
+            return {}
         try:
             response = self.client.quotes(symbol=symbol, exchange=exchange) or {}
             if response.get("status") == "success":
@@ -4173,6 +4207,38 @@ class OrderManager:
                             self._state.exit_queue.discard(underlying)
                 except Exception as exc: err(f"[ORDER] check_broker_order_fills error ({underlying}, {oid}): ", exc)
 
+    def verify_sl_orders_active(self) -> None:
+        """Periodic verification that broker SL orders are still open.
+        Detects externally cancelled SL orders and re-issues them.
+        """
+        if self.config.paper_trade:
+            return
+        for underlying, pos in list(self._state.positions.items()):
+            if pos.exit_pending or not pos.sl_order_id:
+                continue
+            try:
+                resp = self.client.orderstatus(
+                    order_id=pos.sl_order_id, strategy=self.config.strategy_name
+                )
+                if not isinstance(resp, dict) or resp.get("status") != "success":
+                    continue
+                data = resp.get("data") or resp
+                broker_stat = str(data.get("order_status", "")).lower()
+                # SL was cancelled/rejected externally - re-issue it
+                if broker_stat in ("cancelled", "rejected", "canceled", "expired"):
+                    inf(f"[ORDER] SL ORDER MISSING for {underlying} (status={broker_stat}) — re-issuing SL")
+                    # Clear stale order ID so _place_protection_orders_sequential re-issues it
+                    pos.sl_order_id = None
+                    self._place_protection_orders_sequential(
+                        underlying, pos, pos.symbol, pos.qty, pos.sl, pos.tgt
+                    )
+                    if pos.sl_order_id:
+                        inf(f"[ORDER] SL re-issued for {underlying}: new_id={pos.sl_order_id}")
+                    else:
+                        err(f"[ORDER] SL re-issue FAILED for {underlying}")
+            except Exception as exc:
+                err(f"[ORDER] verify_sl_orders_active error for {underlying}: ", exc)
+
     def register_filled_entry(
         self,
         underlying: str,
@@ -5666,6 +5732,7 @@ class OptionsBuyerEdgeBot:
                 self.orders.check_pending_exits()
                 if cfg.broker_sl_orders and not cfg.paper_trade:
                     self.orders.check_broker_order_fills()
+                    self.orders.verify_sl_orders_active()
 
                 if cfg.square_off_time:
                     now_hm = get_ist_now().strftime("%H:%M")
