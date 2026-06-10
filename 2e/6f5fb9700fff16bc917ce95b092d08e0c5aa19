@@ -1,0 +1,12 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "2e6f5fb9700fff16bc917ce95b092d08e0c5aa19",
+  "prompts": {},
+  "humans": {
+    "h_90988d5629fc41": {
+      "author": "Manoj Verma <71809372+manojvermamv@users.noreply.github.com>"
+    }
+  }
+}
