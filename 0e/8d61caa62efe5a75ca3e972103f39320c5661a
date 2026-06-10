@@ -1,0 +1,31 @@
+strategies/examples/BuyerEdgeStrategy.py
+  s_2ee7fc38f521b7::t_b454ed57c99214 730-733
+  s_2ee7fc38f521b7::t_4c76a9bf6a963b 1990-1991
+  s_2ee7fc38f521b7::t_a8961139004d7b 1989,1992-1994
+  s_2ee7fc38f521b7::t_f2e70b0e856650 5735
+  s_2ee7fc38f521b7::t_9278896444bd44 2152-2169,2171-2174
+  s_2ee7fc38f521b7::t_208e4508a816c1 922-923
+  s_2ee7fc38f521b7::t_a3aa59a2223cd6 4210-4229,4232-4236,4239-4241
+  s_2ee7fc38f521b7::t_022722f3fbfe8d 4230-4231,4237-4238
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "0e8d61caa62efe5a75ca3e972103f39320c5661a",
+  "prompts": {},
+  "humans": {
+    "h_90988d5629fc41": {
+      "author": "Manoj Verma <71809372+manojvermamv@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_2ee7fc38f521b7": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_1648e33cdffeRiYPYXNn1oOpBt",
+        "model": "unknown"
+      },
+      "human_author": "Manoj Verma <71809372+manojvermamv@users.noreply.github.com>"
+    }
+  }
+}
