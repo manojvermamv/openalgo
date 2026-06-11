@@ -1,0 +1,54 @@
+strategies/examples/BuyerEdgeStrategy.py
+  s_2ee7fc38f521b7::t_7f809363b2c5f4 1421-1448
+  s_2ee7fc38f521b7::t_1707900361d4df 1459,1496,1498,1506,1513-1514,1517-1541
+  s_2ee7fc38f521b7::t_e563cc0d48383f 1719,1725,1730
+  s_2ee7fc38f521b7::t_bd1fe0bb37af35 5844
+  s_2ee7fc38f521b7::t_e0c451382c4a6c 5546-5548,5550-5555
+  s_2ee7fc38f521b7::t_6ec81721046ee1 1479,1487
+  s_2ee7fc38f521b7::t_d9c79346c5b192 5557-5558
+  s_2ee7fc38f521b7::t_83d9903f2d42ba 5549
+  s_2ee7fc38f521b7::t_757ce273cf31fa 1320
+  s_2ee7fc38f521b7::t_e1e8bef36c140f 4201
+  s_2ee7fc38f521b7::t_89d012399d2ea2 5123-5124
+  s_2ee7fc38f521b7::t_46f9ca3635bed2 1293,1299
+  s_2ee7fc38f521b7::t_3801667f30b66d 1302-1311,1314-1316,1321,1327-1328
+  s_2ee7fc38f521b7::t_25e5933da3f54e 5139
+  s_2ee7fc38f521b7::t_0c566fa0b9958f 1291-1292
+  s_2ee7fc38f521b7::t_8f2bca6fd2458c 880
+  s_2ee7fc38f521b7::t_eb98d02a9a68f9 1348,1351-1353
+  s_2ee7fc38f521b7::t_7a59f75f6d68c1 5941-5942
+  s_2ee7fc38f521b7::t_31e5582f305ebb 3974-3975
+  s_2ee7fc38f521b7::t_b294a06257bd7f 5056
+  s_2ee7fc38f521b7::t_7524bf1e222a62 1278
+  s_2ee7fc38f521b7::t_045f61b94bea97 3786,3793
+  s_2ee7fc38f521b7::t_f82af5067047bb 5199-5201,5204
+  s_2ee7fc38f521b7::t_cbe9a14f2ef3f8 1345-1347,1354-1357,1359
+  s_2ee7fc38f521b7::t_cb427b73de3c01 2798-2804
+  s_2ee7fc38f521b7::t_f73b686bf4c482 5556,5559-5565
+  s_2ee7fc38f521b7::t_b9ff766c85df0f 158-160
+  s_2ee7fc38f521b7::t_e5917b70a00be8 1349-1350,1358,1360-1368
+  s_2ee7fc38f521b7::t_cbd84197dc6665 1312-1313,1317-1319
+  s_2ee7fc38f521b7::t_6e3655e7d1d169 3958-3961,3963
+  s_2ee7fc38f521b7::t_e639e43764234a 1457,1460,1466-1467,1469-1477
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "7d121c695592daa7d7eee25c6e49063ebf416357",
+  "prompts": {},
+  "humans": {
+    "h_90988d5629fc41": {
+      "author": "Manoj Verma <71809372+manojvermamv@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_2ee7fc38f521b7": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_1648e33cdffeRiYPYXNn1oOpBt",
+        "model": "unknown"
+      },
+      "human_author": "Manoj Verma <71809372+manojvermamv@users.noreply.github.com>"
+    }
+  }
+}
