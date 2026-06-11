@@ -64,14 +64,6 @@ def inf(*args, **kwargs):
         print(*args, **kwargs)
 
 def err(msg: str, exc: BaseException | None = None, *, always: bool = True):
-    """Error log — always visible regardless of INFO_ENABLED / DEBUG_ENABLED.
-
-    Args:
-        msg:   Human-readable error description.
-        exc:   Exception object (optional). When provided, traceback is printed.
-        always: If True (default), output is unconditional. Set False to respect
-                a future ERROR_ENABLED toggle.
-    """
     if always:
         if exc is not None:
             print(f"[ERROR] {msg}: {exc}")
@@ -163,8 +155,9 @@ def err(msg: str, exc: BaseException | None = None, *, always: bool = True):
 #     Not a design gap — a data-domain boundary.
 #
 # 4. WebSocket is operationally optional for trail/PNL/alerts since the quote-API
-#     fallback re-populates SnapshotCache when ticks go stale. However WS recovery
-#     (diagnose why _on_ws_data never fires) has not been proven.
+#     fallback re-populates SnapshotCache when ticks go stale. WS callback was
+#     falsely diagnosed as broken — live logs confirm _on_ws_data fires correctly
+#     once subscriptions are registered (ticks arrive for both spot and option).
 #
 # Current live-trading architecture:
 #
@@ -708,7 +701,7 @@ class BotConfig:
 
     # ── Loop Timing ────────────────────────────────────────────────────────────
     signal_check_interval: int = 60
-    lookback_bars:         int = 5
+    chain_smooth_bars:     int = 5   # options chain smoothing window (env: CHAIN_SMOOTH_BARS)
 
     # ── IV Gating ──────────────────────────────────────────────────────────────
     iv_rank_max_entry: float = 40.0
@@ -884,7 +877,7 @@ class BotConfig:
             slow_ema_period=int(os.getenv("SLOW_EMA_PERIOD", str(defaults.slow_ema_period))),
             rsi_period=int(os.getenv("RSI_PERIOD", str(defaults.rsi_period))),
             signal_check_interval=int(os.getenv("SIGNAL_CHECK_INTERVAL", str(defaults.signal_check_interval))),
-            lookback_bars=int(os.getenv("LOOKBACK_BARS", str(defaults.lookback_bars))),
+            chain_smooth_bars=int(os.getenv("CHAIN_SMOOTH_BARS", str(defaults.chain_smooth_bars))),
             iv_rank_max_entry=float(os.getenv("IV_RANK_MAX_ENTRY", str(defaults.iv_rank_max_entry))),
             iv_52w_low=float(os.getenv("IV_52W_LOW", str(defaults.iv_52w_low))),
             iv_52w_high=float(os.getenv("IV_52W_HIGH", str(defaults.iv_52w_high))),
@@ -1282,7 +1275,7 @@ class SnapshotCache:
 class BotState:
     """Thread-safe shared state owned by the orchestrator, passed to all components."""
 
-    def __init__(self, lookback_bars: int = 5):
+    def __init__(self, chain_smooth_bars: int = 5):
         self.positions:       dict[str, OptionPosition] = {}
         self.ltp_map:         dict[str, float] = {}
         self.snapshot_cache:  SnapshotCache = SnapshotCache()
@@ -1295,20 +1288,44 @@ class BotState:
         self.prev_spot:       dict[str, float] = {}
         self.prev_sf:         dict[str, float] = {}
         self.chain_history:   dict[str, deque] = {}
-        self._lookback_bars   = lookback_bars
+        self.greeks_history:  dict[str, deque] = {}   # symbol → deque of greeks snapshots
+        self.spot_price_history: dict[str, deque] = {} # underlying → deque of (timestamp, ltp)
+        self._chain_smooth_bars = chain_smooth_bars
         self.entry_in_flight: int = 0
         self._traded_today:   dict[str, int] = {}
 
     def get_chain_history(self, symbol: str) -> deque:
         if symbol not in self.chain_history:
-            self.chain_history[symbol] = deque(maxlen=max(1, self._lookback_bars))
+            self.chain_history[symbol] = deque(maxlen=max(1, self._chain_smooth_bars))
         return self.chain_history[symbol]
+
+    def get_greeks_history(self, symbol: str, maxlen: int = 5) -> deque:
+        if symbol not in self.greeks_history:
+            self.greeks_history[symbol] = deque(maxlen=maxlen)
+        return self.greeks_history[symbol]
+
+    def record_spot_price(self, underlying: str, ltp: float, maxlen: int = 10) -> None:
+        if underlying not in self.spot_price_history:
+            self.spot_price_history[underlying] = deque(maxlen=maxlen)
+        self.spot_price_history[underlying].append((time.time(), ltp))
+
+    def smoothed_spot(self, underlying: str, lookback: int | None = None) -> float | None:
+        """Average spot LTP across last `lookback` ticks. None = all available."""
+        hist = self.spot_price_history.get(underlying)
+        if not hist:
+            return None
+        if lookback is not None and lookback <= 0:
+            return None
+        vals = [ltp for _, ltp in (list(hist)[-lookback:] if lookback else list(hist))]
+        return sum(vals) / len(vals) if vals else None
 
     def reset_market_caches(self):
         self.prev_straddle.clear()
         self.prev_spot.clear()
         self.prev_sf.clear()
         self.chain_history.clear()
+        self.greeks_history.clear()
+        self.spot_price_history.clear()
 
     def mark_traded(self, option_symbol: str, direction: str) -> None:
         key = f"{option_symbol}|{direction}"
@@ -1323,6 +1340,30 @@ class BotState:
     def reset_traded_today(self) -> None:
         with self.state_lock:
             self._traded_today.clear()
+
+
+def _smooth_greeks(history: deque, current_atm: float, lookback: int | None = None) -> dict:
+    """Average delta and IV across last `lookback` snapshots where ATM strike matches.
+    None = all available. Returns {} when ATM just shifted — no valid same-strike history."""
+    snaps = list(history)
+    if not snaps:
+        return {}
+    if lookback is not None and lookback <= 0:
+        return {}
+    snaps = snaps[-lookback:] if lookback else snaps
+    # Only include snapshots from the same ATM strike — cross-strike averaging contaminates signal
+    same_strike = [s for s in snaps if s.get("atm_strike") == current_atm]
+    if not same_strike:
+        return {}
+    def _avg(key):
+        vals = [s[key] for s in same_strike if s.get(key) is not None]
+        return sum(vals) / len(vals) if vals else None
+    return {
+        "ce_delta": _avg("ce_delta"),
+        "pe_delta": _avg("pe_delta"),
+        "ce_iv_rank": _avg("ce_iv_rank"),
+        "pe_iv_rank": _avg("pe_iv_rank"),
+    }
 
 
 def get_ist_now() -> datetime:
@@ -1377,6 +1418,34 @@ def _field_trend(oldest: dict, newest: dict, fld: str) -> int:
     return 1 if diff > 0 else (-1 if diff < 0 else 0)
 
 
+def _ewa(values: list[float], alpha: float = 0.4) -> float:
+    """Exponentially weighted average. alpha=0.4: most recent→40%, one back→24%, etc."""
+    if not values:
+        return 0.0
+    result = values[0]
+    for v in values[1:]:
+        result = alpha * v + (1 - alpha) * result
+    return result
+
+
+def _series_slope(values: list[float]) -> int:
+    """Linear trend across series. +1 rising, -1 falling, 0 flat. Uses regression slope sign."""
+    n = len(values)
+    if n < 2:
+        return 0
+    if n == 2:
+        diff = values[-1] - values[0]
+        return 1 if diff > 0 else (-1 if diff < 0 else 0)
+    mean_x = (n - 1) / 2.0
+    mean_y = sum(values) / n
+    numerator = sum((i - mean_x) * (values[i] - mean_y) for i in range(n))
+    if numerator > 1e-9:
+        return 1
+    elif numerator < -1e-9:
+        return -1
+    return 0
+
+
 # ===============================================================================
 # OI FLOW ANALYZER — chain smoothing + 3-factor Price×Volume×OI classification
 # ===============================================================================
@@ -1385,17 +1454,29 @@ class OIFlowAnalyzer:
     """Static helpers for OI-flow analysis and chain smoothing."""
 
     @staticmethod
-    def smooth_chain_rows(history: list) -> list[dict]:
+    def smooth_chain_rows(history: list, lookback: int | None = None) -> list[dict]:
         """
-        SMA-smooth per-strike OI/Volume/Premium across N snapshots (oldest-first).
+        EWA-smooth per-strike OI/Volume/Premium across N snapshots (oldest-first).
+        lookback: None = all available, >0 = last N snapshots, ≤0 = return raw chain.
         Appends six direction fields per row for the 3-factor classifier.
         Returns single-bar snapshot unchanged (with zero trend flags).
         """
         if not history:
             return []
-        if len(history) == 1:
+        # Invalid lookback → return raw latest snapshot with zero trend flags
+        if lookback is not None and lookback <= 0:
             result = []
-            for row in history[0]:
+            for row in history[-1]:
+                r = dict(row)
+                r["ce_ltp_dir"] = 0; r["ce_vol_dir"] = 0; r["ce_oi_dir"] = 0
+                r["pe_ltp_dir"] = 0; r["pe_vol_dir"] = 0; r["pe_oi_dir"] = 0
+                result.append(r)
+            return result
+        # Apply lookback window
+        snaps_src = history[-lookback:] if lookback else history
+        if len(snaps_src) == 1:
+            result = []
+            for row in snaps_src[0]:
                 r = dict(row)
                 r["ce_ltp_dir"] = 0; r["ce_vol_dir"] = 0; r["ce_oi_dir"] = 0
                 r["pe_ltp_dir"] = 0; r["pe_vol_dir"] = 0; r["pe_oi_dir"] = 0
@@ -1403,7 +1484,7 @@ class OIFlowAnalyzer:
             return result
 
         snaps = []
-        for snap in history:
+        for snap in snaps_src:
             d = {}
             for row in snap:
                 k = row.get("strike")
@@ -1412,10 +1493,9 @@ class OIFlowAnalyzer:
             snaps.append(d)
 
         all_strikes = sorted({k for s in snaps for k in s})
+        # Only smooth absolute values — deltas and bid/ask handled separately
         SMOOTH_FIELDS = [
-            "ce_oi", "pe_oi", "ce_volume", "pe_volume",
-            "ce_ltp", "pe_ltp", "ce_oi_chg", "pe_oi_chg",
-            "ce_ltp_chg", "pe_ltp_chg", "ce_bid", "ce_ask", "pe_bid", "pe_ask",
+            "ce_oi", "pe_oi", "ce_volume", "pe_volume", "ce_ltp", "pe_ltp",
         ]
 
         smoothed = []
@@ -1423,23 +1503,42 @@ class OIFlowAnalyzer:
             rows = [s[strike] for s in snaps if strike in s]
             if not rows:
                 continue
+            # base = most recent snapshot (for non-smoothed fields like symbol, lotsize)
             base = None
             for s in reversed(snaps):
                 if strike in s:
                     base = dict(s[strike])
                     break
             row_out = dict(base)
+
+            # EWA-smooth absolute fields (recent scans weighted more)
             for fld in SMOOTH_FIELDS:
                 vals = [float(r.get(fld) or 0) for r in rows]
-                row_out[fld] = sum(vals) / len(vals)
+                row_out[fld] = _ewa(vals, alpha=0.4)
 
-            _oldest_row, _newest_row = rows[0], rows[-1]
-            row_out["ce_ltp_dir"] = _field_trend(_oldest_row, _newest_row, "ce_ltp")
-            row_out["ce_vol_dir"] = _field_trend(_oldest_row, _newest_row, "ce_volume")
-            row_out["ce_oi_dir"]  = _field_trend(_oldest_row, _newest_row, "ce_oi")
-            row_out["pe_ltp_dir"] = _field_trend(_oldest_row, _newest_row, "pe_ltp")
-            row_out["pe_vol_dir"] = _field_trend(_oldest_row, _newest_row, "pe_volume")
-            row_out["pe_oi_dir"]  = _field_trend(_oldest_row, _newest_row, "pe_oi")
+            # Derived change fields from smoothed absolutes (not raw scan deltas)
+            oldest_row = rows[0]
+            row_out["ce_oi_chg"]  = row_out["ce_oi"]  - float(oldest_row.get("ce_oi",  0) or 0)
+            row_out["pe_oi_chg"]  = row_out["pe_oi"]  - float(oldest_row.get("pe_oi",  0) or 0)
+            row_out["ce_ltp_chg"] = row_out["ce_ltp"] - float(oldest_row.get("ce_ltp", 0) or 0)
+            row_out["pe_ltp_chg"] = row_out["pe_ltp"] - float(oldest_row.get("pe_ltp", 0) or 0)
+
+            # Bid/ask: always raw current (real-time liquidity gate)
+            row_out["ce_bid"] = float(base.get("ce_bid", 0) or 0)
+            row_out["ce_ask"] = float(base.get("ce_ask", 0) or 0)
+            row_out["pe_bid"] = float(base.get("pe_bid", 0) or 0)
+            row_out["pe_ask"] = float(base.get("pe_ask", 0) or 0)
+
+            # Direction: linear slope across full series (not just endpoints)
+            def _collect(field):
+                return [float(r.get(field) or 0) for r in rows]
+            row_out["ce_ltp_dir"] = _series_slope(_collect("ce_ltp"))
+            row_out["ce_vol_dir"] = _series_slope(_collect("ce_volume"))
+            row_out["ce_oi_dir"]  = _series_slope(_collect("ce_oi"))
+            row_out["pe_ltp_dir"] = _series_slope(_collect("pe_ltp"))
+            row_out["pe_vol_dir"] = _series_slope(_collect("pe_volume"))
+            row_out["pe_oi_dir"]  = _series_slope(_collect("pe_oi"))
+
             smoothed.append(row_out)
         return smoothed
 
@@ -1617,20 +1716,18 @@ class SignalEngine:
         s4 = 0
         vwap_note = "VWAP unavailable"
         if df_spot is not None and len(df_spot) >= 5 and "volume" in df_spot.columns:
-            today = pd.Timestamp.now().normalize()
+            today = pd.Timestamp(get_ist_now().date())
             df_today = (
                 df_spot[df_spot.index.normalize() == today]
                 if isinstance(df_spot.index, pd.DatetimeIndex)
                 else df_spot
             )
-            # Use today's data if >= 5 bars; fallback to last 5 bars overall (today + yesterday if needed)
+            # VWAP resets daily — only use today's bars; skip if not enough data
             if len(df_today) >= 5:
                 df_vwap = df_today
                 source = "today"
-            elif len(df_spot) >= 5:
-                df_vwap = df_spot.iloc[-5:]  # Last 5 bars across day boundary if needed
-                source = "rolling_5bar"
             else:
+                _c("Spot vs VWAP", 0, 1, "neutral", f"VWAP skipped: only {len(df_today)} bars today (need 5)")
                 df_vwap = None
                 source = "insufficient"
             
@@ -1658,8 +1755,6 @@ class SignalEngine:
                     # Insufficient bars with volume
                     zero_vol_count = (df_vwap["volume"] == 0).sum()
                     vwap_note = f"VWAP insufficient volume ({len(df_valid_vol)}/5 have volume; {zero_vol_count} zero)"
-            else:
-                vwap_note = "VWAP insufficient bars (need 5)"
         _c("Spot vs VWAP", s4, 1, _dir(s4), vwap_note)
 
         # ── LAYER 2: OI Flow Intelligence ────────────────────────────────────
@@ -2068,7 +2163,7 @@ class DataFetcher:
         return self.config.index_exchange if symbol in self.config.index_underlyings else self.config.spot_exchange
 
     def fetch_candles(self, symbol: str, exchange: str) -> pd.DataFrame | None:
-        """Fetch OHLCV history for any instrument symbol on a given exchange."""
+        """Fetch OHLCV history in pandas DataFrame format for any instrument symbol on a given exchange."""
         try:
             end = datetime.now()
             start = end - timedelta(days=self.config.lookback_days)
@@ -2700,7 +2795,13 @@ class TrailSLEngine:
         _net_move = 0.0
         _path_length = 0.0
         if df is not None and not df.empty:
-            recent = df.tail(15)  # recent window to evaluate chop vs trend
+            # Filter to today's session only — overnight gaps distort efficiency ratio
+            if isinstance(df.index, pd.DatetimeIndex):
+                today_date = get_ist_now().date()
+                df_today_opt = df[df.index.normalize() == pd.Timestamp(today_date)]
+                recent = df_today_opt.tail(15) if len(df_today_opt) >= 2 else df.tail(15)
+            else:
+                recent = df.tail(15)  # fallback: no DatetimeIndex
             if len(recent) > 1:
                 closes = recent["close"].values
                 _net_move = abs(closes[-1] - closes[0])
@@ -3682,13 +3783,14 @@ class WebSocketManager:
                     spot_ltp=snap.spot_ltp,
                 )
             elif pos.spot_symbol == symbol:
-                # Spot tick → update snapshot
+                # Spot tick → update snapshot + rolling spot buffer
                 snap = self._state.snapshot_cache.get_or_create(underlying)
                 self._state.snapshot_cache.update(
                     underlying,
                     spot_ltp=ltp,
                     option_ltp=snap.option_ltp,
                 )
+                self._state.record_spot_price(underlying, ltp)
 
         # ── Diagnostic: log ticks for active position symbols ───────────────
         for underlying, pos in list(self._state.positions.items()):
@@ -3853,16 +3955,15 @@ class WebSocketManager:
                         elapsed = time.time() - self._last_tick_time
                         hm = int(get_ist_now().strftime("%H%M"))
                         in_market = self._last_tick_time and MARKET_HOURS_START <= hm <= MARKET_HOURS_END
-                        if in_market and elapsed > 30 and not self._ws_stale_alerted:
-                            inf(f"[WS] WARNING: Stale tick feed — no ticks in {int(elapsed)}s (market hours active)")
+                        with self._subscribe_lock:
+                            has_subs = len(self._desired) > 0
+                        if in_market and has_subs and elapsed > 30 and not self._ws_stale_alerted:
+                            inf(f"[WS] WARNING: Stale tick feed — no ticks in {int(elapsed)}s (market hours active, {len(self._desired)} subs)")
                             self._ws_stale_alerted = True
-                        if in_market and elapsed > 120:
+                        if in_market and has_subs and elapsed > 120:
                             _msg = f"⚠️ WS Feed STALE: No ticks for {int(elapsed)}s during market hours. Forcing reconnect — check broker/VPS connectivity."
                             if self._notify_callback:
-                                try:
-                                    self._notify_callback(_msg, 9)
-                                except Exception:
-                                    pass
+                                self._notify_callback(_msg, 9)
                             inf(f"[WS] Feed silent {int(elapsed)}s — forcing hard reconnect...")
                             self._ws_stale_alerted = False   # reset for next connection window
                             try:
@@ -3870,8 +3971,8 @@ class WebSocketManager:
                             except Exception:
                                 pass
                             break   # exit watchdog → outer loop reconnects immediately
-                        if not in_market:
-                            self._ws_stale_alerted = False   # reset outside market hours
+                        if not in_market or not has_subs:
+                            self._ws_stale_alerted = False   # reset outside market hours or when no subs
 
                         # ── Fix B5: Periodic Reconcile Check ──
                         # If a mid-batch subscribe fails, it won't be in _actual. Retry here.
@@ -4097,7 +4198,7 @@ class OrderManager:
                 exchange=self.config.fno_exchange,
                 action="SELL",
                 quantity=pos.qty,
-                order_type="SL-M",
+                price_type="SL-M",
                 product="MIS",
                 price=0,
                 trigger_price=new_trigger,
@@ -4952,7 +5053,7 @@ class OptionsBuyerEdgeBot:
         if config.ws_url:
             api_kwargs["ws_url"] = config.ws_url   # explicit override; otherwise SDK derives from host
         self.client = api(**api_kwargs)
-        self.state   = BotState(lookback_bars=config.lookback_bars)
+        self.state   = BotState(chain_smooth_bars=config.chain_smooth_bars)
         self.risk    = RiskManager(self.client, config, self.state)
         self.fetcher = DataFetcher(self.client, config, notify_callback=self._send_alert)
         self.sl_policy      = EntryStopLossPolicy(self.fetcher, config)
@@ -5019,7 +5120,8 @@ class OptionsBuyerEdgeBot:
 
             # Fetch orderbook to find SL/TGT orders
             orderbook_resp = self.client.orderbook(strategy=cfg.strategy_name)
-            open_orders = orderbook_resp.get("data", []) if isinstance(orderbook_resp, dict) else []
+            _ob_data = orderbook_resp.get("data", {}) if isinstance(orderbook_resp, dict) else {}
+            open_orders = _ob_data.get("orders", []) if isinstance(_ob_data, dict) else []
 
             # ── Phase 3: Orphan detection ───────────────────────────────────
             # Collect symbols from broker positions, cancel orders for others
@@ -5027,14 +5129,14 @@ class OptionsBuyerEdgeBot:
 
             for p in positions:
                 sym = p.get("symbol", "")
-                qty = int(p.get("netqty", 0) or 0)
+                qty = int(p.get("quantity", 0) or 0)
                 if sym and qty != 0:
                     pos_symbols.add(sym)
 
             orphan_orders_cancelled = 0
             for order in open_orders:
                 o_sym = order.get("symbol", "")
-                o_stat = str(order.get("status", "")).lower()
+                o_stat = str(order.get("order_status", "")).lower()
                 if o_sym and o_sym not in pos_symbols and o_stat in ("pending", "open"):
                     oid = order.get("orderid")
                     if oid:
@@ -5051,7 +5153,7 @@ class OptionsBuyerEdgeBot:
             # ── Phase 1: Restore positions ──────────────────────────────────
             for p in positions:
                 sym      = p.get("symbol", "")
-                qty      = int(p.get("netqty", 0) or 0)
+                qty      = int(p.get("quantity", 0) or 0)
                 entry_px = float(p.get("average_price", 0) or 0)
                 if not sym or qty == 0 or entry_px <= 0:
                     continue
@@ -5094,12 +5196,12 @@ class OptionsBuyerEdgeBot:
                 # Query SL/TGT order IDs from orderbook
                 for order in open_orders:
                     o_sym = order.get("symbol", "")
-                    o_stat = str(order.get("status", "")).lower()
-                    o_type = str(order.get("order_type", "")).lower()
-                    if o_stat in ("pending", "open") and o_sym == sym:
+                    o_stat = str(order.get("order_status", "")).lower()
+                    o_type = str(order.get("pricetype", "")).lower()
+                    if o_stat in ("pending", "open", "trigger pending") and o_sym == sym:
                         if "sl" in o_type:
                             pos.sl_order_id = order.get("orderid")
-                        elif "limit" in o_type:
+                        elif "limit" in o_type or o_type == "market":
                             pos.tgt_order_id = order.get("orderid")
 
                 if pos.sl_order_id or pos.tgt_order_id:
@@ -5441,6 +5543,26 @@ class OptionsBuyerEdgeBot:
         # Legacy fallback for backward compatibility
         iv_rank_val = ce_iv_rank if (ce_iv_rank is not None and pe_iv_rank is None) else (pe_iv_rank if pe_iv_rank is not None else None)
 
+        # Accumulate greeks snapshot for rolling smoothing (no extra API calls)
+        state.get_greeks_history(symbol).append({
+            "timestamp": time.time(),
+            "atm_strike": atm_k,
+            "ce_delta": ce_delta,
+            "pe_delta": pe_delta,
+            "ce_iv_rank": ce_iv_rank,
+            "pe_iv_rank": pe_iv_rank,
+        })
+
+        # Smooth greeks across last N scan cycles to reduce single-point noise
+        # Only averages same-ATM-strike snapshots — prevents cross-strike contamination
+        _sg = _smooth_greeks(state.get_greeks_history(symbol), current_atm=atm_k, lookback=3)
+        ce_delta = _sg.get("ce_delta", ce_delta) or ce_delta
+        pe_delta = _sg.get("pe_delta", pe_delta) or pe_delta
+        ce_iv_rank = _sg.get("ce_iv_rank", ce_iv_rank)
+        pe_iv_rank = _sg.get("pe_iv_rank", pe_iv_rank)
+        # Recompute derived values after smoothing
+        iv_rank_val = ce_iv_rank if (ce_iv_rank is not None and pe_iv_rank is None) else (pe_iv_rank if pe_iv_rank is not None else None)
+
         result = self.scorer.score(
             spot=spot,
             df_spot=df_spot,
@@ -5719,6 +5841,7 @@ class OptionsBuyerEdgeBot:
                         snap2 = self.state.snapshot_cache.get(ul)
                         if snap2 is None or snap2.spot_ltp is None:
                             self.state.snapshot_cache.update(ul, spot_ltp=spot_ltp)
+                        self.state.record_spot_price(ul, spot_ltp)
             except Exception as exc:
                 pass
 
@@ -5815,7 +5938,8 @@ class OptionsBuyerEdgeBot:
             )
             _rest_data = _rest_resp.json()
             if _rest_data.get("status") == "success":
-                _n = len(_rest_data.get("data", []))
+                _ob = _rest_data.get("data", {})
+                _n = len(_ob.get("orders", [])) if isinstance(_ob, dict) else 0
                 inf(f"[WS-TEST] REST API key OK (orderbook: {_n} order(s))")
             else:
                 _rest_msg = _rest_data.get("message", str(_rest_data))
