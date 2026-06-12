@@ -1,0 +1,859 @@
+=== Strategy Started at 2026-06-12 14:04:24 IST ===
+=== Platform: linux ===
+
+[CONFIG] All configuration values validated OK
+[STARTUP] ⚠️  Strategy 'BuyerEdgeStrategy' not found in strategy configs.
+[STARTUP]    Run: python3 /app/strategies/register_strategy.py
+[STARTUP]    Then restart this script.
+[STARTUP] Continuing anyway (may cause runtime errors)...
+
+======================================================================
+  BuyerEdgeStrategy
+======================================================================
+  API Host        : https://oadev.karm8boost.online
+  WebSocket URL   : wss://oadev.karm8boost.online/ws
+  Underlyings     : NIFTY
+  FNO Exchange    : NFO
+  Min Score       : 40 | Max Trap: 60
+  SL Points       : 25.0 (Phase A hard SL fallback)
+  Phase A SL      : moneyness-adapted from entry_delta or fallback to PREMIUM_STOP_PTS
+  Phase B Trail   : tracking=premium  method=fixed_pct  activate=25% (hard cap 30pts)
+  Trail Step      : 10.0% of base distance (cap: 50% of entry premium)
+  Breakeven SL    : 80% of target gain
+  Long Only Mode  : True
+  Broker SL Orders: True
+  DTE Range       : 7 – 30 days
+  Candle Interval : 1m
+  Check Interval  : 60s
+----------------------------------------------------------------------
+  [RISK GATES]
+  Max Trades/Day  : 5
+  Max Consec Loss : 3
+  Daily Loss Limit: ₹2000
+  Daily Profit Tgt: disabled
+  Entry Cooldown  : 300s per underlying
+  [TIMING]
+  No New Entries  : after 15:10 IST
+  EOD Square-Off  : 15:15 IST
+  Max Hold Time   : disabled
+======================================================================
+[STARTUP] Found 2 broker position(s). Restoring...
+[WS-TEST] REST API key OK (orderbook: 8 order(s))
+[WS-TEST] Testing wss://oadev.karm8boost.online/ws ...
+[WS-TEST] Transport OK — WebSocket handshake succeeded
+[WS-TEST] Auth OK
+[WS-TEST] Subscribed NSE_INDEX:Nifty 50
+[WS-TEST] Tick #1 — ltp=?
+[WS-TEST] (no tick yet, 15s remaining...)
+[WS-TEST] (no tick yet, 10s remaining...)
+[WS-TEST] (no tick yet, 5s remaining...)
+[WS-TEST] PASS — received 1 tick(s) ✓
+[WS] WebSocket thread starting...
+[WS] Connecting... (active OS threads: 2)[STRATEGY] Strategy scan thread started
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+[BOT] BuyerEdgeStrategy running. Press Ctrl+C to stop.
+
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[WS-HEALTH] Uptime: 0.8m | Threads: 5 | Subs: 0/0 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+  ━━ SCAN · NIFTY · 23,512 · 14:05:16  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Neutral     score +2/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 68.8 — bullish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.79
+     +0/2  ░░░░░░░░  Call OI Flow         CE Neutral
+     +0/2  ░░░░░░░░  Put OI Flow          PE Neutral
+     -1/1  ████████  OI Wall Position     Spot 23512 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.032 — mild CE dominance   (CE +0.515 / PE -0.483)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +12415) — dealer hedging tends to dampen directional follow-through | gamma flip 23782
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +0/1  ░░░░░░░░  Synthetic Futures    SF snapshot only (no prior bar): basis +35.9 (normal) — score 0
+  ✘ NO_TRADE  —  not executing  (score 2/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=64 miss=42 api_calls=42 hit_rate=60.4% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,512 · 14:06:32  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Bearish     score -20/100  ███░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 72.5 — bullish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.79
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23512 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.027 — mild CE dominance   (CE +0.514 / PE -0.487)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +9942) — dealer hedging tends to dampen directional follow-through | gamma flip 23785
+     -1/2  ████░░░░  OI Velocity          CE OI building +9.33% + call writing — institutional writer trap
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +26.8, normal)
+  ✘ NO_TRADE  —  not executing  (score 20/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=64 miss=42 api_calls=42 hit_rate=60.4% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,512 · 14:07:33  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Neutral     score -2/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 68.8 — bullish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.80
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23512 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.026 — mild CE dominance   (CE +0.513 / PE -0.487)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +9898) — dealer hedging tends to dampen directional follow-through | gamma flip 23785
+     -1/2  ████░░░░  OI Velocity          CE OI building +22.25% + call writing — institutional writer trap
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.2%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +27.3, normal)
+  ✘ NO_TRADE  —  not executing  (score 2/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=64 miss=42 api_calls=42 hit_rate=60.4% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,512 · 14:08:33  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Neutral     score -2/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 68.8 — bullish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.80
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23512 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.023 — mild CE dominance   (CE +0.512 / PE -0.489)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +69514) — dealer hedging tends to dampen directional follow-through | gamma flip 23705
+     -1/2  ████░░░░  OI Velocity          CE OI building +34.00% + call writing — institutional writer trap
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +24.8, normal)
+  ✘ NO_TRADE  —  not executing  (score 2/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=46 miss=60 api_calls=60 hit_rate=43.4% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,510 · 14:09:32  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Neutral     score -2/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 68.3 — bullish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.80
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23510 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.023 — mild CE dominance   (CE +0.511 / PE -0.488)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +70370) — dealer hedging tends to dampen directional follow-through | gamma flip 23733
+     -1/2  ████░░░░  OI Velocity          CE OI building +48.16% + call writing — institutional writer trap
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +32.4, normal)
+  ✘ NO_TRADE  —  not executing  (score 2/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=43 miss=63 api_calls=63 hit_rate=40.6% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+[WS-HEALTH] Uptime: 5.8m | Threads: 5 | Subs: 0/0 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+  ━━ SCAN · NIFTY · 23,509 · 14:10:33  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Neutral     score -2/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 68.3 — bullish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.81
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23509 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.022 — mild CE dominance   (CE +0.511 / PE -0.488)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +94467) — dealer hedging tends to dampen directional follow-through | gamma flip 23597
+     -1/2  ████░░░░  OI Velocity          CE OI building +40.84% + call writing — institutional writer trap
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.5%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +26.6, normal)
+  ✘ NO_TRADE  —  not executing  (score 2/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=47 miss=59 api_calls=59 hit_rate=44.3% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,498 · 14:11:33  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Bearish     score -27/100  ████░░░░░░░░░░░░  trap 0/100   ⚡ WATCH
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 66.1 — bullish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.82
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 23500 (put wall 23400 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.017 — balanced (CE +0.508 / PE -0.491)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +42501) — dealer hedging tends to dampen directional follow-through | gamma flip 23783
+     -1/2  ████░░░░  OI Velocity          CE OI building +47.24% + call writing — institutional writer trap
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     -1/2  ████░░░░  Straddle Velocity    Straddle mild contraction -0.6% — premium fading
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +35.2, normal)
+  ⚡ WATCH  —  not executing  (score 27/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=35 miss=71 api_calls=71 hit_rate=33.0% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,511 · 14:12:27  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ◆ Neutral     score +0/100  ░░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 65.8 — bullish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.82
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23511 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum +0.015 — balanced (CE +0.505 / PE -0.490)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +39150) — dealer hedging tends to dampen directional follow-through | gamma flip 23758
+     -1/2  ████░░░░  OI Velocity          CE OI building +161.93% + call writing — institutional writer trap
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +1/1  ████████  Synthetic Futures    SF co-movement bullish: spot Δ+13.0, SF Δ+11.3 — confirming
+  ✘ NO_TRADE  —  not executing  (score 0/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=29 miss=77 api_calls=77 hit_rate=27.4% cache_size=24
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,514 · 14:13:32  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +30/100  ████░░░░░░░░░░░░  trap 0/100   ⚡ WATCH
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 62.9 — bullish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.81
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23514 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.022 — mild CE dominance   (CE +0.510 / PE -0.488)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +8705) — dealer hedging tends to dampen directional follow-through | gamma flip 23790
+     +1/2  ████░░░░  OI Velocity          CE OI building +226.34% + call buying — institutional accumulation
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.2%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +33.0, normal)
+  ⚡ WATCH  —  not executing  (score 30/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=64 miss=42 api_calls=42 hit_rate=60.4% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,521 · 14:14:33  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +20/100  ███░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 62.9 — bullish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.81
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23521 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.032 — mild CE dominance   (CE +0.515 / PE -0.483)
+     -2/2  ████████  Gamma Regime         Short gamma (Net GEX -30744); nearest downside punch 23500 from spot 23521
+     +1/2  ████░░░░  OI Velocity          CE OI building +284.98% + call buying — institutional accumulation
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.2%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +31.5, normal)
+  ✘ NO_TRADE  —  not executing  (score 20/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=62 miss=44 api_calls=44 hit_rate=58.5% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+[WS-HEALTH] Uptime: 10.8m | Threads: 5 | Subs: 0/0 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+  ━━ SCAN · NIFTY · 23,528 · 14:15:33  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +25/100  ████░░░░░░░░░░░░  trap 0/100   ⚡ WATCH
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 64.2 — bullish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.79
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23528 at/above call wall 23500 — overhead resistance, bearish
+     -0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum -0.028 — mild PE dominance   (CE +0.487 / PE -0.516)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +132849) — dealer hedging tends to dampen directional follow-through | gamma flip 23556
+     +1/2  ████░░░░  OI Velocity          CE OI building +287.53% + call buying — institutional accumulation
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +24.3, normal)
+  ⚡ WATCH  —  not executing  (score 25/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=53 miss=57 api_calls=57 hit_rate=48.2% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,534 · 14:16:33  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +25/100  ████░░░░░░░░░░░░  trap 0/100   ⚡ WATCH
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 67.3 — bullish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.79
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23534 at/above call wall 23500 — overhead resistance, bearish
+     -0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum -0.021 — mild PE dominance   (CE +0.491 / PE -0.511)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +92901) — dealer hedging tends to dampen directional follow-through | gamma flip 23669
+     +1/2  ████░░░░  OI Velocity          CE OI building +68.02% + call buying — institutional accumulation
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.3%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +16.2, normal)
+  ⚡ WATCH  —  not executing  (score 25/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=53 miss=57 api_calls=57 hit_rate=48.2% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,530 · 14:17:33  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +20/100  ███░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 70.1 — bullish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.79
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23530 at/above call wall 23500 — overhead resistance, bearish
+     -0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum -0.020 — mild PE dominance   (CE +0.491 / PE -0.511)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +75609) — dealer hedging tends to dampen directional follow-through | gamma flip 23761
+     +1/2  ████░░░░  OI Velocity          CE OI building +56.68% + call buying — institutional accumulation
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.2%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +27.4, normal)
+  ✘ NO_TRADE  —  not executing  (score 20/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=41 miss=69 api_calls=69 hit_rate=37.3% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,529 · 14:18:33  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +22/100  ███░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 72.5 — bullish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.79
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23529 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.019 — balanced (CE +0.491 / PE -0.510)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +27619) — dealer hedging tends to dampen directional follow-through | gamma flip 23766
+     +1/2  ████░░░░  OI Velocity          CE OI building +9.53% + call buying — institutional accumulation
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +21.7, normal)
+  ✘ NO_TRADE  —  not executing  (score 22/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=44 miss=66 api_calls=66 hit_rate=40.0% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,533 · 14:19:33  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Neutral     score +15/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 68.0 — bullish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.74
+     +0/2  ░░░░░░░░  Call OI Flow         CE Neutral
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23533 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.017 — balanced (CE +0.493 / PE -0.509)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +30587) — dealer hedging tends to dampen directional follow-through | gamma flip 23770
+     +1/2  ████░░░░  OI Velocity          PE OI building +141.16% + put writing — institutional support
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +28.4, normal)
+  ✘ NO_TRADE  —  not executing  (score 15/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=46 miss=60 api_calls=60 hit_rate=43.4% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+[WS-HEALTH] Uptime: 15.8m | Threads: 5 | Subs: 0/0 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+  ━━ SCAN · NIFTY · 23,536 · 14:20:30  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +25/100  ████░░░░░░░░░░░░  trap 0/100   ⚡ WATCH
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 68.0 — bullish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.74
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23536 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.016 — balanced (CE +0.492 / PE -0.509)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +57879) — dealer hedging tends to dampen directional follow-through | gamma flip 23776
+     +1/2  ████░░░░  OI Velocity          CE OI building +12.11% + call buying — institutional accumulation
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +20.1, normal)
+  ⚡ WATCH  —  not executing  (score 25/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=34 miss=72 api_calls=72 hit_rate=32.1% cache_size=27
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,532 · 14:21:34  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +27/100  ████░░░░░░░░░░░░  trap 0/100   ⚡ WATCH
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 69.7 — bullish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.74
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23532 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.016 — balanced (CE +0.493 / PE -0.509)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +27869) — dealer hedging tends to dampen directional follow-through | gamma flip 23773
+     +1/2  ████░░░░  OI Velocity          CE OI building +19.00% + call buying — institutional accumulation
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +25.9, normal)
+  ⚡ WATCH  —  not executing  (score 27/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=64 miss=42 api_calls=42 hit_rate=60.4% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,536 · 14:22:34  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +27/100  ████░░░░░░░░░░░░  trap 0/100   ⚡ WATCH
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 70.9 — bullish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.75
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23536 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.017 — balanced (CE +0.492 / PE -0.509)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +112836) — dealer hedging tends to dampen directional follow-through | gamma flip 23594
+     +1/2  ████░░░░  OI Velocity          CE OI building +9.11% + call buying — institutional accumulation
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +23.5, normal)
+  ⚡ WATCH  —  not executing  (score 27/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=49 miss=57 api_calls=57 hit_rate=46.2% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,534 · 14:23:34  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Neutral     score +15/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 67.4 — bullish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.75
+     +0/2  ░░░░░░░░  Call OI Flow         CE Neutral
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23534 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.018 — balanced (CE +0.492 / PE -0.510)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +85540) — dealer hedging tends to dampen directional follow-through | gamma flip 23699
+     +1/2  ████░░░░  OI Velocity          PE OI building +62.33% + put writing — institutional support
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +27.9, normal)
+  ✘ NO_TRADE  —  not executing  (score 15/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=50 miss=56 api_calls=56 hit_rate=47.2% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,535 · 14:24:34  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +17/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 69.0 — bullish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.75
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23535 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.007 — balanced (CE +0.497 / PE -0.504)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +34047) — dealer hedging tends to dampen directional follow-through | gamma flip 23838
+     +0/2  ██░░░░░░  OI Velocity          CE OI unwinding -9.12% — short covering
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.2%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +31.3, normal)
+  ✘ NO_TRADE  —  not executing  (score 17/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=29 miss=77 api_calls=77 hit_rate=27.4% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+[WS-HEALTH] Uptime: 20.8m | Threads: 5 | Subs: 0/0 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+  ━━ SCAN · NIFTY · 23,534 · 14:25:34  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +17/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 68.0 — bullish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.75
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23534 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.011 — balanced (CE +0.495 / PE -0.506)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +24713) — dealer hedging tends to dampen directional follow-through | gamma flip 23776
+     +0/2  ██░░░░░░  OI Velocity          CE OI unwinding -23.84% — short covering
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +28.1, normal)
+  ✘ NO_TRADE  —  not executing  (score 17/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=29 miss=77 api_calls=77 hit_rate=27.4% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,529 · 14:26:27  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Bearish     score -20/100  ███░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 68.0 — bullish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.75
+     -1/2  ████░░░░  Call OI Flow         CE Long Unwinding — moderately bearish
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23529 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.011 — balanced (CE +0.495 / PE -0.506)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +59544) — dealer hedging tends to dampen directional follow-through | gamma flip 23350
+     -1/2  ████░░░░  OI Velocity          PE OI building +36.45% + put buying — bearish accumulation
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.2%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +31.9, normal)
+  ✘ NO_TRADE  —  not executing  (score 20/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=27 miss=79 api_calls=79 hit_rate=25.5% cache_size=23
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,526 · 14:27:33  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Bearish     score -20/100  ███░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 67.0 — bullish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.75
+     -1/2  ████░░░░  Call OI Flow         CE Long Unwinding — moderately bearish
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23526 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.017 — balanced (CE +0.493 / PE -0.509)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +19221) — dealer hedging tends to dampen directional follow-through | gamma flip 23783
+     -1/2  ████░░░░  OI Velocity          PE OI building +43.28% + put buying — bearish accumulation
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +32.0, normal)
+  ✘ NO_TRADE  —  not executing  (score 20/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=64 miss=42 api_calls=42 hit_rate=60.4% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,533 · 14:28:34  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Bearish     score -22/100  ███░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 60.5 — bullish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.76
+     -1/2  ████░░░░  Call OI Flow         CE Long Unwinding — moderately bearish
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23533 at/above call wall 23500 — overhead resistance, bearish
+     -0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum -0.022 — mild PE dominance   (CE +0.490 / PE -0.512)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +62027) — dealer hedging tends to dampen directional follow-through | gamma flip 23770
+     -1/2  ████░░░░  OI Velocity          CE OI building +7.63% + call writing — institutional writer trap
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.2%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +33.8, normal)
+  ✘ NO_TRADE  —  not executing  (score 22/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=52 miss=54 api_calls=54 hit_rate=49.1% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,543 · 14:29:34  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +32/100  █████░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 62.9 — bullish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.76
+     +2/2  ████████  Call OI Flow         Call Buying — strong bullish conviction
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23543 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.012 — balanced (CE +0.495 / PE -0.507)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +107580) — dealer hedging tends to dampen directional follow-through | gamma flip 23594
+     +1/2  ████░░░░  OI Velocity          CE OI building +24.98% + call buying — institutional accumulation
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.2%)
+     +1/1  ████████  Synthetic Futures    SF co-movement bullish: spot Δ+10.1, SF Δ+11.0 — confirming
+  ✔ EXECUTE  ▲  CE
+[STRIKE] Signal score 32 < min 40 — insufficient edge
+[SCAN] NIFTY: using simple OTM fallback strike 23600.0
+[SCAN] NIFTY: Phase A initial SL source=hard_sl_pts_fallback base=25.00 × factor=1.04 (conv=0.00) → clamped=25.90pts
+[SCAN] NIFTY: qty=65 (risk-based sizing disabled — using fixed lot_mult)
+  [PERF] NIFTY [entry-preflight] greeks: hit=62 miss=44 api_calls=44 hit_rate=58.5% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: placing CE entry | strike 23600.0 | NIFTY23JUN2623600CE x65
+  [PERF] NIFTY [entry-order] greeks: hit=62 miss=44 api_calls=44 hit_rate=58.5% cache_size=30
+[ORDER] Entry order 26061204313377 placed for NIFTY (NIFTY23JUN2623600CE x65)
+[SUB]    Subscribing NFO:NIFTY23JUN2623600CE LTP...
+[WS] Subscribed option NFO:NIFTY23JUN2623600CE
+[SUB]    Subscribing NSE_INDEX:NIFTY LTP...
+[WS] Subscribed spot NSE_INDEX:NIFTY
+[DATA] TRADE REGISTERED NIFTY: option=NIFTY23JUN2623600CE exchange=NFO | spot=NIFTY spot_exchange=NSE_INDEX | entry=₹215.05 spot_entry=₹23543.00 direction=CE | SL=₹189.15 TGT=₹265.05 | delta=N/A conviction=0.00 | ws_desired=[('NSE_INDEX', 'NIFTY'), ('NFO', 'NIFTY23JUN2623600CE')]
+[SUB]    NFO:NIFTY23JUN2623600CE | Mode: Unknown | Status: success
+[SUB]    NSE_INDEX:NIFTY | Mode: Unknown | Status: success
+[ORDER] Basket SL-M placed for NIFTY: trigger ₹189.15 (id:26061262127967)
+[ORDER] Basket LIMIT placed for NIFTY: ₹265.05 (id:26061263725729)
+[ORDER] Position registered for NIFTY: NIFTY23JUN2623600CE QTY=65 ENTRY=₹215.05 SL=₹189.15 (pts=25.90) TGT=₹265.05
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹-107.25 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 213.4, 'pnl': -107.25, 'pnlpercent': -0.7672634271099744, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': -107.25, 'unrealized_pnl': -107.25}
+[WS-HEALTH] Uptime: 25.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹204.75 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 218.2, 'pnl': 204.75, 'pnlpercent': 1.4647756335735875, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': 204.75, 'unrealized_pnl': 204.75}
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹305.50 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 219.75, 'pnl': 305.5, 'pnlpercent': 2.185538246919321, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': 305.5, 'unrealized_pnl': 305.5}
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹136.50 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 217.15, 'pnl': 136.5, 'pnlpercent': 0.9765170890490583, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': 136.5, 'unrealized_pnl': 136.5}
+[WS-HEALTH] Uptime: 30.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹-302.25 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 210.4, 'pnl': -302.25, 'pnlpercent': -2.1622878400372008, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': -302.25, 'unrealized_pnl': -302.25}
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹-139.75 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 212.9, 'pnl': -139.75, 'pnlpercent': -0.9997674959311788, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': -139.75, 'unrealized_pnl': -139.75}
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹490.75 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 222.6, 'pnl': 490.75, 'pnlpercent': 3.510811439200186, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': 490.75, 'unrealized_pnl': 490.75}
+[WS-HEALTH] Uptime: 35.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹35.75 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 215.6, 'pnl': 35.75, 'pnlpercent': 0.2557544757033248, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': 35.75, 'unrealized_pnl': 35.75}
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹393.25 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 221.1, 'pnl': 393.25, 'pnlpercent': 2.813299232736573, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': 393.25, 'unrealized_pnl': 393.25}
+[WS-HEALTH] Uptime: 40.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹757.25 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 226.7, 'pnl': 757.25, 'pnlpercent': 5.4173448035340614, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': 757.25, 'unrealized_pnl': 757.25}
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹1153.75 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 232.8, 'pnl': 1153.75, 'pnlpercent': 8.253894443152754, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': 1153.75, 'unrealized_pnl': 1153.75}
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹1543.75 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 238.8, 'pnl': 1543.75, 'pnlpercent': 11.043943269007208, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': 1543.75, 'unrealized_pnl': 1543.75}
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹1495.00 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 238.05, 'pnl': 1495.0, 'pnlpercent': 10.695187165775401, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': 1495.0, 'unrealized_pnl': 1495.0}
+[WS-HEALTH] Uptime: 45.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹1504.75 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 238.2, 'pnl': 1504.75, 'pnlpercent': 10.764938386421763, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': 1504.75, 'unrealized_pnl': 1504.75}
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹1787.50 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 242.55, 'pnl': 1787.5, 'pnlpercent': 12.787723785166241, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': 1787.5, 'unrealized_pnl': 1787.5}
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹1751.75 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 242.0, 'pnl': 1751.75, 'pnlpercent': 12.531969309462916, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': 1751.75, 'unrealized_pnl': 1751.75}
+[WS-HEALTH] Uptime: 50.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹1924.00 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 244.65, 'pnl': 1924.0, 'pnlpercent': 13.764240874215298, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': 1924.0, 'unrealized_pnl': 1924.0}
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹1946.75 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 245.0, 'pnl': 1946.75, 'pnlpercent': 13.926993722390142, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': 1946.75, 'unrealized_pnl': 1946.75}
+[TRAIL] NIFTY | ROI=15.1% (TIER_0_0_50) | KER=0.601 (net=23.90/path=39.80) → KER_factor=0.601 | Speed=0.60x | BaseStep=21.51 → FinalStep=35.81 | Cap=107.53 | UnrealPnL=32.45pts (15.1%) ₹2109 | PeakClose=247.50 | LTP=247.50
+[ORDER] Broker SL modified for NIFTY → trigger ₹211.69
+[TRAIL] Premium ACTIVATED NIFTY: peak 247.50 SL→211.69 (speed=0.6x)
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹2132.00 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 247.85, 'pnl': 2132.0, 'pnlpercent': 15.252266914671006, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': 2132.0, 'unrealized_pnl': 2132.0}
+[TRAIL] NIFTY | ROI=13.9% (TIER_0_0_50) | KER=0.582 (net=22.15/path=38.05) → KER_factor=0.582 | Speed=0.58x | BaseStep=21.51 → FinalStep=36.94 | Cap=107.53 | UnrealPnL=29.95pts (13.9%) ₹1947 | PeakClose=247.50 | LTP=245.00
+[WS-HEALTH] Uptime: 55.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+[TRAIL] NIFTY | ROI=12.8% (TIER_0_0_50) | KER=0.492 (net=18.95/path=38.55) → KER_factor=0.500 | Speed=0.50x | BaseStep=21.51 → FinalStep=43.01 | Cap=107.53 | UnrealPnL=27.60pts (12.8%) ₹1794 | PeakClose=247.50 | LTP=242.65
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹1745.25 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 241.9, 'pnl': 1745.25, 'pnlpercent': 12.485468495698674, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': 1745.25, 'unrealized_pnl': 1745.25}
+[TRAIL] NIFTY | ROI=10.6% (TIER_0_0_50) | KER=0.318 (net=11.95/path=37.55) → KER_factor=0.500 | Speed=0.50x | BaseStep=21.51 → FinalStep=43.01 | Cap=107.53 | UnrealPnL=22.75pts (10.6%) ₹1479 | PeakClose=247.50 | LTP=237.80
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹1569.75 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 239.2, 'pnl': 1569.75, 'pnlpercent': 11.229946524064172, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': 1569.75, 'unrealized_pnl': 1569.75}
+[TRAIL] NIFTY | ROI=18.2% (TIER_0_0_50) | KER=0.124 (net=5.00/path=40.30) → KER_factor=0.500 | Speed=0.50x | BaseStep=21.51 → FinalStep=43.01 | Cap=107.53 | UnrealPnL=39.05pts (18.2%) ₹2538 | PeakClose=254.10 | LTP=254.10
+[PNL] 3 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹2788.50 raw={'average_price': 215.05, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 257.95, 'pnl': 2788.5, 'pnlpercent': 19.948849104859335, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623600CE', 'today_realized_pnl': 0.0, 'total_pnl_today': 2788.5, 'unrealized_pnl': 2788.5}
+[WS] PREMIUM TARGET HIT NIFTY: LTP 268.20 >= TGT 265.05
+[ORDER] Exiting NIFTY — reason: BROKER_TARGET → OTHER
+[ORDER] Cancelled broker sl_order_id 26061262127967
+[ORDER] Cancelled broker tgt_order_id 26061263725729
+[ORDER] Post-cancel status 26061262127967: cancelled
+[ORDER] Post-cancel status 26061263725729: cancelled
+[ORDER] Exit order 26061293175592 placed for NIFTY
+[UNSUB]  Unsubscribing NFO:NIFTY23JUN2623600CE LTP
+[UNSUB]  Unsubscribing NSE_INDEX:NIFTY LTP
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,632 · 15:04:34  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +25/100  ████░░░░░░░░░░░░  trap 0/100   ⚡ WATCH
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 66.5 — bullish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.69
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23632 at/above call wall 23500 — overhead resistance, bearish
+     -0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum -0.022 — mild PE dominance   (CE +0.491 / PE -0.513)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +47781) — dealer hedging tends to dampen directional follow-through | gamma flip 23788
+     +1/2  ████░░░░  OI Velocity          CE OI building +22.44% + call buying — institutional accumulation
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +1/1  ████████  Synthetic Futures    SF co-movement bullish: spot Δ+89.0, SF Δ+91.8 — confirming
+  ⚡ WATCH  —  not executing  (score 25/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=64 miss=50 api_calls=50 hit_rate=56.1% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+[WS-HEALTH] Uptime: 60.8m | Threads: 6 | Subs: 0/0 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 123.5s
+  ━━ SCAN · NIFTY · 23,636 · 15:05:35  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +22/100  ███░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 66.5 — bullish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.71
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23636 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.019 — balanced (CE +0.493 / PE -0.512)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +13621) — dealer hedging tends to dampen directional follow-through | gamma flip 23789
+     +1/2  ████░░░░  OI Velocity          CE OI building +30.08% + call buying — institutional accumulation
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.3%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +41.1, normal)
+  ✘ NO_TRADE  —  not executing  (score 22/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=34 miss=80 api_calls=80 hit_rate=29.8% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,642 · 15:06:35  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +30/100  ████░░░░░░░░░░░░  trap 0/100   ⚡ WATCH
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 71.0 — bullish momentum
+     +1/1  ████████  MACD Histogram       MACD Histogram expanding positive
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.72
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23642 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.019 — balanced (CE +0.493 / PE -0.512)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +52532) — dealer hedging tends to dampen directional follow-through | gamma flip 23907
+     +1/2  ████░░░░  OI Velocity          CE OI building +21.12% + call buying — institutional accumulation
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.4%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +45.3, normal)
+  ⚡ WATCH  —  not executing  (score 30/100, min 32)
+  [PERF] NIFTY [no-execute] greeks: hit=24 miss=90 api_calls=90 hit_rate=21.1% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: session regime [power-hour(eased→32)]
+  ━━ SCAN · NIFTY · 23,643 · 15:07:29  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▲ Bullish     score +32/100  █████░░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     +0/1  ████░░░░  EMA Trend            Fast EMA above Slow EMA (bullish)
+     +1/1  ████████  RSI Momentum         RSI 72.0 — bullish momentum
+     +1/1  ████████  MACD Histogram       MACD Histogram expanding positive
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ████░░░░  PCR OI Level         PCR OI 0.73
+     +1/2  ████░░░░  Call OI Flow         CE Short Covering — moderately bullish
+     +2/2  ████████  Put OI Flow          Put Writing — strong bullish for underlying
+     -1/1  ████████  OI Wall Position     Spot 23643 at/above call wall 23500 — overhead resistance, bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.019 — balanced (CE +0.493 / PE -0.512)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +96088) — dealer hedging tends to dampen directional follow-through | gamma flip 23474
+     +0/2  ██░░░░░░  OI Velocity          CE OI unwinding -5.82% — short covering
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +1/2  ████░░░░  Straddle Velocity    Straddle mild expansion +0.7% — modest premium growth
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +40.2, normal)
+  ✔ EXECUTE  ▲  CE
+[STRIKE] Signal score 32 < min 40 — insufficient edge
+[SCAN] NIFTY: using simple OTM fallback strike 23700.0
+[SCAN] NIFTY: Phase A initial SL source=hard_sl_pts_fallback base=25.00 × factor=1.04 (conv=0.00) → clamped=25.90pts
+[SCAN] NIFTY: qty=65 (risk-based sizing disabled — using fixed lot_mult)
+  [PERF] NIFTY [entry-preflight] greeks: hit=11 miss=103 api_calls=103 hit_rate=9.6% cache_size=24
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: placing CE entry | strike 23700.0 | NIFTY23JUN2623700CE x65
+  [PERF] NIFTY [entry-order] greeks: hit=11 miss=103 api_calls=103 hit_rate=9.6% cache_size=24
+[ORDER] Entry order 26061204203033 placed for NIFTY (NIFTY23JUN2623700CE x65)
+[SUB]    Subscribing NFO:NIFTY23JUN2623700CE LTP...
+[WS] Subscribed option NFO:NIFTY23JUN2623700CE
+[SUB]    Subscribing NSE_INDEX:NIFTY LTP...
+[WS] Subscribed spot NSE_INDEX:NIFTY
+[DATA] TRADE REGISTERED NIFTY: option=NIFTY23JUN2623700CE exchange=NFO | spot=NIFTY spot_exchange=NSE_INDEX | entry=₹221.50 spot_entry=₹23643.10 direction=CE | SL=₹195.60 TGT=₹271.50 | delta=N/A conviction=0.00 | ws_desired=[('NSE_INDEX', 'NIFTY'), ('NFO', 'NIFTY23JUN2623700CE')]
+[SUB]    NFO:NIFTY23JUN2623700CE | Mode: Unknown | Status: success
+[SUB]    NSE_INDEX:NIFTY | Mode: Unknown | Status: success
+[ORDER] Basket SL-M placed for NIFTY: trigger ₹195.60 (id:26061261761115)
+[ORDER] Basket LIMIT placed for NIFTY: ₹271.50 (id:26061263434725)
+[ORDER] Position registered for NIFTY: NIFTY23JUN2623700CE QTY=65 ENTRY=₹221.50 SL=₹195.60 (pts=25.90) TGT=₹271.50
+[PNL] 4 position(s): ['NIFTY23JUN2623700CE', 'NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹-126.75 raw={'average_price': 221.5, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 219.55, 'pnl': -126.75, 'pnlpercent': -0.8803611738148984, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623700CE', 'today_realized_pnl': 0.0, 'total_pnl_today': -126.75, 'unrealized_pnl': -126.75}
+[PNL] 4 position(s): ['NIFTY23JUN2623700CE', 'NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹-825.50 raw={'average_price': 221.5, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 208.8, 'pnl': -825.5, 'pnlpercent': -5.733634311512415, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623700CE', 'today_realized_pnl': 0.0, 'total_pnl_today': -825.5, 'unrealized_pnl': -825.5}
+[WS-HEALTH] Uptime: 65.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+[PNL] 4 position(s): ['NIFTY23JUN2623700CE', 'NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹-926.25 raw={'average_price': 221.5, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 207.25, 'pnl': -926.25, 'pnlpercent': -6.433408577878104, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623700CE', 'today_realized_pnl': 0.0, 'total_pnl_today': -926.25, 'unrealized_pnl': -926.25}
+[PNL] 4 position(s): ['NIFTY23JUN2623700CE', 'NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE', 'NIFTY23JUN2623600CE']
+[PNL - LIVE] pnl=₹-871.00 raw={'average_price': 221.5, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 208.1, 'pnl': -871.0, 'pnlpercent': -6.049661399548532, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623700CE', 'today_realized_pnl': 0.0, 'total_pnl_today': -871.0, 'unrealized_pnl': -871.0}
+[SQUAREOFF] 15:15 reached — closing 1 position(s)
+[ORDER] Exiting NIFTY — reason: EOD-SquareOff → EOD
+[ORDER] Cancelled broker sl_order_id 26061261761115
+[ORDER] Cancel resp for 26061263434725: {'status': 'error', 'message': 'HTTP 400: {"message":"Cannot cancel order in cancelled status","mode":"analyze","status":"error"}\n', 'code': 400, 'error_type': 'http_error'}
+[ORDER] Post-cancel status 26061261761115: cancelled
+[ORDER] Post-cancel status 26061263434725: cancelled
+[ORDER] Exit order 26061219377292 placed for NIFTY
+[RISK] Loss streak: 1 | Daily P&L ₹2265
+[UNSUB]  Unsubscribing NFO:NIFTY23JUN2623700CE LTP
+[UNSUB]  Unsubscribing NSE_INDEX:NIFTY LTP
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:15) — waiting for EOD
+[WS-HEALTH] Uptime: 70.8m | Threads: 6 | Subs: 0/0 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 13.2s
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:16) — waiting for EOD
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:17) — waiting for EOD
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:18) — waiting for EOD
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:19) — waiting for EOD
+[SCAN] NIFTY blocked by risk gate: No new entries after 15:10 IST (current 15:20) — waiting for EOD

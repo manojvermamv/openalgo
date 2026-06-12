@@ -1729,7 +1729,7 @@ class SignalEngine:
                 df_vwap = df_today
                 source = "today"
             else:
-                _c("Spot vs VWAP", 0, 1, "neutral", f"VWAP skipped: only {len(df_today)} bars today (need 5)")
+                vwap_note = f"VWAP skipped: only {len(df_today)} bars today (need 5)"
                 df_vwap = None
                 source = "insufficient"
             

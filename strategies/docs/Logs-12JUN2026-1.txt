@@ -1,0 +1,328 @@
+=== Strategy Started at 2026-06-12 12:40:14 IST ===
+=== Platform: linux ===
+
+[CONFIG] All configuration values validated OK
+[STARTUP] ⚠️  Strategy 'BuyerEdgeStrategy' not found in strategy configs.
+[STARTUP]    Run: python3 /app/strategies/register_strategy.py
+[STARTUP]    Then restart this script.
+[STARTUP] Continuing anyway (may cause runtime errors)...
+
+======================================================================
+  BuyerEdgeStrategy
+======================================================================
+  API Host        : https://oadev.karm8boost.online
+  WebSocket URL   : wss://oadev.karm8boost.online/ws
+  Underlyings     : NIFTY
+  FNO Exchange    : NFO
+  Min Score       : 40 | Max Trap: 60
+  SL Points       : 25.0 (Phase A hard SL fallback)
+  Phase A SL      : moneyness-adapted from entry_delta or fallback to PREMIUM_STOP_PTS
+  Phase B Trail   : tracking=premium  method=fixed_pct  activate=25% (hard cap 30pts)
+  Trail Step      : 10.0% of base distance (cap: 50% of entry premium)
+  Breakeven SL    : 80% of target gain
+  Long Only Mode  : True
+  Broker SL Orders: True
+  DTE Range       : 7 – 30 days
+  Candle Interval : 1m
+  Check Interval  : 60s
+----------------------------------------------------------------------
+  [RISK GATES]
+  Max Trades/Day  : 5
+  Max Consec Loss : 3
+  Daily Loss Limit: ₹2000
+  Daily Profit Tgt: disabled
+  Entry Cooldown  : 300s per underlying
+  [TIMING]
+  No New Entries  : after 15:10 IST
+  EOD Square-Off  : 15:15 IST
+  Max Hold Time   : disabled
+======================================================================
+[STARTUP] Found 1 broker position(s). Restoring...
+[WS-TEST] REST API key OK (orderbook: 4 order(s))
+[WS-TEST] Testing wss://oadev.karm8boost.online/ws ...
+[WS-TEST] Transport OK — WebSocket handshake succeeded
+[WS-TEST] Auth OK
+[WS-TEST] Subscribed NSE_INDEX:Nifty 50
+[WS-TEST] Tick #1 — ltp=?
+[WS-TEST] (no tick yet, 15s remaining...)
+[WS-TEST] (no tick yet, 10s remaining...)
+[WS-TEST] (no tick yet, 5s remaining...)
+[WS-TEST] PASS — received 1 tick(s) ✓
+[WS] WebSocket thread starting...
+[WS] Connecting... (active OS threads: 2)
+[STRATEGY] Strategy scan thread started
+[BOT] BuyerEdgeStrategy running. Press Ctrl+C to stop.
+[WS]     Connected to wss://oadev.karm8boost.online/ws
+[AUTH]   Authenticating with API key: d45a583d...67fb132a
+[AUTH]   Success | Broker: upstox | User: manojv097
+[WS] Client connects using wss://oadev.karm8boost.online/ws (expected wss://oadev.karm8boost.online/ws)
+[WS] Connected to wss://oadev.karm8boost.online/ws — SDK managing reconnects automatically
+[WS-HEALTH] Uptime: 0.8m | Threads: 5 | Subs: 0/0 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+  ━━ SCAN · NIFTY · 23,341 · 12:41:06  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Neutral     score -10/100  █░░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 34.4 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.02
+     +0/2  ░░░░░░░░  Call OI Flow         CE Neutral
+     +0/2  ░░░░░░░░  Put OI Flow          PE Neutral
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 23500 (put wall 23000 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.004 — balanced (CE +0.498 / PE -0.502)
+     +1/2  ████░░░░  Gamma Regime         Short gamma (Net GEX -31229); nearest upside punch 23400 from spot 23341
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE +0.00%, PE +0.00%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +0/1  ░░░░░░░░  Synthetic Futures    SF snapshot only (no prior bar): basis +6.2 (normal) — score 0
+  ✘ NO_TRADE  —  not executing  (score 10/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=64 miss=42 api_calls=42 hit_rate=60.4% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,333 · 12:42:32  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Bearish     score -17/100  ██░░░░░░░░░░░░░░  trap 0/100   ✘ NO_TRADE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 33.5 — bearish momentum
+     -0/1  ████░░░░  MACD Histogram       MACD Histogram negative (contracting)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.02
+     -1/2  ████░░░░  Call OI Flow         CE Long Unwinding — moderately bearish
+     +0/2  ░░░░░░░░  Put OI Flow          PE Neutral
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 23500 (put wall 23000 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.009 — balanced (CE +0.496 / PE -0.505)
+     +1/2  ████░░░░  Gamma Regime         Short gamma (Net GEX -33215); nearest upside punch 23400 from spot 23333
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE -5.54%, PE -0.82%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.0%)
+     -1/1  ████████  Synthetic Futures    SF co-movement bearish: spot Δ-7.3, SF Δ-9.3 — confirming
+  ✘ NO_TRADE  —  not executing  (score 17/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=64 miss=42 api_calls=42 hit_rate=60.4% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,330 · 12:43:32  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Bearish     score -30/100  ████░░░░░░░░░░░░  trap 0/100   ⚡ WATCH
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 31.0 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.03
+     -1/2  ████░░░░  Call OI Flow         CE Long Unwinding — moderately bearish
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 23500 (put wall 23000 far) — mild bearish
+     +0/1  ░░░░░░░░  Greeks Bias (Δ)      ATM Δ sum -0.011 — balanced (CE +0.494 / PE -0.505)
+     +0/2  ░░░░░░░░  Gamma Regime         Long gamma (Net GEX +195) — dealer hedging tends to dampen directional follow-through | gamma flip 23700
+     +0/2  ░░░░░░░░  OI Velocity          OI velocity below threshold (CE -9.28%, PE +2.29%)
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.1%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +4.0, normal)
+  ⚡ WATCH  —  not executing  (score 30/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=58 miss=48 api_calls=48 hit_rate=54.7% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,323 · 12:44:33  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Bearish     score -35/100  █████░░░░░░░░░░░  trap 0/100   ⚡ WATCH
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 26.6 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.09
+     -1/2  ████░░░░  Call OI Flow         CE Long Unwinding — moderately bearish
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 23500 (put wall 23000 far) — mild bearish
+     +1/1  ████████  Greeks Bias (Δ)      ATM Δ sum +0.053 — CE ITM, net bullish  (CE +0.526 / PE -0.473)
+     -1/2  ████░░░░  Gamma Regime         Short gamma (Net GEX -19468); nearest downside punch 23250 from spot 23323 | gamma flip 22952
+     -1/2  ████░░░░  OI Velocity          PE OI building +5.88% + put buying — bearish accumulation
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle velocity unavailable
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +9.8, normal)
+  ⚡ WATCH  —  not executing  (score 35/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=58 miss=51 api_calls=51 hit_rate=53.2% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ━━ SCAN · NIFTY · 23,322 · 12:45:35  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Bearish     score -37/100  █████░░░░░░░░░░░  trap 0/100   ⚡ WATCH
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 24.7 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.09
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -1/2  ████░░░░  Put OI Flow          PE Short Covering — moderately bearish
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 23500 (put wall 23000 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.046 — mild CE dominance   (CE +0.523 / PE -0.477)
+     -1/2  ████░░░░  Gamma Regime         Short gamma (Net GEX -52351); nearest downside punch 23250 from spot 23322
+     -1/2  ████░░░░  OI Velocity          CE OI building +17.80% + call writing — institutional writer trap
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (+0.0%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis -2.0, normal)
+  ⚡ WATCH  —  not executing  (score 37/100, min 40)
+  [PERF] NIFTY [no-execute] greeks: hit=64 miss=45 api_calls=45 hit_rate=58.7% cache_size=30
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[WS-HEALTH] Uptime: 5.8m | Threads: 5 | Subs: 0/0 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+  ━━ SCAN · NIFTY · 23,320 · 12:46:23  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+      ▼ Bearish     score -42/100  ██████░░░░░░░░░░  trap 0/100   ✔ EXECUTE
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     -0/1  ████░░░░  EMA Trend            Fast EMA below Slow EMA (bearish)
+     -1/1  ████████  RSI Momentum         RSI 21.1 — bearish momentum
+     -1/1  ████████  MACD Histogram       MACD Histogram expanding negative
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP skipped: only 0 bars today (need 5)
+     +0/1  ░░░░░░░░  Spot vs VWAP         VWAP unavailable
+     +0/1  ░░░░░░░░  PCR OI Level         PCR OI 1.09
+     -2/2  ████████  Call OI Flow         Call Writing — strong bearish signal
+     -2/2  ████████  Put OI Flow          Put Buying — strong bearish for underlying
+     -0/1  ████░░░░  OI Wall Position     Spot between walls, near call resistance 23500 (put wall 23000 far) — mild bearish
+     +0/1  ████░░░░  Greeks Bias (Δ)      ATM Δ sum +0.044 — mild CE dominance   (CE +0.523 / PE -0.479)
+     -1/2  ████░░░░  Gamma Regime         Short gamma (Net GEX -67683); nearest downside punch 23250 from spot 23320
+     -1/2  ████░░░░  OI Velocity          CE OI building +57.96% + call writing — institutional writer trap
+     +0/1  ░░░░░░░░  IV Regime (IVR)      IVR unavailable
+     +0/2  ░░░░░░░░  Straddle Velocity    Straddle flat (-0.2%)
+     +0/1  ░░░░░░░░  Synthetic Futures    SF diverging or insufficient move — no directional vote (basis +5.9, normal)
+  ✔ EXECUTE  ▼  PE
+[STRIKE] conviction=0.03 target_delta=0.300 band=[0.22,0.38]
+[SCAN] NIFTY: Phase A initial SL source=moneyness_adapted_OTM base=50.00 × factor=1.02 (conv=0.03) → clamped=50.80pts
+[SCAN] NIFTY: qty=65 (risk-based sizing disabled — using fixed lot_mult)
+  [PERF] NIFTY [entry-preflight] greeks: hit=23 miss=95 api_calls=95 hit_rate=19.5% cache_size=20
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[SCAN] NIFTY: placing PE entry | strike 23000.0 | NIFTY23JUN2623000PE x65
+  [PERF] NIFTY [entry-order] greeks: hit=23 miss=95 api_calls=95 hit_rate=19.5% cache_size=20
+[ORDER] Entry order 26061225209430 placed for NIFTY (NIFTY23JUN2623000PE x65)
+[SUB]    Subscribing NFO:NIFTY23JUN2623000PE LTP...
+[WS] Subscribed option NFO:NIFTY23JUN2623000PE
+[SUB]    Subscribing NSE_INDEX:NIFTY LTP...
+[WS] Subscribed spot NSE_INDEX:NIFTY
+[DATA] TRADE REGISTERED NIFTY: option=NIFTY23JUN2623000PE exchange=NFO | spot=NIFTY spot_exchange=NSE_INDEX | entry=₹100.85 spot_entry=₹23319.85 direction=PE | SL=₹50.05 TGT=₹135.85 | delta=0.2834 conviction=0.03 | ws_desired=[('NFO', 'NIFTY23JUN2623000PE'), ('NSE_INDEX', 'NIFTY')]
+[SUB]    NFO:NIFTY23JUN2623000PE | Mode: Unknown | Status: success
+[SUB]    NSE_INDEX:NIFTY | Mode: Unknown | Status: success
+[ORDER] Basket SL-M placed for NIFTY: trigger ₹50.05 (id:26061280346027)
+[ORDER] Basket LIMIT placed for NIFTY: ₹135.85 (id:26061282061990)
+[ORDER] Position registered for NIFTY: NIFTY23JUN2623000PE QTY=65 ENTRY=₹100.85 SL=₹50.05 (pts=50.80) TGT=₹135.85
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-91.00 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 99.45, 'pnl': -91.0, 'pnlpercent': -1.3882002974714922, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -91.0, 'unrealized_pnl': -91.0}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-26.00 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 100.45, 'pnl': -26.0, 'pnlpercent': -0.3966286564204264, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -26.0, 'unrealized_pnl': -26.0}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹32.50 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 101.35, 'pnl': 32.5, 'pnlpercent': 0.495785820525533, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': 32.5, 'unrealized_pnl': 32.5}
+[WS-HEALTH] Uptime: 10.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.1s
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-172.25 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 98.2, 'pnl': -172.25, 'pnlpercent': -2.627664848785325, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -172.25, 'unrealized_pnl': -172.25}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-26.00 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 100.45, 'pnl': -26.0, 'pnlpercent': -0.3966286564204264, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -26.0, 'unrealized_pnl': -26.0}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-104.00 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 99.25, 'pnl': -104.0, 'pnlpercent': -1.5865146256817055, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -104.0, 'unrealized_pnl': -104.0}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-182.00 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 98.05, 'pnl': -182.0, 'pnlpercent': -2.7764005949429844, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -182.0, 'unrealized_pnl': -182.0}
+[WS-HEALTH] Uptime: 15.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.1s
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-276.25 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 96.6, 'pnl': -276.25, 'pnlpercent': -4.214179474467031, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -276.25, 'unrealized_pnl': -276.25}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-81.25 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 99.6, 'pnl': -81.25, 'pnlpercent': -1.2394645513138325, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -81.25, 'unrealized_pnl': -81.25}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-100.75 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 99.3, 'pnl': -100.75, 'pnlpercent': -1.5369360436291521, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -100.75, 'unrealized_pnl': -100.75}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-143.00 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 98.65, 'pnl': -143.0, 'pnlpercent': -2.181457610312345, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -143.0, 'unrealized_pnl': -143.0}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-55.25 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 100.0, 'pnl': -55.25, 'pnlpercent': -0.842835894893406, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -55.25, 'unrealized_pnl': -55.25}
+[WS-HEALTH] Uptime: 20.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.1s
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-136.50 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 98.75, 'pnl': -136.5, 'pnlpercent': -2.0823004462072383, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -136.5, 'unrealized_pnl': -136.5}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-406.25 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 94.6, 'pnl': -406.25, 'pnlpercent': -6.197322756569162, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -406.25, 'unrealized_pnl': -406.25}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-542.75 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 92.5, 'pnl': -542.75, 'pnlpercent': -8.279623202776401, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -542.75, 'unrealized_pnl': -542.75}
+[WS-HEALTH] Uptime: 25.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.3s
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-422.50 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 94.35, 'pnl': -422.5, 'pnlpercent': -6.4452156668319285, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -422.5, 'unrealized_pnl': -422.5}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-188.50 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 97.95, 'pnl': -188.5, 'pnlpercent': -2.875557759048091, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -188.5, 'unrealized_pnl': -188.5}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-308.75 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 96.1, 'pnl': -308.75, 'pnlpercent': -4.709965294992563, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -308.75, 'unrealized_pnl': -308.75}
+[WS-HEALTH] Uptime: 30.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.3s
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-422.50 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 94.35, 'pnl': -422.5, 'pnlpercent': -6.4452156668319285, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -422.5, 'unrealized_pnl': -422.5}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-302.25 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 96.2, 'pnl': -302.25, 'pnlpercent': -4.610808130887457, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -302.25, 'unrealized_pnl': -302.25}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-432.25 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 94.2, 'pnl': -432.25, 'pnlpercent': -6.593951412989589, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -432.25, 'unrealized_pnl': -432.25}
+[WS-HEALTH] Uptime: 35.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.3s
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-500.50 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 93.15, 'pnl': -500.5, 'pnlpercent': -7.635101636093208, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -500.5, 'unrealized_pnl': -500.5}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-549.25 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 92.4, 'pnl': -549.25, 'pnlpercent': -8.378780366881507, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -549.25, 'unrealized_pnl': -549.25}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-581.75 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 91.9, 'pnl': -581.75, 'pnlpercent': -8.87456618740704, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -581.75, 'unrealized_pnl': -581.75}
+[WS-HEALTH] Uptime: 40.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.3s
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-588.25 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 91.8, 'pnl': -588.25, 'pnlpercent': -8.973723351512147, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -588.25, 'unrealized_pnl': -588.25}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-607.75 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 91.5, 'pnl': -607.75, 'pnlpercent': -9.271194843827466, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -607.75, 'unrealized_pnl': -607.75}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-396.50 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 94.75, 'pnl': -396.5, 'pnlpercent': -6.048587010411502, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -396.5, 'unrealized_pnl': -396.5}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-243.75 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 97.1, 'pnl': -243.75, 'pnlpercent': -3.7183936539414972, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -243.75, 'unrealized_pnl': -243.75}
+[WS-HEALTH] Uptime: 45.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.1s
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-1046.50 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 84.75, 'pnl': -1046.5, 'pnlpercent': -15.964303420922162, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -1046.5, 'unrealized_pnl': -1046.5}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-1465.75 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 78.3, 'pnl': -1465.75, 'pnlpercent': -22.359940505701537, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -1465.75, 'unrealized_pnl': -1465.75}
+[WS-HEALTH] Uptime: 50.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-1667.25 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 75.2, 'pnl': -1667.25, 'pnlpercent': -25.433812592959843, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -1667.25, 'unrealized_pnl': -1667.25}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-1872.00 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 72.05, 'pnl': -1872.0, 'pnlpercent': -28.5572632622707, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -1872.0, 'unrealized_pnl': -1872.0}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-1881.75 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 71.9, 'pnl': -1881.75, 'pnlpercent': -28.70599900842836, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -1881.75, 'unrealized_pnl': -1881.75}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-2050.75 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 69.3, 'pnl': -2050.75, 'pnlpercent': -31.28408527516113, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -2050.75, 'unrealized_pnl': -2050.75}
+[WS-HEALTH] Uptime: 55.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-2323.75 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 65.1, 'pnl': -2323.75, 'pnlpercent': -35.44868616757561, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -2323.75, 'unrealized_pnl': -2323.75}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-2278.25 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 65.8, 'pnl': -2278.25, 'pnlpercent': -34.75458601883986, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -2278.25, 'unrealized_pnl': -2278.25}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-2356.25 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 64.6, 'pnl': -2356.25, 'pnlpercent': -35.94447198810114, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -2356.25, 'unrealized_pnl': -2356.25}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-2528.50 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 61.95, 'pnl': -2528.5, 'pnlpercent': -38.572136836886465, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -2528.5, 'unrealized_pnl': -2528.5}
+[WS-HEALTH] Uptime: 60.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-2349.75 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 64.7, 'pnl': -2349.75, 'pnlpercent': -35.845314823996034, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -2349.75, 'unrealized_pnl': -2349.75}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-2382.25 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 64.2, 'pnl': -2382.25, 'pnlpercent': -36.34110064452157, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -2382.25, 'unrealized_pnl': -2382.25}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-2447.25 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 63.2, 'pnl': -2447.25, 'pnlpercent': -37.332672285572635, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -2447.25, 'unrealized_pnl': -2447.25}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-2421.25 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 63.6, 'pnl': -2421.25, 'pnlpercent': -36.93604362915221, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -2421.25, 'unrealized_pnl': -2421.25}
+[WS-HEALTH] Uptime: 65.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-2509.00 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 62.25, 'pnl': -2509.0, 'pnlpercent': -38.27466534457115, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -2509.0, 'unrealized_pnl': -2509.0}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-2596.75 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 60.9, 'pnl': -2596.75, 'pnlpercent': -39.613287059990085, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -2596.75, 'unrealized_pnl': -2596.75}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-2551.25 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 61.6, 'pnl': -2551.25, 'pnlpercent': -38.919186911254336, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -2551.25, 'unrealized_pnl': -2551.25}
+[WS-HEALTH] Uptime: 70.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-2684.50 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 59.55, 'pnl': -2684.5, 'pnlpercent': -40.951908775409024, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -2684.5, 'unrealized_pnl': -2684.5}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-2619.50 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 60.55, 'pnl': -2619.5, 'pnlpercent': -39.96033713435796, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -2619.5, 'unrealized_pnl': -2619.5}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-2583.75 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 61.1, 'pnl': -2583.75, 'pnlpercent': -39.41497273177987, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -2583.75, 'unrealized_pnl': -2583.75}
+[WS-HEALTH] Uptime: 75.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-2580.50 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 61.15, 'pnl': -2580.5, 'pnlpercent': -39.365394149727315, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -2580.5, 'unrealized_pnl': -2580.5}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-2603.25 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 60.8, 'pnl': -2603.25, 'pnlpercent': -39.712444224095194, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -2603.25, 'unrealized_pnl': -2603.25}
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-2629.25 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 60.4, 'pnl': -2629.25, 'pnlpercent': -40.10907288051562, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -2629.25, 'unrealized_pnl': -2629.25}
+[WS-HEALTH] Uptime: 80.8m | Threads: 6 | Subs: 2/2 | Reconnects: 0 | Reconciles: 0 (Repaired: 0) | LastTick: 0.0s
+[PNL] 2 position(s): ['NIFTY23JUN2623000PE', 'NIFTY23JUN2623200PE']
+[PNL - LIVE] pnl=₹-2645.50 raw={'average_price': 100.85, 'exchange': 'NFO', 'lot_size': 1.0, 'ltp': 60.15, 'pnl': -2645.5, 'pnlpercent': -40.35696579077838, 'product': 'MIS', 'quantity': 65, 'symbol': 'NIFTY23JUN2623000PE', 'today_realized_pnl': 0.0, 'total_pnl_today': -2645.5, 'unrealized_pnl': -2645.5}
