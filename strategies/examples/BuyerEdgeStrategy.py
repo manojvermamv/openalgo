@@ -27,7 +27,7 @@ Run:  export OPENALGO_API_KEY="your-key"  &&  python BuyerEdgeStrategy.py
 """
 
 import csv
-import traceback
+import copy
 import concurrent.futures
 import math
 import os
@@ -52,7 +52,7 @@ if hasattr(sys.stderr, "reconfigure"):
 # ===============================================================================
 # Logging — global toggle constants
 # ===============================================================================
-DEBUG_ENABLED = False
+DEBUG_ENABLED = True
 INFO_ENABLED  = True
 
 def dbg(*args, **kwargs):
@@ -724,6 +724,9 @@ class BotConfig:
     quote_api_rps:   float = 30.0   # max requests per second (env: QUOTE_API_RPS)
     quote_api_burst: int   = 10     # burst allowance (env: QUOTE_API_BURST)
 
+    # ── Greeks Smoothing ─────────────────────────────────────────────────────
+    greeks_smooth_max_age: float = 180.0   # drop greeks entries older than N secs (env: GREEKS_SMOOTH_MAX_AGE)
+
     # ── U2 Greeks-Aware Deep OTM Exit ─────────────────────────────────────────
     delta_exit_threshold: float = 0.10
 
@@ -914,6 +917,7 @@ class BotConfig:
             trade_journal_path=os.getenv("TRADE_JOURNAL_PATH", defaults.trade_journal_path),
             quote_api_rps=float(os.getenv("QUOTE_API_RPS", str(defaults.quote_api_rps))),
             quote_api_burst=int(os.getenv("QUOTE_API_BURST", str(defaults.quote_api_burst))),
+            greeks_smooth_max_age=float(os.getenv("GREEKS_SMOOTH_MAX_AGE", str(defaults.greeks_smooth_max_age))),
         )
         _known_equity = {"RELIANCE", "HDFCBANK", "ICICIBANK", "SBIN", "INFY", "TCS"}
         _unclassified = [
@@ -1177,7 +1181,6 @@ class SnapshotCache:
             snap = self._snapshots.get(underlying)
             if snap is None:
                 return None
-            import copy
             return copy.copy(snap)
 
     def get_stale_underlyings(self, max_age: float) -> list[str]:
@@ -1200,7 +1203,6 @@ class SnapshotCache:
             snap = self._snapshots[underlying]
             # Return a shallow copy so readers never see a half-updated snapshot
             # (the dataclass fields are primitives so a shallow copy is safe).
-            import copy
             return copy.copy(snap)
 
     def update(self, underlying: str, **fields: Any) -> None:
@@ -1288,7 +1290,7 @@ class BotState:
         self.prev_spot:       dict[str, float] = {}
         self.prev_sf:         dict[str, float] = {}
         self.chain_history:   dict[str, deque] = {}
-        self.greeks_history:  dict[str, deque] = {}   # symbol → deque of greeks snapshots
+        self.greeks_history:  dict[str, dict[float, deque]] = {}   # {symbol: {strike: deque(maxlen=5)}}
         self.spot_price_history: dict[str, deque] = {} # underlying → deque of (timestamp, ltp)
         self._chain_smooth_bars = chain_smooth_bars
         self.entry_in_flight: int = 0
@@ -1299,10 +1301,11 @@ class BotState:
             self.chain_history[symbol] = deque(maxlen=max(1, self._chain_smooth_bars))
         return self.chain_history[symbol]
 
-    def get_greeks_history(self, symbol: str, maxlen: int = 5) -> deque:
-        if symbol not in self.greeks_history:
-            self.greeks_history[symbol] = deque(maxlen=maxlen)
-        return self.greeks_history[symbol]
+    def get_greeks_history(self, symbol: str, strike: float, maxlen: int = 5) -> deque:
+        per_symbol = self.greeks_history.setdefault(symbol, {})
+        if strike not in per_symbol:
+            per_symbol[strike] = deque(maxlen=maxlen)
+        return per_symbol[strike]
 
     def record_spot_price(self, underlying: str, ltp: float, maxlen: int = 10) -> None:
         if underlying not in self.spot_price_history:
@@ -1342,25 +1345,30 @@ class BotState:
             self._traded_today.clear()
 
 
-def _smooth_greeks(history: deque, current_atm: float, lookback: int | None = None) -> dict:
-    """Average delta and IV across last `lookback` snapshots where ATM strike matches.
-    None = all available. Returns {} when ATM just shifted — no valid same-strike history."""
+def _smooth_greeks(history: deque, lookback: int | None = None,
+                    max_age_secs: float | None = None) -> dict:
+    """Average delta and IVR across THIS strike's own history.
+    max_age_secs drops entries older than this. Returns {} on empty."""
     snaps = list(history)
     if not snaps:
         return {}
     if lookback is not None and lookback <= 0:
         return {}
     snaps = snaps[-lookback:] if lookback else snaps
-    # Only include snapshots from the same ATM strike — cross-strike averaging contaminates signal
-    same_strike = [s for s in snaps if s.get("atm_strike") == current_atm]
-    if not same_strike:
+
+    if max_age_secs is not None:
+        now = time.time()
+        snaps = [s for s in snaps if (now - s.get("timestamp", 0)) <= max_age_secs]
+    if not snaps:
         return {}
+
     def _avg(key):
-        vals = [s[key] for s in same_strike if s.get(key) is not None]
+        vals = [s[key] for s in snaps if s.get(key) is not None]
         return sum(vals) / len(vals) if vals else None
+
     return {
-        "ce_delta": _avg("ce_delta"),
-        "pe_delta": _avg("pe_delta"),
+        "ce_delta":   _avg("ce_delta"),
+        "pe_delta":   _avg("pe_delta"),
         "ce_iv_rank": _avg("ce_iv_rank"),
         "pe_iv_rank": _avg("pe_iv_rank"),
     }
@@ -1410,12 +1418,6 @@ def _effective_min_score(now: datetime, cfg: "BotConfig") -> tuple[int, str]:
         score = max(1, int(cfg.min_score * cfg.power_hour_score_factor))
         return score, f"power-hour(eased→{score})"
     return cfg.min_score, "mid-session"
-
-
-def _field_trend(oldest: dict, newest: dict, fld: str) -> int:
-    """Return +1 (rising), 0 (flat), or -1 (falling) for a chain field across oldest→newest snapshot."""
-    diff = float(newest.get(fld) or 0) - float(oldest.get(fld) or 0)
-    return 1 if diff > 0 else (-1 if diff < 0 else 0)
 
 
 def _ewa(values: list[float], alpha: float = 0.4) -> float:
@@ -2274,7 +2276,7 @@ class DataFetcher:
             
             error_msg = response.get("message", "")
             if isinstance(error_msg, str) and ("Invalid token" in error_msg or "UDAPI100050" in error_msg):
-                inf(f"[ERROR] {symbol}@{exchange}: broker token invalid (UDAPI100050): {response}")
+                err(f"[ERROR] {symbol}@{exchange}: broker token invalid (UDAPI100050): {response}")
                 if self._notify and not self._auth_error_notified:
                     self._auth_error_notified = True
                     self._notify(
@@ -2284,7 +2286,7 @@ class DataFetcher:
                         9,
                     )
             else:
-                inf(f"[ERROR] {symbol}@{exchange}: quotes API error: {response}")
+                err(f"[ERROR] {symbol}@{exchange}: quotes API error: {response}")
             return {}
         except Exception as e:
             if "Invalid token" in str(e) or "UDAPI100050" in str(e):
@@ -2755,6 +2757,10 @@ class TrailSLEngine:
         # Hard ceiling: prevents activation requiring more pts than the TP window on high-premium options
         if cfg.trail_activate_at_max_pts > 0:
             activate_pts = min(activate_pts, cfg.trail_activate_at_max_pts)
+        # Self-correcting cap: never require more than 80% of this position's own target gain
+        _tgt_gain = pos.tgt - ep
+        if _tgt_gain > 0:
+            activate_pts = min(activate_pts, _tgt_gain * 0.8)
 
         if not pos.premium_trail_active and move < activate_pts:
             return  # not activated yet
@@ -2839,17 +2845,21 @@ class TrailSLEngine:
         
         # Trail activation and ratchet placement use confirmed periodic closes.
         if not pos.premium_trail_active:
-            pos.premium_trail_active = True
-            pos.premium_trail_peak = pos.trail_peak_close
             new_sl = confirmed_close - step_pts
             if new_sl > pos.sl:
                 _broker_ok = True
                 if cfg.broker_sl_orders and pos.sl_order_id and self.modify_callback:
                     _broker_ok = self.modify_callback(underlying, new_sl)
                 if _broker_ok:
+                    pos.premium_trail_active = True
+                    pos.premium_trail_peak = pos.trail_peak_close
                     pos.premium_trail_sl = new_sl
                     pos.sl = new_sl
                     inf(f"[TRAIL] Premium ACTIVATED {underlying}: peak {ltp:.2f} SL→{new_sl:.2f} (speed={_trail_speed:.1f}x)")
+                else:
+                    inf(f"[TRAIL] Premium activation BLOCKED {underlying}: broker rejected new_sl={new_sl:.2f} — retrying next cycle")
+            else:
+                dbg(f"[TRAIL] {underlying}: new_sl={new_sl:.2f} <= current sl={pos.sl:.2f} — not yet beneficial, retry next cycle")
         else:
             if is_new_confirmed_close_high:
                 pos.premium_trail_peak = pos.trail_peak_close
@@ -3731,7 +3741,6 @@ class WebSocketManager:
           Part A — option premium trail (premium trail SL)
           Part B — spot trail (spot-based SL ratchet for indices)
         """
-        dbg(f"[WS] Received data: {data}")
         # ── RAW CALLBACK DIAGNOSTIC — fires on EVERY WS message ────────────
         if not hasattr(self, '_raw_cb_count'):
             self._raw_cb_count = 0
@@ -3805,7 +3814,7 @@ class WebSocketManager:
                 if cnt <= 3 or cnt % 5 == 0:
                     spot_snap = self._state.snapshot_cache.get(underlying)
                     spot_ltp = spot_snap.spot_ltp if spot_snap else None
-                    inf(
+                    dbg(
                         f"[WS-TICK] {underlying} option={symbol} "
                         f"premium=₹{ltp:.2f} spot={spot_ltp if spot_ltp else 'N/A'} | "
                         f"tick#{cnt} SL=₹{pos.sl:.2f} TGT=₹{pos.tgt:.2f} | "
@@ -3819,7 +3828,7 @@ class WebSocketManager:
                 if cnt <= 3 or cnt % 5 == 0:
                     opt_snap = self._state.snapshot_cache.get(underlying)
                     opt_ltp = opt_snap.option_ltp if opt_snap else None
-                    inf(
+                    dbg(
                         f"[WS-TICK] {underlying} spot={symbol} "
                         f"spot_ltp=₹{ltp:.2f} premium={opt_ltp if opt_ltp else 'N/A'} | "
                         f"spot_tick#{cnt} | "
@@ -5254,7 +5263,6 @@ class OptionsBuyerEdgeBot:
 
     def _send_live_pnl_alert(self, open_positions: list[OptionPosition]) -> None:
         """Fetch live positions and dispatch a single-line active PNL alert."""
-        dbg(f"[PNL] Checking PNL for {len(open_positions)} position(s)")
         try:
             broker_pnl_map: dict[str, float] = {}
             broker_raw_data: dict[str, dict] = {}
@@ -5267,41 +5275,25 @@ class OptionsBuyerEdgeBot:
                         if sym:
                             broker_pnl_map[sym] = pnl
                             broker_raw_data[sym] = p
-                    dbg(f"[PNL] {len(broker_pnl_map)} position(s): {list(broker_pnl_map.keys())}")
+                    inf(f"[PNL] {len(broker_pnl_map)} position(s): {list(broker_pnl_map.keys())}")
                 else:
-                    inf(f"[PNL] Broker positionbook call failed: {resp}")
+                    err(f"[PNL] Broker positionbook call failed: {resp}")
 
             for pos in open_positions:
                 pnl = 0.0
-                source = "none"
                 if self.config.paper_trade:
                     snap = self.state.snapshot_cache.get(pos.underlying)
                     if snap and snap.option_ltp is not None:
                         ltp = snap.option_ltp
                         pnl = (ltp - pos.entry_premium) * pos.qty
-                        source = "snapshot_cache"
-                        dbg(f"[PNL] "
-                            f"ltp=₹{ltp:.2f} entry=₹{pos.entry_premium:.2f} "
-                            f"qty={pos.qty} pnl=₹{pnl:.2f}"
-                        )
+                        inf(f"[PNL - CACHE] ltp=₹{ltp:.2f} entry=₹{pos.entry_premium:.2f} qty={pos.qty} pnl=₹{pnl:.2f}")
                     else:
-                        dbg(f"[PNL] — no snapshot data. "
-                            f"snap_exists={snap is not None} "
-                            f"opt_ltp={snap.option_ltp if snap else 'None'}"
-                        )
+                        err(f"[PNL - CACHE] no snapshot data. snap_exists={snap is not None} opt_ltp={snap.option_ltp if snap else 'None'}")
                 elif pos.symbol in broker_pnl_map:
                     pnl = broker_pnl_map[pos.symbol]
-                    source = "broker"
-                    dbg(f"[PNL] pnl=₹{pnl:.2f} "
-                        f"raw={broker_raw_data.get(pos.symbol, {})}"
-                    )
+                    inf(f"[PNL - LIVE] pnl=₹{pnl:.2f} raw={broker_raw_data.get(pos.symbol, {})}")
                 else:
-                    broker_symbols = list(broker_pnl_map.keys())
-                    raw_entry = broker_raw_data.get(pos.symbol)
-                    inf(
-                        f"[PNL] {pos.underlying}: symbol={pos.symbol} NOT in broker data. "
-                        f"broker_symbols={broker_symbols} raw_entry={raw_entry}"
-                    )
+                    err(f"[PNL - LIVE] {pos.underlying}: symbol={pos.symbol} NOT in broker data. broker_symbols={list(broker_pnl_map.keys())} raw_entry={broker_raw_data.get(pos.symbol, {})}")
 
                 hold_mins = max(0, int((get_ist_now() - pos.entry_time).total_seconds() / 60))
                 hours = hold_mins // 60
@@ -5311,18 +5303,7 @@ class OptionsBuyerEdgeBot:
                 side  = pos.option_type.upper()
                 emoji = "🟢" if pnl >= 0 else "🔴"
                 sign  = "+" if pnl >= 0 else ""
-
-                if pnl == 0.0 and source == "none":
-                    dbg(f"[PNL] — no data source")
-                else:
-                    dbg(f"[PNL]₹{pnl:.2f} source={source} "
-                        f"hold={hold_str} alert_sent=True"
-                    )
-
-                self._send_alert(
-                    f"{emoji} {pos.underlying} {side} | PNL: ₹{sign}{pnl:.0f} | Hold: {hold_str}",
-                    3,
-                )
+                self._send_alert(f"{emoji} {pos.underlying} {side} | PNL: ₹{sign}{pnl:.0f} | Hold: {hold_str}", 3)
                 
         except Exception as exc: err(f"[PNL REPORT] Error checking active PNL: ", exc)
 
@@ -5502,6 +5483,35 @@ class OptionsBuyerEdgeBot:
 
         self.fetcher.batch_prefetch_option_greeks(symbol, option_symbols)
 
+        # ── Per-strike Greeks harvest (zero extra API calls — reads _greeks_cache) ──
+        _now_ts = time.time()
+        for row in smoothed:
+            _strike = row.get("strike")
+            if _strike is None:
+                continue
+            _ce_sym = row.get("ce_symbol")
+            _pe_sym = row.get("pe_symbol")
+            _ce_g = self.fetcher._fetch_option_greeks_cached(symbol, _ce_sym) if _ce_sym else None
+            _pe_g = self.fetcher._fetch_option_greeks_cached(symbol, _pe_sym) if _pe_sym else None
+            if _ce_g is None and _pe_g is None:
+                continue
+            _snap = {"timestamp": _now_ts}
+            if _ce_g is not None:
+                _ce_iv = _ce_g.get("iv")
+                _snap["ce_delta"]   = _ce_g.get("delta")
+                _snap["ce_iv_rank"] = (
+                    self.scorer.iv_rank(_ce_iv, cfg.iv_52w_low, cfg.iv_52w_high)
+                    if _ce_iv and _ce_iv > 0 else None
+                )
+            if _pe_g is not None:
+                _pe_iv = _pe_g.get("iv")
+                _snap["pe_delta"]   = _pe_g.get("delta")
+                _snap["pe_iv_rank"] = (
+                    self.scorer.iv_rank(_pe_iv, cfg.iv_52w_low, cfg.iv_52w_high)
+                    if _pe_iv and _pe_iv > 0 else None
+                )
+            state.get_greeks_history(symbol, _strike).append(_snap)
+
         straddle_price = (atm_ce_ltp + atm_pe_ltp) if (atm_ce_ltp and atm_pe_ltp) else None
         # Only compare premium expansion if the ATM strike is the same as the previous scan.
         # If the ATM strike shifted, straddle velocity is undefined/reset for this bar.
@@ -5543,19 +5553,12 @@ class OptionsBuyerEdgeBot:
         # Legacy fallback for backward compatibility
         iv_rank_val = ce_iv_rank if (ce_iv_rank is not None and pe_iv_rank is None) else (pe_iv_rank if pe_iv_rank is not None else None)
 
-        # Accumulate greeks snapshot for rolling smoothing (no extra API calls)
-        state.get_greeks_history(symbol).append({
-            "timestamp": time.time(),
-            "atm_strike": atm_k,
-            "ce_delta": ce_delta,
-            "pe_delta": pe_delta,
-            "ce_iv_rank": ce_iv_rank,
-            "pe_iv_rank": pe_iv_rank,
-        })
-
-        # Smooth greeks across last N scan cycles to reduce single-point noise
-        # Only averages same-ATM-strike snapshots — prevents cross-strike contamination
-        _sg = _smooth_greeks(state.get_greeks_history(symbol), current_atm=atm_k, lookback=3)
+        # Smooth greeks across last N scan cycles — per-strike deque, no cross-contamination
+        _sg = _smooth_greeks(
+            state.get_greeks_history(symbol, atm_k),
+            lookback=3,
+            max_age_secs=cfg.greeks_smooth_max_age,
+        )
         ce_delta = _sg.get("ce_delta", ce_delta) or ce_delta
         pe_delta = _sg.get("pe_delta", pe_delta) or pe_delta
         ce_iv_rank = _sg.get("ce_iv_rank", ce_iv_rank)
