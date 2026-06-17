@@ -1,0 +1,33 @@
+AGENTS.md
+  s_2ee7fc38f521b7::t_cdc3b11371e652 3,7,9,11,13,15-23,572-580
+  s_2ee7fc38f521b7::t_8ff4ce4032fc16 14
+frontend/AGENTS.md
+  s_2ee7fc38f521b7::t_8ced3eeafd77b3 1-62
+strategies/examples/AGENTS.md
+  s_2ee7fc38f521b7::t_60dbfff36c320f 49,60
+  s_2ee7fc38f521b7::t_db07ef928a64cd 78,80-81,89-91
+  s_2ee7fc38f521b7::t_f71d6ee8eb9f6a 5-7
+  s_2ee7fc38f521b7::t_7576f1e87237ec 1-4,8-23,26-32,62,65-77,79,82-88,92-102
+  s_2ee7fc38f521b7::t_f9303be7675c25 24-25,33,41-45,50-52,54-55,57-59,61,63-64
+  s_2ee7fc38f521b7::t_671d21897d8b9a 34-40,46-48,53,56
+strategies/AGENTS.md
+  s_2ee7fc38f521b7::t_e69172c40b5b76 1-41
+broker/AGENTS.md
+  s_2ee7fc38f521b7::t_1ad66b091681e3 1-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "716bb93e7d44b511acbaeb654061849e0c442874",
+  "prompts": {},
+  "sessions": {
+    "s_2ee7fc38f521b7": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_1648e33cdffeRiYPYXNn1oOpBt",
+        "model": "unknown"
+      },
+      "human_author": "Manoj Verma <71809372+manojvermamv@users.noreply.github.com>"
+    }
+  }
+}
