@@ -1,0 +1,30 @@
+strategies/examples/tests/test_history_api_volume.py
+  s_2ee7fc38f521b7::t_b5f5844290b54a 3-4,13
+  s_2ee7fc38f521b7::t_a55ce448095036 104
+  s_2ee7fc38f521b7::t_a2f045eb53044e 63
+  s_2ee7fc38f521b7::t_915349246e874d 70
+  s_2ee7fc38f521b7::t_6c72001878b1ad 86
+  s_2ee7fc38f521b7::t_d1c7dbb64f8d2b 6
+  s_2ee7fc38f521b7::t_da80394e25b811 30
+  s_2ee7fc38f521b7::t_40c63ee1a4690c 93-95
+  s_2ee7fc38f521b7::t_fa1a1b44d670df 1-2,5,7-12,14-29,31-54,56-62,64-65,67-69,71-73,75-85,87-92,96-103,105-107
+  s_2ee7fc38f521b7::t_09513994a9700b 66
+  s_2ee7fc38f521b7::t_74cccecb53ea09 55
+  s_2ee7fc38f521b7::t_9a3dac62d0ecb4 74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "c98d8bd110bde605b7c1e49d5dc3a4b61d93c871",
+  "prompts": {},
+  "sessions": {
+    "s_2ee7fc38f521b7": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_1648e33cdffeRiYPYXNn1oOpBt",
+        "model": "unknown"
+      },
+      "human_author": "Manoj Verma <71809372+manojvermamv@users.noreply.github.com>"
+    }
+  }
+}
