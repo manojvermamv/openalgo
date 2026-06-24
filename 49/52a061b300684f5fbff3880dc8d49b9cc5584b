@@ -1,0 +1,27 @@
+strategies/examples/trailsim/simulate.py
+  s_2ee7fc38f521b7::t_5258fa44bbf63e 1-15,25-32,35,37-43,46-54,56-99,101,103-105,107-108,110,112-131,134-135,137-138,144,149-153,160,166,186-188,190,192-196,204-206,208-211,213-217,219,225-228,230,232,241,243,250,293,295,307-309,314,322-324,330,335,342-346,354-355,357-365,402,408,413,441-445,450,470-474,481-515,517,525-527,529-534
+strategies/examples/trailsim/analyze.py
+  s_2ee7fc38f521b7::t_9703f5431d0547 1-5,21-29,34-61,63-64,76-77,79-83,88-89,97-98,100-101,106,113-114,124,128-129,137-138,149-152,158-159,170-172,179-195,197-214,218-220,225-226,234-235,238
+  s_2ee7fc38f521b7::t_830365de044bc7 141-142
+  s_2ee7fc38f521b7::t_e0bfa40742735f 196
+strategies/examples/trailsim/paths.py
+  s_2ee7fc38f521b7::t_6b3eba9e720ad8 2,4,6,8,10-41,45-98,101-155,161-168
+strategies/examples/trailsim/run_all.py
+  s_2ee7fc38f521b7::t_84a67adc6d80dd 1-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "4952a061b300684f5fbff3880dc8d49b9cc5584b",
+  "prompts": {},
+  "sessions": {
+    "s_2ee7fc38f521b7": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_1648e33cdffeRiYPYXNn1oOpBt",
+        "model": "unknown"
+      },
+      "human_author": "Manoj Verma <71809372+manojvermamv@users.noreply.github.com>"
+    }
+  }
+}
