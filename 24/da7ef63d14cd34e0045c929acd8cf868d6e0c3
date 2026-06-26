@@ -1,0 +1,29 @@
+strategies/docs/Premium-Trail-Architecture-Plan.md
+  s_2ee7fc38f521b7::t_addee377b47302 1-39,44-281,283,285,288,292-293,295-312,314,316,326,329,331-421,423,425,430-490,536-546,548,550-551,553,556-558,560
+  s_2ee7fc38f521b7::t_afa1c7857133c9 40-43
+  s_2ee7fc38f521b7::t_5728b17dafd9c4 282,284,286-287,289-291,294
+  s_2ee7fc38f521b7::t_9da480f7ff028c 313,315,317-325,327-328,330
+  s_2ee7fc38f521b7::t_357c0977d38bdd 422,424,426-429
+  s_2ee7fc38f521b7::t_ce64dc29fd783e 491-535
+  s_2ee7fc38f521b7::t_b4effd9ae5183b 547,549,552,554-555,559,561
+strategies/examples/BuyerEdgeStrategy.py
+  s_2ee7fc38f521b7::t_19369076a55e03 132-136
+strategies/examples/trailsim/paths.py
+  s_2ee7fc38f521b7::t_b5ee5adec45806 89-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "24da7ef63d14cd34e0045c929acd8cf868d6e0c3",
+  "prompts": {},
+  "sessions": {
+    "s_2ee7fc38f521b7": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_1648e33cdffeRiYPYXNn1oOpBt",
+        "model": "unknown"
+      },
+      "human_author": "Manoj Verma <71809372+manojvermamv@users.noreply.github.com>"
+    }
+  }
+}
